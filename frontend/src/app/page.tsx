@@ -3,13 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Stepper, Stage } from "@/components/Stepper";
-import { MeetingWorkspaceTabs, type MeetingWorkspaceTab } from "@/components/MeetingWorkspaceTabs";
-import { MeetingActionItemsTable, MeetingDiscussionCard, MeetingSummaryEditor, useMeetingAssignees } from "@/components/MeetingWorkspaceContent";
-import { StudioRecoveryBanner } from "@/components/StudioRecoveryBanner";
-import { useStudioRecorderContext } from "@/components/StudioRecorderProvider";
-import type { StudioNote, StudioDisplayMode } from "@/types/studio";
-import { clearSession } from "@/lib/studioStorage";
+import { Stepper, Stage } from "@/features/notetaker/components/Stepper";
+import { MeetingWorkspaceTabs, type MeetingWorkspaceTab } from "@/features/meetings/components/MeetingWorkspaceTabs";
+import { MeetingActionItemsTable, MeetingDiscussionCard, MeetingSummaryEditor, useMeetingAssignees } from "@/features/meetings/components/MeetingWorkspaceContent";
+import { StudioRecoveryBanner } from "@/features/notetaker/components/StudioRecoveryBanner";
+import { useStudioRecorderContext } from "@/features/notetaker/components/StudioRecorderProvider";
+import type { StudioNote, StudioDisplayMode } from "@/features/notetaker/types/studio";
+import { clearSession } from "@/features/notetaker/lib/studioStorage";
 import { 
   processSource, 
   generateMinutes, 
@@ -36,18 +36,18 @@ import {
   AudioTelemetry
 } from "@/lib/api";
 import { Sidebar, NavView } from "@/components/Sidebar";
-import { AutoResizeTextarea } from "@/components/notetaker/AutoResizeTextarea";
+import { AutoResizeTextarea } from "@/features/notetaker/components/AutoResizeTextarea";
 import { Topbar } from "@/components/Topbar";
-import { DashboardView } from "@/components/DashboardView";
-import type { ClickUpTask } from "@/components/TasksView";
+import { DashboardView } from "@/features/dashboard/pages/DashboardView";
+import type { ClickUpTask } from "@/features/tasks/components/TasksView";
 import { QuickAddTaskModal } from "@/components/QuickAddTaskModal";
-import { FinalizeMeetingModal } from "@/components/FinalizeMeetingModal";
-import { DiscoverTopicsModal } from "@/components/DiscoverTopicsModal";
-import { EmailMeetingModal } from "@/components/EmailMeetingModal";
+import { FinalizeMeetingModal } from "@/features/meetings/components/FinalizeMeetingModal";
+import { DiscoverTopicsModal } from "@/features/meetings/components/DiscoverTopicsModal";
+import { EmailMeetingModal } from "@/features/meetings/components/EmailMeetingModal";
 import { LoginView } from "@/components/LoginView";
-import { ArchivedMeeting, MeetingActionItem } from "@/types/meeting";
-import { createActionFromDiscussion } from "@/lib/meetingArchive";
-import { mergeMeetings } from "@/lib/meetingsData";
+import { ArchivedMeeting, MeetingActionItem } from "@/features/meetings/types/meeting";
+import { createActionFromDiscussion } from "@/features/meetings/lib/meetingArchive";
+import { mergeMeetings } from "@/features/meetings/lib/meetingsData";
 import { formatEchoDate } from "@/lib/dateUtils";
 import type { DiscoveredTopicItem } from "@/app/api/discover-topics/route";
 import { navRouteForView, navViewForPath } from "@/lib/navRoutes";
@@ -91,16 +91,12 @@ import {
 } from "lucide-react";
 
 const PanelLoading = () => <section role="status" aria-live="polite" className="mx-auto w-full max-w-7xl border border-slate-200 bg-[#FFFCFB] p-4 text-xs text-slate-500">Opening workspace…</section>;
-const StudioPanel = dynamic(() => import("@/components/StudioPanel").then((module) => module.StudioPanel), { loading: PanelLoading });
-const UniversalEchoDrawer = dynamic(() => import("@/components/UniversalEchoDrawer").then((module) => module.UniversalEchoDrawer), { loading: PanelLoading });
-const ProjectWorkspace = dynamic(() => import("@/components/ProjectWorkspace").then((module) => module.ProjectWorkspace), { loading: PanelLoading });
-const ContractsWorkspace = dynamic(() => import("@/components/ContractsWorkspace").then((module) => module.ContractsWorkspace), { loading: PanelLoading });
-const MeetingsView = dynamic(() => import("@/components/MeetingsView").then((module) => module.MeetingsView), { loading: PanelLoading });
-const TasksPageView = dynamic(() => import("@/components/TasksPageView"), { loading: PanelLoading });
-const BusinessAnalysisView = dynamic(() => import("@/components/business-analysis/BusinessAnalysisView").then((module) => module.BusinessAnalysisView), { loading: PanelLoading });
-const FormsPortal = dynamic(() => import("@/components/forms/FormsPortal"), { loading: PanelLoading });
-const ProjectAtlasMapsPage = dynamic(() => import("@/components/ProjectAtlasMapsPage"), { loading: PanelLoading });
-const PropertyDecksView = dynamic(() => import("@/components/property-decks/PropertyDecksView").then((module) => module.PropertyDecksView), { loading: PanelLoading });
+const StudioPanel = dynamic(() => import("@/features/notetaker/components/StudioPanel").then((module) => module.StudioPanel), { loading: PanelLoading });
+const UniversalEchoDrawer = dynamic(() => import("@/features/ask-echo/components/UniversalEchoDrawer").then((module) => module.UniversalEchoDrawer), { loading: PanelLoading });
+const MeetingsView = dynamic(() => import("@/features/meetings/pages/MeetingsView").then((module) => module.MeetingsView), { loading: PanelLoading });
+const TasksPageView = dynamic(() => import("@/features/tasks/pages/TasksPageView"), { loading: PanelLoading });
+const BusinessAnalysisView = dynamic(() => import("@/features/it-projects/pages/BusinessAnalysisView").then((module) => module.BusinessAnalysisView), { loading: PanelLoading });
+const FormsPortal = dynamic(() => import("@/features/forms/pages/FormsPortal"), { loading: PanelLoading });
 
 const VENUE_OPTIONS = [
   "GreatWork Mega Tower 32F - Secret Room",
@@ -138,12 +134,14 @@ export default function Home() {
   // ClickUp OAuth Authentication State
   const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "unauthenticated">(activeBrowserUser ? "authenticated" : "loading");
   const [authUser, setAuthUser] = useState<SignedInUser | null>(activeBrowserUser);
+  const [desktopNoLogin, setDesktopNoLogin] = useState(false);
 
   const checkAuth = async () => {
     try {
       const res = await fetch("/api/auth/me");
       if (res.ok) {
         const data = await res.json();
+        setDesktopNoLogin(data.desktopMode === true);
         if (data.authenticated && data.user) {
           const nextUser = data.user as SignedInUser;
           if (activeBrowserUser && String(activeBrowserUser.id) !== String(nextUser.id)) {
@@ -350,7 +348,7 @@ export default function Home() {
   const [allowedPages, setAllowedPages] = useState<NavView[]>(warmGovernance?.allowedPages || []);
   const [governanceStatus, setGovernanceStatus] = useState<"loading" | "ready" | "error">(warmGovernance ? "ready" : "loading");
   const [sidebarOrder, setSidebarOrder] = useState<NavView[]>([
-    "dashboard", "business-analysis", "project", "notebook", "meetings", "minutes", "property-decks", "forms", "delta",
+    "dashboard", "business-analysis", "meetings", "notebook",
   ]);
   const [isAdminUser, setIsAdminUser] = useState(warmGovernance?.isAdmin || false);
   const [askEchoEnabled, setAskEchoEnabled] = useState(warmGovernance?.askEchoEnabled || false);
@@ -436,9 +434,7 @@ export default function Home() {
         setAllowedFeatures(Array.isArray(data.allowedFeatures) ? data.allowedFeatures : []);
         setAllowedPages(pages);
         setCurrentView((prev) => {
-          if (prev === "forms-admin" || prev === "maps" || prev === "property-decks" || hasFullPageAccess) return prev;
-          if (prev === "project" && pages.includes("tasks")) return prev;
-          if (prev === "delta" && (pages.includes("project") || pages.includes("tasks"))) return prev;
+          if (prev === "forms-admin" || hasFullPageAccess) return prev;
           if (!pages.includes(prev)) return pages[0] || "forms";
           return prev;
         });
@@ -460,11 +456,7 @@ export default function Home() {
 
   const isPageAllowed = (view: NavView) => {
     if (view === "forms-admin") return false;
-    if (view === "maps") return true;
-    if (view === "property-decks") return true;
     if (isAdminUser || authUser?.email?.toLowerCase().trim() === "admin@primephilippines.com") return true;
-    if (view === "project") return allowedPages.includes("project") || allowedPages.includes("tasks");
-    if (view === "delta") return allowedPages.includes("delta") || allowedPages.includes("project") || allowedPages.includes("tasks");
     if (view === "notebook") return allowedPages.includes("notebook") || allowedPages.includes("tasks");
     return allowedPages.includes(view);
   };
@@ -1183,7 +1175,6 @@ export default function Home() {
   const loadingSteps = ["Getting your recording ready", "Transcribing the audio", "Finding the key details", "Preparing your meeting notes"];
   const loadingStepIndex = loadingText.toLowerCase().includes("synth") || loadingText.toLowerCase().includes("minutes") ? 3 : loadingText.toLowerCase().includes("metadata") || loadingText.toLowerCase().includes("details") ? 2 : loadingText.toLowerCase().includes("transcrib") ? 1 : 0;
   const isMeetingWorkspace = currentView === "minutes" && stage === "Input" && sourceTab === "record";
-  const isMapsWorkspace = currentView === "maps";
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg-primary font-sans text-[#1b1d1e]">
@@ -1248,25 +1239,23 @@ export default function Home() {
 
 
       {/* Collapsible Sidebar (Deep Charcoal & Gold, Expanded by default) */}
-      {!isMapsWorkspace && (
-        <Sidebar
+      <Sidebar
           currentView={currentView}
           onSelectView={(view) => handleSelectView(view)}
           onPreloadView={(view) => { if (authUser && isPageAllowed(view)) prefetchPageApis(String(authUser.id), view); }}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           user={authUser}
-          onSignOut={handleSignOut}
+          onSignOut={desktopNoLogin ? undefined : handleSignOut}
           allowedPages={allowedPages}
           sidebarOrder={sidebarOrder}
           isAdmin={isAdminUser}
         />
-      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {/* Persistent Slim Topbar */}
-        {!isMapsWorkspace && <Topbar
+        <Topbar
           meetings={archivedMeetings}
           tasks={tasks}
           userId={authUser?.id ? String(authUser.id) : undefined}
@@ -1316,10 +1305,10 @@ export default function Home() {
               setStudioMode("fullscreen");
             },
           }}
-        />}
+        />
 
         {/* Studio Recovery Banner for crash resilience */}
-        {!isMapsWorkspace && <StudioRecoveryBanner
+        <StudioRecoveryBanner
           activeSessionId={studioRecorder.sessionId}
           isRecording={studioRecorder.status === "recording" || studioRecorder.status === "paused"}
           onProcessSession={(file) => {
@@ -1328,16 +1317,16 @@ export default function Home() {
             setStage("Input");
             handleUnifiedSourceSubmission(file);
           }}
-        />}
+        />
 
         {/* Scrollable View Content (Maximized full width without big margin borders) */}
-        <main className={`flex-1 min-h-0 ${isMeetingWorkspace || isMapsWorkspace ? "h-full overflow-hidden flex flex-col p-0" : currentView === "minutes" ? "overflow-y-auto p-0" : "overflow-y-auto px-4 py-5 md:px-8"}`}>
-          {governanceStatus === "loading" && currentView !== "property-decks" ? (
+        <main className={`flex-1 min-h-0 ${isMeetingWorkspace ? "h-full overflow-hidden flex flex-col p-0" : currentView === "minutes" ? "overflow-y-auto p-0" : "overflow-y-auto px-4 py-5 md:px-8"}`}>
+          {governanceStatus === "loading" ? (
             <div role="status" className="flex min-h-[400px] items-center justify-center p-8 text-sm text-slate-600">
               <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin text-[#C9AB4C]" />
               Checking page access…
             </div>
-          ) : governanceStatus === "error" && currentView !== "property-decks" ? (
+          ) : governanceStatus === "error" ? (
             <div className="flex min-h-[400px] items-center justify-center p-8">
               <div className="max-w-md border border-slate-200 bg-[#FFFCFB] p-8 text-center shadow-sm">
                 <h2 className="text-lg font-semibold text-slate-800">Page access is unavailable</h2>
@@ -1373,7 +1362,7 @@ export default function Home() {
             </div>
           ) : (
             <>
-          <div className={isMeetingWorkspace || isMapsWorkspace ? "h-full w-full flex flex-col min-h-0 overflow-hidden" : currentView === "minutes" ? "min-h-full w-full flex flex-col" : "w-full pb-12"}>
+          <div className={isMeetingWorkspace ? "h-full w-full flex flex-col min-h-0 overflow-hidden" : currentView === "minutes" ? "min-h-full w-full flex flex-col" : "w-full pb-12"}>
             
             {/* VIEW 1: DASHBOARD */}
             {currentView === "dashboard" && (
@@ -1389,11 +1378,6 @@ export default function Home() {
                 }}
               />
             )}
-
-            {currentView === "project" && <ProjectWorkspace userId={authUser?.id ? String(authUser.id) : undefined} />}
-            {currentView === "maps" && <ProjectAtlasMapsPage />}
-            {currentView === "property-decks" && <PropertyDecksView />}
-            {currentView === "delta" && <ContractsWorkspace />}
 
             {/* VIEW: TASKS (CLICKUP PORTAL) */}
             {(currentView === "tasks" || currentView === "notebook") && (

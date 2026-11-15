@@ -14,7 +14,7 @@ import {
   meetingExportSummary,
   meetingExportTemplateDetails,
   type MeetingExportRequest,
-} from "@/lib/meetingExport";
+} from "@/features/meetings/lib/meetingExport";
 
 const { blueRgb: BLUE, goldRgb: GOLD, grayRgb: GRAY, warmWhiteRgb: WARM_WHITE, pdfBodyFont: BODY_FONT, pdfHeadingFont: HEADING_FONT } = MEETING_EXPORT_STYLE;
 const LEFT = MEETING_EXPORT_STYLE.pageMarginMm;

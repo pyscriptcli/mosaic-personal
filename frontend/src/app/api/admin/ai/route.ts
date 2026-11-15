@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
-import { getUsageSummary, loadAiPolicy } from "@/lib/ask-echo/store";
+import { getUsageSummary, loadAiPolicy } from "@/features/ask-echo/lib/store";
 
 const OWNER_EMAIL = "admin@primephilippines.com";
 

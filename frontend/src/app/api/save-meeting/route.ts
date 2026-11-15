@@ -5,7 +5,7 @@ import { getUserFromRequest } from "@/lib/auth";
 import { randomUUID } from "node:crypto";
 import { findStagedMosaicRecord, scheduleMosaicWriteSync, stageMosaicWrite } from "@/lib/mosaicWriteStore";
 import { clickUpScope } from "@/lib/clickupReadStore";
-import { serializeMeetingContent } from "@/lib/meetingArchive";
+import { serializeMeetingContent } from "@/features/meetings/lib/meetingArchive";
 
 export async function POST(req: NextRequest) {
   try {

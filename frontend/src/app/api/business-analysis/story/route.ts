@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeBARequest } from "@/lib/business-analysis-server";
-import { loadAiPolicy, getUsageSnapshot, recordUsage } from "@/lib/ask-echo/store";
-import { checkUsagePolicy } from "@/lib/ask-echo/limits";
-import { askModel } from "@/lib/ask-echo/provider";
+import { authorizeBARequest } from "@/features/it-projects/lib/business-analysis-server";
+import { loadAiPolicy, getUsageSnapshot, recordUsage } from "@/features/ask-echo/lib/store";
+import { checkUsagePolicy } from "@/features/ask-echo/lib/limits";
+import { askModel } from "@/features/ask-echo/lib/provider";
 import { requireFeature } from "@/lib/access-control-server";
 import { isAskEchoEnabled } from "@/lib/admin-config/store";
 

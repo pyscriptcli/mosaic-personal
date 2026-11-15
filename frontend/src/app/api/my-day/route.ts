@@ -3,14 +3,14 @@ import { createClient } from "@supabase/supabase-js";
 import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
 import { requireFeature } from "@/lib/access-control-server";
 import { isAskEchoEnabled } from "@/lib/admin-config/store";
-import { summarizeMyDayTasks } from "@/lib/ask-echo/service";
+import { summarizeMyDayTasks } from "@/features/ask-echo/lib/service";
 import {
   DAILY_LOG_LIST_ID, createTask, dateFromTask, ensureDailyTask, fetchAllTasks,
   fetchDailyLogParents, fetchDailyLogParentTree, flattenClickUpTaskTree,
   fetchClickUp, formatDailyName, isValidDate, monthFromTaskName, taskOwner,
   categoryPayload, categoriesFromTask, writeCategories, completeDailyTaskOnTimeIfPopulated,
   type RawClickUpTask,
-} from "@/lib/notebookClickup";
+} from "@/features/notebook/lib/notebookClickup";
 import { randomUUID } from "node:crypto";
 import { scheduleMosaicWriteSync, stageMosaicWrite } from "@/lib/mosaicWriteStore";
 import { readStagedMosaicRecords } from "@/lib/mosaicWriteStore";

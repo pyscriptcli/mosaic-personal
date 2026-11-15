@@ -7,13 +7,11 @@ Use [the architecture overview](../docs/ARCHITECTURE_OVERVIEW.md) to identify wh
 | Work area | Location |
 | --- | --- |
 | Main web app | `frontend/src/` |
-| Windows desktop launcher | `desktop/` |
-| Project Atlas source | `pyscriptcli/project-atlas`; Mosaic copy is `project-atlas/` |
+| Windows desktop app | `desktop/` |
 | Mosaic database schema | `supabase/` |
-| Atlas database schema | `project-atlas/database/` |
 | Shared plans and operating notes | `docs/` |
 | Repository workflows | `.github/` |
 
-For the web app, follow the existing Next.js structure: routes and API handlers are under `frontend/src/app/`; feature UI belongs under `frontend/src/components/<feature>/`; shared integrations and business logic belong under `frontend/src/lib/`. Keep feature-specific files close to their feature, and follow nearby conventions before adding a new folder.
+For the web app, keep Next.js routes and API handlers under `frontend/src/app/`. Group feature screens, components, and logic under `frontend/src/features/<feature>/`; reserve `frontend/src/components/` for UI reused across features and `frontend/src/lib/` for shared integrations and business logic.
 
 When navigation or setup changes, update the nearest existing README and the root [repository map](../README.md#repository-map). Do not create a second handoff or status log; use [handoff.md](../handoff.md) under its existing workflow.

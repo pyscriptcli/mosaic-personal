@@ -229,10 +229,6 @@ export function prefetchPageApis(ownerId: string, page: string) {
     dashboard: [{ key: "meetings:all", url: meetingsUrl, select: (data) => ({ meetings: data.meetings || [] }) }],
     meetings: [{ key: "meetings:all", url: meetingsUrl, select: (data) => ({ meetings: data.meetings || [] }) }],
     minutes: [{ key: "meetings:all", url: meetingsUrl, select: (data) => ({ meetings: data.meetings || [] }) }],
-    project: [
-      { key: "projects:gallery", url: "/api/tasks?action=project-gallery", select: (data) => ({ projects: data.projects || [] }) },
-      { key: "projects:selection", url: "/api/projects/selection", select: (data) => ({ folderIds: data.folderIds || [] }) },
-    ],
     tasks: [{ key: `tasks:${taskListId || "default"}`, url: tasksUrl, select: (data) => data }],
     notebook: [{ key: "notebook:current", url: "/api/notebook", select: (data) => data }],
   };

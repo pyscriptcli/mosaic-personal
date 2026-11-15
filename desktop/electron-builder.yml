@@ -3,6 +3,7 @@ productName: Mosaic
 asar: true
 npmRebuild: false
 directories:
+  app: .
   output: dist
 files:
   - src/**
@@ -10,11 +11,14 @@ files:
   - build/mosaic.ico
   - package.json
 extraResources:
-  - from: build/app-origin.json
-    to: app-origin.json
+  - from: build/local-app
+    to: local-app
+  - from: build/local-app/node_modules
+    to: local-app/node_modules
+    filter:
+      - "**/*"
 win:
   icon: build/mosaic.ico
-  verifyUpdateCodeSignature: true
   target:
     - target: nsis
       arch:
@@ -29,8 +33,3 @@ nsis:
   deleteAppDataOnUninstall: false
   runAfterFinish: true
 artifactName: Mosaic-Setup-${version}-${arch}.${ext}
-publish:
-  provider: github
-  owner: pyscriptcli
-  repo: mosaic
-  releaseType: release

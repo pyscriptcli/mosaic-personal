@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
-import { sendRequestorStatusNotification } from "@/lib/forms/email";
+import { sendRequestorStatusNotification } from "@/features/forms/lib/email";
 
 const OWNER_EMAIL = "admin@primephilippines.com";
 

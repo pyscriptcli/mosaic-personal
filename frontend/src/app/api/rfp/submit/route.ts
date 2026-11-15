@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { FormType } from "@/types/forms/rfp";
+import { FormType } from "@/features/forms/types/rfp";
 import {
   createClickUpTask,
   updateClickUpTask,
   uploadAttachmentToTask,
-} from "@/lib/forms/clickup";
-import { sendApproverNotification, sendRequestorStatusNotification } from "@/lib/forms/email";
+} from "@/features/forms/lib/clickup";
+import { sendApproverNotification, sendRequestorStatusNotification } from "@/features/forms/lib/email";
 import { getTokenFromRequest } from "@/lib/auth";
 import { getUserFromRequest } from "@/lib/auth";
 import { createClient } from "@supabase/supabase-js";
-import { createFormRequestId } from "@/lib/forms/requestId";
+import { createFormRequestId } from "@/features/forms/lib/requestId";
 import { requireFeature } from "@/lib/access-control-server";
 import { scheduleMosaicWriteSync, uploadStagedMosaicMedia } from "@/lib/mosaicWriteStore";
 

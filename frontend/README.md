@@ -50,15 +50,9 @@ To enable durable task snapshots and change notifications:
 1. Apply [`../supabase/clickup_read_model.sql`](../supabase/clickup_read_model.sql) to the Supabase project.
 2. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, and `CLICKUP_SYNC_ENCRYPTION_KEY` in the deployment. Generate a unique 32-byte key as hex with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Keep it stable and server-only; changing it makes stored ClickUp connections and webhook secrets unreadable.
 3. Set `NEXT_PUBLIC_APP_URL` to the app's HTTPS origin or set `CLICKUP_WEBHOOK_URL` to `https://<origin>/api/integrations/clickup/webhooks`.
-4. The app queues per-user task sync as users open the selected Tasks list, Demands, and project subprojects. It registers list-scoped webhooks after those reads, verifies signatures, and refreshes snapshots in the background. The protected cron route retries queued jobs and reconciles ready snapshots daily.
+4. The app queues per-user task sync as users open the selected Tasks lists and Demands. It registers list-scoped webhooks after those reads, verifies signatures, and refreshes snapshots in the background. The protected cron route retries queued jobs and reconciles ready snapshots daily.
 
 Vercel runs the configured daily cron in production. Daily frequency supports Hobby deployments; faster scheduled reconciliation requires a plan that permits more frequent jobs. Webhooks and page-triggered sync handle changes between scheduled runs.
-
-### Contract files
-
-Contracts currently supports comparing Word documents in the browser. The Contracts page does not create workspaces or save review history. Existing files and saved review data are left untouched. Project contract reviews continue to keep their own history.
-
-The read tables use service-role access only, OAuth tokens and webhook secrets are encrypted with AES-256-GCM, and snapshot reads require a fresh ClickUp list-access check. Snapshots older than five minutes are not served. Connections and task records unused for 90 days are removed by reconciliation.
 
 ### Echo.ai meeting bot
 

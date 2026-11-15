@@ -11,7 +11,7 @@ import {
   monthFromTaskName,
   requestToken,
   taskOwner,
-} from "@/lib/notebookClickup";
+} from "@/features/notebook/lib/notebookClickup";
 
 export const maxDuration = 60;
 

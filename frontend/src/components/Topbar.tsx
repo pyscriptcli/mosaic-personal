@@ -18,8 +18,8 @@ import {
   NotebookTabs,
   RefreshCw,
 } from "lucide-react";
-import { ArchivedMeeting } from "@/types/meeting";
-import { ClickUpTask } from "./TasksView";
+import { ArchivedMeeting } from "@/features/meetings/types/meeting";
+import { ClickUpTask } from "@/features/tasks/components/TasksView";
 import { formatEchoDate } from "@/lib/dateUtils";
 import { flushClickUpMutationQueue, getPendingClickUpMutationCount } from "@/lib/clickUpMutationQueue";
 import { requestCentralClickUpSync } from "@/lib/clickupSyncClient";

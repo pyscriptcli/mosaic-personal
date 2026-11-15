@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
-import { DEFAULT_AI_POLICY, normalizeAiPolicy, type AiPolicy } from "@/lib/ask-echo/limits";
-import { REPOSITORY_FORM_MAPPINGS } from "@/components/forms/forms.config";
+import { DEFAULT_AI_POLICY, normalizeAiPolicy, type AiPolicy } from "@/features/ask-echo/lib/limits";
+import { REPOSITORY_FORM_MAPPINGS } from "@/features/forms/components/forms.config";
 import { AdminConfigError, loadAdminConfig, saveAdminConfig } from "@/lib/admin-config/store";
-import { resolveAccess, normalizeFeatures, ALL_APP_PAGES, ALL_FEATURES, type FeatureId } from "@/lib/access-control";
+import { resolveAccess, normalizeFeatures, ALL_APP_PAGES, ALL_FEATURES, type AppPage, type FeatureId } from "@/lib/access-control";
 
 export const dynamic = "force-dynamic";
 
@@ -36,14 +36,23 @@ const DEFAULT_CONFIG: FormsConfigData = {
   departments: ["Finance", "Procurement", "Operations", "Human Resources", "Marketing", "IT", "General"],
   mappings: REPOSITORY_FORM_MAPPINGS,
   pagePermissions: [],
-  defaultPageAccess: ["forms", "delta", "property-decks"],
-  sidebarOrder: ["dashboard", "project", "notebook", "meetings", "minutes", "property-decks", "forms", "delta"],
+  defaultPageAccess: ["forms"],
+  sidebarOrder: ["dashboard", "business-analysis", "meetings", "notebook"],
   emailTemplates: [],
   allowedSignInDomains: ["primephilippines.com"],
   aiPolicy: DEFAULT_AI_POLICY,
 };
 
 const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" };
+const SIDEBAR_PAGES = ["dashboard", "business-analysis", "meetings", "notebook"];
+
+function allowedAppPages(values: unknown): AppPage[] {
+  return Array.isArray(values) ? values.filter((page): page is AppPage => ALL_APP_PAGES.includes(page as AppPage)) : [];
+}
+
+function allowedSidebarPages(values: unknown): string[] {
+  return Array.isArray(values) ? values.filter((page): page is string => typeof page === "string" && SIDEBAR_PAGES.includes(page)) : [];
+}
 
 function isOwnerOrAdmin(req: NextRequest, config: any) {
   if (req.cookies.get("echo_admin_test")?.value === "1") return true;
@@ -65,6 +74,31 @@ export async function GET(req: NextRequest) {
   const user = token ? getUserFromRequest(req) : null;
   const userEmail = (user?.email || "").toLowerCase().trim();
 
+  if (process.env.MOSAIC_DESKTOP_NO_LOGIN === "1") {
+    // Keep the no-login desktop pilot independent of hosted access configuration.
+    const allowedPages = [...ALL_APP_PAGES];
+    const allowedFeatures = [...ALL_FEATURES];
+    return NextResponse.json({
+      config: {
+        departments: DEFAULT_CONFIG.departments,
+        members: [],
+        mappings: DEFAULT_CONFIG.mappings,
+        features: { askEchoEnabled: true },
+        formFeatures: { rfpAutofill: true, pdfPreview: true },
+        defaultPageAccess: allowedPages,
+        sidebarOrder: DEFAULT_CONFIG.sidebarOrder,
+      },
+      allowedPages,
+      userAllowedPages: allowedPages,
+      defaultPageAccess: allowedPages,
+      allowedFeatures,
+      userAllowedFeatures: allowedFeatures,
+      defaultFeatureAccess: allowedFeatures,
+      isAdmin: false,
+      source: "desktop-local",
+    }, { headers: NO_STORE_HEADERS });
+  }
+
   let config: any;
   try {
     config = await loadAdminConfig();
@@ -74,11 +108,20 @@ export async function GET(req: NextRequest) {
   }
   const source = "supabase";
 
-  const configuredDefaultPages: string[] = Array.isArray(config.defaultPageAccess)
-    ? (config.defaultPageAccess as unknown[]).filter((page: unknown): page is string => typeof page === "string")
-    : [];
+  const configuredDefaultPages = allowedAppPages(config.defaultPageAccess);
   if (configuredDefaultPages.length === 0) configuredDefaultPages.push("forms");
-  const defaultPages = Array.from(new Set([...configuredDefaultPages, "property-decks"]));
+  const defaultPages = Array.from(new Set(configuredDefaultPages));
+  const sidebarOrder = allowedSidebarPages(config.sidebarOrder);
+  const pagePermissions: UserPagePermission[] = Array.isArray(config.pagePermissions)
+    ? config.pagePermissions
+      .filter((rule: unknown): rule is Record<string, unknown> => typeof rule === "object" && rule !== null && !Array.isArray(rule))
+      .map((rule: Record<string, unknown>) => ({
+        email: String(rule.email || ""),
+        ...(typeof rule.name === "string" ? { name: rule.name } : {}),
+        allowedPages: allowedAppPages(rule.allowedPages),
+        ...(Array.isArray(rule.allowedFeatures) ? { allowedFeatures: normalizeFeatures(rule.allowedFeatures, []) } : {}),
+      }))
+    : [];
   const defaultFeatures = normalizeFeatures(config.defaultFeatureAccess, ALL_FEATURES);
 
   // If user is not authenticated or not logged in yet, return public default page access policy
@@ -90,7 +133,7 @@ export async function GET(req: NextRequest) {
       defaultFeatureAccess: defaultFeatures,
       userAllowedPages: publicPages,
       defaultPageAccess: publicPages,
-      sidebarOrder: config.sidebarOrder || [],
+      sidebarOrder,
       isAdmin: false,
       source,
     }, { headers: NO_STORE_HEADERS });
@@ -108,13 +151,11 @@ export async function GET(req: NextRequest) {
   const access = resolveAccess(userEmail, {
     defaultPageAccess: defaultPages,
     defaultFeatureAccess: defaultFeatures,
-    pagePermissions: Array.isArray(config.pagePermissions) ? config.pagePermissions : [],
+    pagePermissions,
     features: config.features,
     formFeatures: config.formFeatures,
   });
-  const baRule = Array.isArray(config.pagePermissions)
-    ? config.pagePermissions.find((rule: any) => String(rule.email || "").toLowerCase().trim() === userEmail)
-    : null;
+  const baRule = pagePermissions.find((rule) => String(rule.email || "").toLowerCase().trim() === userEmail);
   const baExplicitlyGranted = Array.isArray(baRule?.allowedPages) && baRule.allowedPages.includes("business-analysis");
   const ordinaryPages = access.allowedPages.filter((page) => page !== "business-analysis");
   const allowedPages = isAdmin ? ALL_APP_PAGES : userEmail === BUSINESS_ANALYSIS_OWNER_EMAIL || baExplicitlyGranted
@@ -126,9 +167,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       config: {
         ...config,
+        pagePermissions,
         defaultPageAccess: defaultPages,
         defaultFeatureAccess: defaultFeatures,
-        sidebarOrder: config.sidebarOrder || [],
+        sidebarOrder,
       },
       allowedPages,
       userAllowedPages: allowedPages,
@@ -181,6 +223,8 @@ export async function POST(req: NextRequest) {
   let body: unknown;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid configuration payload" }, { status: 400 }); }
   const supabaseConfig = body as Record<string, unknown>;
+  if (Array.isArray(supabaseConfig.defaultPageAccess)) supabaseConfig.defaultPageAccess = allowedAppPages(supabaseConfig.defaultPageAccess);
+  if (Array.isArray(supabaseConfig.sidebarOrder)) supabaseConfig.sidebarOrder = allowedSidebarPages(supabaseConfig.sidebarOrder);
   if (Array.isArray(supabaseConfig.defaultFeatureAccess)) {
     supabaseConfig.defaultFeatureAccess = normalizeFeatures(supabaseConfig.defaultFeatureAccess, ALL_FEATURES);
   }
@@ -188,6 +232,7 @@ export async function POST(req: NextRequest) {
     const featureFallback = normalizeFeatures(supabaseConfig.defaultFeatureAccess, ALL_FEATURES);
     supabaseConfig.pagePermissions = (supabaseConfig.pagePermissions as Array<Record<string, unknown>>).map((rule) => ({
       ...rule,
+      allowedPages: allowedAppPages(rule.allowedPages),
       allowedFeatures: normalizeFeatures(rule.allowedFeatures, featureFallback),
     }));
   }

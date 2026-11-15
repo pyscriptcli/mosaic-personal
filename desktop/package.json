@@ -1,23 +1,20 @@
 {
   "name": "mosaic-desktop",
   "version": "0.2.0",
-  "description": "Mosaic desktop launcher for Windows",
+  "description": "Standalone Mosaic desktop application for Windows",
   "author": "Prime Philippines",
   "private": true,
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
-    "prepare:build": "node scripts/generate-icons.cjs && node scripts/prepare-build.cjs",
-    "dist:win": "npm run prepare:build && electron-builder --win nsis --x64 --publish never && npm run checksum",
-    "release:win": "npm run prepare:build && electron-builder --win nsis --x64 --publish always && npm run checksum",
-    "dist:dir": "npm run prepare:build && electron-builder --dir --win --x64",
+    "prepare:local-app": "npm --prefix app run build && node scripts/prepare-local-app.cjs",
+    "dist:win": "npm run prepare:local-app && npm test && node scripts/generate-icons.cjs && electron-builder --win nsis --x64 --publish never && npm run checksum",
+    "dist:dir": "npm run prepare:local-app && npm test && node scripts/generate-icons.cjs && electron-builder --dir --win --x64",
+    "test": "node --test",
     "checksum": "node scripts/write-checksum.cjs"
   },
   "devDependencies": {
     "electron": "44.7.0",
     "electron-builder": "26.15.3"
-  },
-  "dependencies": {
-    "electron-updater": "6.8.9"
   }
 }

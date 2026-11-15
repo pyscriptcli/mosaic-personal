@@ -85,12 +85,11 @@ Every item must have evidence recorded here or in the linked deployment/diagnost
 - [x] The autonomous one-minute scheduler is active and has a recorded successful Cron invocation.
 - [x] Snapshot reads explicitly paginate past the configured Data API page ceiling.
 - [x] My Day, Tasks, Demands, and Market Insights GET task data through retained snapshots; cold/stale reads enqueue shared refresh work instead of fetching task lists directly.
-- [x] Project subproject task views use retained snapshots and enqueue cold/stale list refreshes instead of making direct list-task requests.
 - [x] Admin Telemetry derives run and list outcomes from durable records and reports active/completed/partial runs, retries, terminal failures, run duration, and oldest queue age.
 - [ ] For a user-provided missing date or task ID, trace the record from ClickUp through stored snapshot, projection, API response, and browser filter; document the reproduced root cause.
 - [ ] In staging, complete the R3/R4 failure scenarios and large-list checks with recorded evidence; verify a failed attempt leaves the old snapshot intact and recovery clears current pending counts.
 - [ ] Verify daily-log webhook creation, signing-key persistence, duplicate delivery handling, inactive webhook reporting, and reconciliation after a deliberately missed event in staging.
-- [ ] Audit every remaining ClickUp task-list/search path and either route refresh reads through the durable snapshot service or document why the query needs a separate indexed/cached contract. The 2026-10-14 inventory still includes `/api/meetings` (`/list/:id/task`, `/team/:id/task`), `/api/projects/assignees`, `/api/projects/sites`, `/lib/ask-echo/clickup.ts`, and `/lib/forms/requestId.ts`; inspect the remaining direct calls in `/api/tasks` and `/api/my-day` and classify each as refresh, write-conflict read, or metadata/search.
+- [ ] Audit every remaining ClickUp task-list/search path and either route refresh reads through the durable snapshot service or document why the query needs a separate indexed/cached contract. The 2026-10-14 inventory still includes `/api/meetings` (`/list/:id/task`, `/team/:id/task`), `/lib/ask-echo/clickup.ts`, and `/lib/forms/requestId.ts`; inspect the remaining direct calls in `/api/tasks` and `/api/my-day` and classify each as refresh, write-conflict read, or metadata/search.
 - [ ] Confirm the scheduler's HTTP response and worker claim/completion in database/network history, not only `cron.job_run_details.status`.
 - [ ] Run an authenticated click-through of date browsing, Sync progress and recovery, empty/stale/error states, and Admin Telemetry. Record screenshots or a concise interaction log.
 - [x] Run the repository production build and TypeScript check; both passed for this implementation increment.
@@ -108,7 +107,7 @@ ClickUp documents 100 tasks per Get Tasks page and base-plan limits of 100 reque
 
 ### Live-read acceptance criteria
 
-- [x] Notebook, My Day, Tasks, project subproject tasks, Demands, Market Insights, Projects Sites, meeting task lists, and form task-list reads use live ClickUp data rather than the retained task snapshot.
+- [x] Notebook, My Day, Tasks, Demands, Market Insights, meeting task lists, and form task-list reads use live ClickUp data rather than the retained task snapshot.
 - [x] Live list reads bypass the app's five-minute HTTP cache and load all ClickUp pages; the Daily Log reader no longer assumes a 3,000-task limit.
 - [x] Live list requests use the shared per-token gate, bounded concurrency, in-flight coalescing, and ClickUp 429 reset headers.
 - [x] The Sync control dispatches a live refresh to mounted feature views and waits for their refresh handlers; its request path does not enqueue a Supabase sync run.

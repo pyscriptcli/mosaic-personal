@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cleanEnv, getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
-import { parseMeetingLink } from "@/lib/meetingLinks";
+import { parseMeetingLink } from "@/features/meetings/lib/meetingLinks";
 
 const MEETSTREAM_URL = "https://api.meetstream.ai/api/v1/bots/create_bot";
 

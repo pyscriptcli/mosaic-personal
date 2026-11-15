@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RecordingMediaType, RecordingSourceMode, StudioSession, ScreenCaptureInfo } from "@/types/studio";
+import type { RecordingMediaType, RecordingSourceMode, StudioSession, ScreenCaptureInfo } from "@/features/notetaker/types/studio";
 import {
   saveChunk,
   saveSessionMeta,
@@ -9,7 +9,7 @@ import {
   downloadSession,
   saveToLocalDocuments,
   requestPersistentStorage,
-} from "@/lib/studioStorage";
+} from "@/features/notetaker/lib/studioStorage";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

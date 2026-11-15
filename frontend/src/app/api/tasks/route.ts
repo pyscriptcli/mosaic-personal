@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
+import { getUserFromRequest } from "@/lib/auth";
 import { formatEchoDate } from "@/lib/dateUtils";
 import { clickUpCalendarFetch, clickUpFetch as fetch, fetchAllClickUpListTasks } from "@/lib/clickupCalendarApi";
 import { WORKSPACE_STATUS_CATEGORIES, ALL_WORKSPACE_STATUSES } from "@/lib/clickupStatuses";
-import { loadAdminConfig, saveAdminConfig } from "@/lib/admin-config/store";
-import { recordProjectActivity } from "@/lib/projectActivity";
 import { after } from "next/server";
 import { recordTelemetry } from "@/lib/telemetry";
-import { getSubprojectAccess, getVerifiedClickUpUser, isSubprojectAdmin, requireManagedTaskEditor, requireSubprojectEditor } from "@/lib/project-permissions";
-import { clickUpScope, readClickUpTaskListSyncStatus, readClickUpTaskSnapshot, queueClickUpSync } from "@/lib/clickupReadStore";
-import { findStagedMosaicRecord, mergeStagedClickUpTasks, readStagedMosaicRecords, retryFailedMosaicWrite, scheduleMosaicWriteSync, stageMosaicWrite } from "@/lib/mosaicWriteStore";
+import { clickUpScope, readClickUpTaskSnapshot } from "@/lib/clickupReadStore";
+import { findStagedMosaicRecord, mergeStagedClickUpTasks, readStagedMosaicRecords, scheduleMosaicWriteSync, stageMosaicWrite } from "@/lib/mosaicWriteStore";
 import { randomUUID } from "node:crypto";
 
 export const maxDuration = 60;
@@ -28,44 +25,7 @@ function getClickUpCredentials(req: NextRequest) {
   return { token: token.trim(), listId: listId.trim() };
 }
 
-function clickUpDate(value: unknown): string | null {
-  if (value === null || value === undefined || value === "") return null;
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp)) return null;
-  const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function serializeProjectTask(task: ClickUpProjectTask, listId: string): ClickUpProjectResponseTask {
-  const actionPlanField = task.custom_fields?.find((field) => String(field.name || "").trim().toLowerCase() === "action plan");
-  return {
-    id: String(task.id), name: String(task.name || "Untitled task"), url: typeof task.url === "string" ? task.url : null,
-    parentId: task.parent ? String(task.parent) : null, listId,
-    status: String(task.status?.status || "Open"), statusType: String(task.status?.type || ""), statusColor: typeof task.status?.color === "string" ? task.status.color : null,
-    description: String(task.description_text || task.description || ""),
-    syncState: (task as ClickUpProjectTask & { _mosaicSyncState?: "pending" | "synced" | "failed" })._mosaicSyncState,
-    syncError: (task as ClickUpProjectTask & { _mosaicSyncError?: string })._mosaicSyncError || undefined,
-    actionPlan: typeof actionPlanField?.value === "string" ? actionPlanField.value : "",
-    actionPlanFieldAvailable: Boolean(actionPlanField?.id),
-    dateCreated: clickUpDate(task.date_created), dateUpdated: clickUpDate(task.date_updated),
-    startDate: clickUpDate(task.start_date), dueDate: clickUpDate(task.due_date),
-    assignees: Array.isArray(task.assignees) ? task.assignees.map((assignee) => ({
-      id: String(assignee.id), name: String(assignee.username || assignee.name || "Team member"),
-      initials: String(assignee.initials || assignee.username?.[0] || "?").slice(0, 2),
-      profilePicture: assignee.profilePicture || assignee.profile_picture || null,
-    })) : [],
-  };
-}
-
-interface ClickUpProjectList {
-  id: string | number;
-  name?: string;
-  task_count?: number;
-  url?: string;
-  statuses?: Array<{ status?: string; type?: string }>;
-}
-
-interface ClickUpProjectTask {
+interface ClickUpTaskRecord {
   id: string | number;
   name?: string;
   description?: string | null;
@@ -87,44 +47,6 @@ interface ClickUpProjectTask {
     profilePicture?: string | null;
     profile_picture?: string | null;
   }>;
-}
-
-interface ClickUpProjectFolder {
-  id?: string | number;
-  name?: string;
-  url?: string;
-  space?: { id?: string | number; name?: string } | null;
-}
-
-interface ClickUpProjectResponseTask {
-  id: string;
-  name: string;
-  url: string | null;
-  parentId: string | null;
-  listId: string;
-  status: string;
-  statusType: string;
-  statusColor: string | null;
-  description: string;
-  syncState?: "pending" | "synced" | "failed";
-  syncError?: string;
-  actionPlan: string;
-  actionPlanFieldAvailable: boolean;
-  dateCreated: string | null;
-  dateUpdated: string | null;
-  startDate: string | null;
-  dueDate: string | null;
-  assignees: Array<{ id: string; name: string; initials: string; profilePicture?: string | null }>;
-}
-
-interface ClickUpProjectMember {
-  id: string | number;
-  username?: string;
-  name?: string;
-  initials?: string;
-  profilePicture?: string | null;
-  profile_picture?: string | null;
-  email?: string;
 }
 
 // Map ClickUp priority numbers (1: Urgent, 2: High, 3: Normal, 4: Low)
@@ -153,22 +75,6 @@ function numberToPriority(num: number | null | undefined): string {
   }
 }
 
-const ACTION_PLAN_START = "<!-- PROJECT_ECHO_ACTION_PLAN_START -->";
-const ACTION_PLAN_END = "<!-- PROJECT_ECHO_ACTION_PLAN_END -->";
-
-function readActionPlan(content: string) {
-  return content.match(/<!-- PROJECT_ECHO_ACTION_PLAN_START -->\r?\n([\s\S]*?)\r?\n<!-- PROJECT_ECHO_ACTION_PLAN_END -->/)?.[1] || "";
-}
-
-function findActionPlanField(task: ClickUpProjectTask) {
-  return task.custom_fields?.find((field) => String(field.name || "").trim().toLowerCase() === "action plan");
-}
-
-function customFieldText(value: unknown) {
-  if (typeof value === "string") return value;
-  return typeof value === "number" ? String(value) : "";
-}
-
 // User-specified workspace status categories
 
 // GET: Fetch tasks, members, list statuses, or discover lists
@@ -180,268 +86,6 @@ export async function GET(req: NextRequest) {
     const action = searchParams.get("action");
     const targetListId = searchParams.get("listId") || listId;
 
-    if (action === "project-task-sync-status") {
-      const projectToken = getTokenFromRequest(req);
-      const folderId = searchParams.get("folderId") || "";
-      const projectListId = searchParams.get("listId") || "";
-      if (!projectToken) return NextResponse.json({ error: "Sign in with ClickUp to view project sync status." }, { status: 401 });
-      if (!/^\d+$/.test(folderId) || !/^\d+$/.test(projectListId)) return NextResponse.json({ error: "A valid project and subproject are required." }, { status: 400 });
-      const status = await readClickUpTaskListSyncStatus(clickUpScope(projectToken), projectListId);
-      if (!status) return NextResponse.json({ error: "Project sync status is temporarily unavailable." }, { status: 503 });
-      const fresh = Boolean(status.syncedAt && status.state === "ready" && Date.now() - Date.parse(status.syncedAt) < 5 * 60_000);
-      const syncState = fresh ? "synced" : status.state === "failed" ? "error" : status.state === "queued" || status.state === "running" ? "syncing" : "stale";
-      return NextResponse.json({ syncState, stale: !fresh, syncedAt: status.syncedAt, lastError: status.lastError, nextAttemptAt: status.nextAttemptAt }, { headers: { "Cache-Control": "no-store" } });
-    }
-
-    if (action === "project-gallery") {
-      const projectToken = getTokenFromRequest(req);
-      if (!projectToken) return NextResponse.json({ error: "Sign in with ClickUp to view projects.", needsAuth: true }, { status: 401, headers: { "Cache-Control": "no-store" } });
-      const anchorFolderId = "901414174663";
-      const clickUpGet = (path: string) => clickUpCalendarFetch(projectToken, `https://api.clickup.com/api/v2${path}`);
-      const anchorResponse = await clickUpGet(`/folder/${anchorFolderId}`);
-      if (!anchorResponse.ok) return NextResponse.json({ error: `ClickUp could not load the configured project folder (${anchorResponse.status}).` }, { status: anchorResponse.status });
-      const anchor = await anchorResponse.json() as ClickUpProjectFolder;
-      const spaceId = anchor.space?.id;
-      if (!spaceId) return NextResponse.json({ error: "The configured ClickUp folder has no accessible Space." }, { status: 422 });
-      const foldersResponse = await clickUpGet(`/space/${encodeURIComponent(String(spaceId))}/folder?archived=false`);
-      if (!foldersResponse.ok) return NextResponse.json({ error: `ClickUp could not load project folders (${foldersResponse.status}).` }, { status: foldersResponse.status });
-      const foldersPayload = await foldersResponse.json() as { folders?: Array<{ id: string | number; name?: string; archived?: boolean; url?: string; lists?: ClickUpProjectList[] }> };
-      const folders = (foldersPayload.folders || []).filter((folder) => !folder.archived);
-      const projects = await Promise.all(folders.map(async (folder) => {
-        let folderLists = folder.lists;
-        if (!Array.isArray(folderLists)) {
-          const listsResponse = await clickUpGet(`/folder/${encodeURIComponent(String(folder.id))}/list?archived=false`);
-          if (!listsResponse.ok) throw new Error(`Unable to load lists for project folder ${folder.id} (${listsResponse.status}).`);
-          const listsPayload = await listsResponse.json() as { lists?: ClickUpProjectList[] };
-          folderLists = listsPayload.lists || [];
-        }
-        return {
-          id: String(folder.id),
-          name: String(folder.name || "Untitled project"),
-          url: typeof folder.url === "string" ? folder.url : `https://app.clickup.com/9014981136/v/o/f/${encodeURIComponent(String(folder.id))}`,
-          listCount: folderLists.length,
-          spaceName: String(anchor.space?.name || ""),
-        };
-      }));
-      return NextResponse.json({ space: { id: String(spaceId), name: String(anchor.space?.name || "ClickUp Space") }, projects }, { headers: { "Cache-Control": "no-store" } });
-    }
-
-    if (action === "project-workspace") {
-      const projectToken = getTokenFromRequest(req);
-      if (!projectToken) {
-        return NextResponse.json({ error: "Sign in with ClickUp to open this project.", needsAuth: true }, { status: 401, headers: { "Cache-Control": "no-store" } });
-      }
-      const folderId = searchParams.get("folderId") || "901414174663";
-      if (!/^\d+$/.test(folderId)) return NextResponse.json({ error: "Invalid project folder." }, { status: 400 });
-      const clickUpGet = (path: string) => clickUpCalendarFetch(projectToken, `https://api.clickup.com/api/v2${path}`);
-      const [folderResponse, listsResponse] = await Promise.all([
-        clickUpGet(`/folder/${folderId}`),
-        clickUpGet(`/folder/${folderId}/list`),
-      ]);
-
-      if (!folderResponse.ok) {
-        const status = folderResponse.status;
-        return NextResponse.json({
-          error: status === 401 ? "Your ClickUp session has expired. Sign in again to continue." : status === 403 || status === 404 ? "This ClickUp account cannot access the linked project folder." : `ClickUp could not load the project folder (${status}).`,
-        }, { status, headers: { "Cache-Control": "no-store" } });
-      }
-      if (!listsResponse.ok) {
-        return NextResponse.json({ error: `ClickUp could not load the project lists (${listsResponse.status}).` }, { status: listsResponse.status, headers: { "Cache-Control": "no-store" } });
-      }
-
-      const [folder, listsPayload] = await Promise.all([
-        folderResponse.json() as Promise<ClickUpProjectFolder>,
-        listsResponse.json() as Promise<{ lists?: ClickUpProjectList[] }>,
-      ]);
-      const rawLists = Array.isArray(listsPayload.lists) ? listsPayload.lists : [];
-      const memberMap = new Map<string, ClickUpProjectMember>();
-      const spaceId = folder.space?.id;
-      if (spaceId) {
-        const membersResponse = await clickUpGet(`/space/${encodeURIComponent(String(spaceId))}/member`);
-        if (membersResponse.ok) {
-          const membersPayload = await membersResponse.json() as { members?: Array<{ user?: ClickUpProjectMember } | ClickUpProjectMember> };
-          for (const entry of membersPayload.members || []) {
-            const member = "user" in entry && entry.user ? entry.user : entry as ClickUpProjectMember;
-            memberMap.set(String(member.id), member);
-          }
-        }
-      }
-      const members = Array.from(memberMap.values()).map((member) => ({
-        id: String(member.id),
-        name: String(member.username || member.name || member.email || "Team member"),
-        initials: String(member.initials || member.username?.[0] || member.name?.[0] || "?").slice(0, 2),
-        profilePicture: member.profilePicture || member.profile_picture || null,
-      }));
-      const projectConfig = await loadAdminConfig().catch(() => null);
-      const storedAssignees = projectConfig && typeof projectConfig.projectDefaultAssignees === "object" && projectConfig.projectDefaultAssignees
-        ? projectConfig.projectDefaultAssignees as Record<string, string[]>
-        : {};
-      const defaultAssignees = Object.fromEntries(Object.entries(storedAssignees).map(([listId, ids]) => [listId, Array.isArray(ids) ? ids.slice(0, 1) : []]));
-      const currentUser = await getVerifiedClickUpUser(projectToken).catch(() => null);
-      const accessByListId = Object.fromEntries(rawLists.map((list) => {
-        const listId = String(list.id);
-        return [listId, getSubprojectAccess(currentUser, listId, { projectDefaultAssignees: defaultAssignees })];
-      }));
-      return NextResponse.json({
-        folder: {
-          id: folderId,
-          name: String(folder.name || "Project"),
-          url: typeof folder.url === "string" ? folder.url : `https://app.clickup.com/9014981136/v/o/f/${encodeURIComponent(folderId)}`,
-          spaceName: String(folder.space?.name || ""),
-        },
-        lists: rawLists.map((list) => ({ id: String(list.id), name: String(list.name || "Untitled list"), url: list.url || null, taskCount: null, statuses: Array.isArray(list.statuses) ? list.statuses.map((item) => String(item.status || "")).filter(Boolean) : [] })),
-        tasks: [],
-        members,
-        defaultAssignees,
-        currentUserId: currentUser?.id || "",
-        isProjectAdmin: isSubprojectAdmin(currentUser),
-        accessByListId,
-      }, { headers: { "Cache-Control": "no-store" } });
-    }
-
-    if (action === "project-list-tasks") {
-      const projectToken = getTokenFromRequest(req);
-      const projectFolderId = searchParams.get("folderId") || "";
-      const projectListId = searchParams.get("listId") || "";
-      if (!projectToken) return NextResponse.json({ error: "Sign in with ClickUp to view subproject tasks." }, { status: 401 });
-      if (!/^\d+$/.test(projectFolderId) || !/^\d+$/.test(projectListId)) return NextResponse.json({ error: "A valid project and subproject are required." }, { status: 400 });
-      const folderListsResponse = await clickUpCalendarFetch(projectToken, `https://api.clickup.com/api/v2/folder/${projectFolderId}/list`, undefined, undefined, { skipCache: true });
-      const folderListsPayload = await folderListsResponse.json().catch(() => ({}));
-      if (!folderListsResponse.ok) return NextResponse.json({ error: folderListsPayload.err || "Unable to verify the subproject." }, { status: folderListsResponse.status });
-      const belongsToFolder = ((folderListsPayload.lists || []) as ClickUpProjectList[]).some((list) => String(list.id) === projectListId);
-      if (!belongsToFolder) return NextResponse.json({ error: "This subproject does not belong to the selected project." }, { status: 403 });
-      try {
-        const scope = clickUpScope(projectToken);
-        const [snapshot, staged] = await Promise.all([
-          readClickUpTaskSnapshot(scope, projectListId, 30 * 24 * 60 * 60_000),
-          readStagedMosaicRecords(scope, "project_tasks", projectListId),
-        ]);
-        const isFresh = Boolean(snapshot && snapshot.syncState === "ready" && Date.now() - Date.parse(snapshot.syncedAt) < 5 * 60_000);
-        if (!isFresh) {
-          const userId = String(getUserFromRequest(req)?.id || "");
-          after(async () => {
-            try {
-              if (await queueClickUpSync(projectToken, userId, projectListId, snapshot?.syncState === "failed")) {
-                const { processClickUpSyncQueue } = await import("@/lib/clickupSync");
-                await processClickUpSyncQueue(1);
-              }
-            } catch (error) {
-              console.warn("[projects] background task refresh could not be queued", error instanceof Error ? error.message : "unknown error");
-            }
-          });
-        }
-        const sourceTasks = snapshot?.tasks
-          ? snapshot.tasks as unknown as ClickUpProjectTask[]
-          : await fetchAllClickUpListTasks<ClickUpProjectTask>(projectToken, projectListId);
-        const baseTasks = sourceTasks.filter((task) => {
-          const description = task.description_text || task.description || "";
-          return task.name?.trim().toLocaleLowerCase() !== "sites" && !description.includes("MOSAIC_SITES_STORAGE:") && !description.includes("MOSAIC_SITE_RECORD:");
-        });
-        const merged = mergeStagedClickUpTasks(baseTasks as unknown as Array<Record<string, unknown>>, staged);
-        const tasks = merged.filter((task) => {
-          const description = String(task.description_text || task.description || "");
-          return String(task.name || "").trim().toLocaleLowerCase() !== "sites" && !description.includes("MOSAIC_SITES_STORAGE:") && !description.includes("MOSAIC_SITE_RECORD:");
-        }).map((task) => serializeProjectTask(task as unknown as ClickUpProjectTask, projectListId));
-        const fetchedAt = new Date().toISOString();
-        const syncState = isFresh ? "synced" : snapshot?.syncState === "failed" ? "error" : snapshot ? "stale" : "syncing";
-        const syncedAt = snapshot?.syncedAt || fetchedAt;
-        return NextResponse.json({ tasks, syncState, stale: !isFresh && Boolean(snapshot), syncedAt, lastError: snapshot?.lastError || null, fetchedAt, source: snapshot ? "snapshot" : "clickup-live" }, { headers: { "Cache-Control": "no-store", "X-ClickUp-Data-Source": snapshot ? "snapshot" : "live", "X-Data-Synced-At": syncedAt } });
-      } catch (error) {
-        return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load subproject tasks." }, { status: 502 });
-      }
-    }
-
-    if (action === "project-tasks") {
-      const projectToken = getTokenFromRequest(req);
-      const projectFolderId = searchParams.get("folderId") || "";
-      if (!projectToken) return NextResponse.json({ error: "Sign in with ClickUp to view project tasks." }, { status: 401 });
-      if (!/^\d+$/.test(projectFolderId)) return NextResponse.json({ error: "A valid project is required." }, { status: 400 });
-      const listResponse = await clickUpCalendarFetch(projectToken, `https://api.clickup.com/api/v2/folder/${projectFolderId}/list`);
-      const listsPayload = await listResponse.json().catch(() => ({}));
-      if (!listResponse.ok) return NextResponse.json({ error: listsPayload.err || "Unable to load project subprojects." }, { status: listResponse.status });
-      try {
-        const lists = (listsPayload.lists || []) as ClickUpProjectList[];
-        const groups = await Promise.all(lists.map(async (list) => {
-          const listId = String(list.id);
-          const [snapshot, staged] = await Promise.all([
-            readClickUpTaskSnapshot(clickUpScope(projectToken), listId, 30 * 24 * 60 * 60_000),
-            readStagedMosaicRecords(clickUpScope(projectToken), "project_tasks", listId),
-          ]);
-          const isFresh = Boolean(snapshot && snapshot.syncState === "ready" && Date.now() - Date.parse(snapshot.syncedAt) < 5 * 60_000);
-          const tasks = snapshot?.tasks
-            ? snapshot.tasks as unknown as ClickUpProjectTask[]
-            : await fetchAllClickUpListTasks<ClickUpProjectTask>(projectToken, listId);
-          return { listId, snapshot, isFresh, tasks, staged };
-        }));
-        const staleListIds = groups.filter((group) => !group.isFresh).map((group) => group.listId);
-        if (staleListIds.length) {
-          const userId = String(getUserFromRequest(req)?.id || "");
-          after(async () => {
-            try {
-              const results = await Promise.all(staleListIds.map(async (listId) => {
-                const snapshot = groups.find((group) => group.listId === listId)?.snapshot;
-                return queueClickUpSync(projectToken, userId, listId, snapshot?.syncState === "failed");
-              }));
-              if (results.some(Boolean)) {
-                const { processClickUpSyncQueue } = await import("@/lib/clickupSync");
-                await processClickUpSyncQueue(5);
-              }
-            } catch (error) {
-              console.warn("[projects] background task refresh could not be queued", error instanceof Error ? error.message : "unknown error");
-            }
-          });
-        }
-        const syncStateByList = Object.fromEntries(groups.map(({ listId, snapshot, isFresh }) => [listId, {
-          state: isFresh ? "synced" : snapshot?.syncState === "failed" ? "error" : snapshot ? "stale" : "syncing",
-          syncedAt: snapshot?.syncedAt || null,
-          lastError: snapshot?.lastError || null,
-        }]));
-        const tasks = groups.flatMap(({ listId, tasks: listTasks, staged }) => {
-          const merged = mergeStagedClickUpTasks(listTasks as unknown as Array<Record<string, unknown>>, staged);
-          return merged.map((task) => serializeProjectTask(task as unknown as ClickUpProjectTask, listId));
-        });
-        return NextResponse.json({ tasks, syncStateByList }, { headers: { "Cache-Control": "no-store" } });
-      } catch (error) {
-        return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load project tasks." }, { status: 502 });
-      }
-    }
-
-    if (action === "project-action-plan") {
-      const projectToken = getTokenFromRequest(req);
-      const folderId = searchParams.get("folderId") || "";
-      const subprojectListId = searchParams.get("listId") || "";
-      if (!projectToken) return NextResponse.json({ error: "Sign in with ClickUp to view this action plan." }, { status: 401 });
-      if (!/^\d+$/.test(folderId) || !/^\d+$/.test(subprojectListId)) return NextResponse.json({ error: "A valid project and subproject are required." }, { status: 400 });
-      const response = await clickUpCalendarFetch(projectToken, `https://api.clickup.com/api/v2/list/${subprojectListId}`);
-      const list = await response.json().catch(() => ({}));
-      if (!response.ok) return NextResponse.json({ error: list.err || "Unable to load the subproject action plan." }, { status: response.status });
-      if (String(list.folder?.id || "") !== folderId) return NextResponse.json({ error: "This subproject does not belong to the selected project." }, { status: 403 });
-      const taskId = searchParams.get("taskId") || "";
-      if (taskId) {
-        if (!/^[A-Za-z0-9_-]+$/.test(taskId)) return NextResponse.json({ error: "A valid task is required." }, { status: 400 });
-        const taskResponse = await clickUpCalendarFetch(projectToken, `https://api.clickup.com/api/v2/task/${encodeURIComponent(taskId)}`);
-        const task = await taskResponse.json().catch(() => ({})) as ClickUpProjectTask;
-        if (!taskResponse.ok) return NextResponse.json({ error: task.name || "Unable to load the selected task." }, { status: taskResponse.status });
-        if (String(task.list?.id || "") !== subprojectListId) return NextResponse.json({ error: "The selected task does not belong to this subproject." }, { status: 403 });
-        const field = findActionPlanField(task);
-        if (!field?.id) return NextResponse.json({ error: "The selected task has no Action Plan field." }, { status: 404 });
-        return NextResponse.json({ actionPlan: customFieldText(field.value), taskId, actionPlanFieldAvailable: true }, { headers: { "Cache-Control": "no-store" } });
-      }
-      return NextResponse.json({ actionPlan: readActionPlan(String(list.markdown_content || list.content || "")) }, { headers: { "Cache-Control": "no-store" } });
-    }
-
-    if (!token) {
-      return NextResponse.json(
-        {
-          error:
-            "ClickUp authentication required. Please sign in with ClickUp or provide an API token.",
-          needsAuth: true,
-        },
-        { status: 401 }
-      );
-    }
-
-    // Discovery action: fetch all accessible teams, spaces, folders, and lists in parallel
     if (action === "discover") {
       const teamsRes = await fetch("https://api.clickup.com/api/v2/team", {
         headers: { Authorization: token },
@@ -586,15 +230,15 @@ export async function GET(req: NextRequest) {
     const membersUrl = `https://api.clickup.com/api/v2/list/${encodeURIComponent(targetListId)}/member`;
     let listInfoRes: Response | null;
     let listMembersRes: Response | null;
-    let rawTasks: ClickUpProjectTask[];
+    let rawTasks: ClickUpTaskRecord[];
     [rawTasks, listInfoRes, listMembersRes] = await Promise.all([
-      fetchAllClickUpListTasks<ClickUpProjectTask>(token, targetListId),
+      fetchAllClickUpListTasks<ClickUpTaskRecord>(token, targetListId),
       verifiedListResponse || clickUpCalendarFetch(token, `https://api.clickup.com/api/v2/list/${encodeURIComponent(targetListId)}`),
       clickUpCalendarFetch(token, membersUrl),
     ]);
     if (syncUserId) {
       const staged = await readStagedMosaicRecords(scope, "tasks", targetListId);
-      rawTasks = mergeStagedClickUpTasks(rawTasks as unknown as Array<Record<string, unknown>>, staged) as unknown as ClickUpProjectTask[];
+      rawTasks = mergeStagedClickUpTasks(rawTasks as unknown as Array<Record<string, unknown>>, staged) as unknown as ClickUpTaskRecord[];
     }
 
     // Parse list statuses & space ID
@@ -818,215 +462,6 @@ export async function POST(req: NextRequest) {
     const { token, listId } = getClickUpCredentials(req);
     const body = await req.json();
     const action = req.nextUrl.searchParams.get("action");
-    const projectToken = getTokenFromRequest(req);
-    if (action === "project-action-plan") {
-      const folderId = String(body.folderId || "");
-      const subprojectListId = String(body.listId || "");
-      const taskId = String(body.taskId || "");
-      const actionPlan = String(body.actionPlan || "").trim();
-      if (!projectToken) return NextResponse.json({ error: "Sign in with ClickUp to save this action plan." }, { status: 401 });
-      if (!/^\d+$/.test(folderId) || !/^\d+$/.test(subprojectListId)) return NextResponse.json({ error: "A valid project and subproject are required." }, { status: 400 });
-      const access = await requireSubprojectEditor(req, folderId, subprojectListId);
-      if (!access.ok) return access.response;
-      if (!/^[A-Za-z0-9_-]+$/.test(taskId)) return NextResponse.json({ error: "Choose a pending task for this action plan." }, { status: 400 });
-      if (actionPlan.length > 2_000) return NextResponse.json({ error: "Keep the action plan under 2,000 characters." }, { status: 400 });
-      const listUrl = `https://api.clickup.com/api/v2/list/${subprojectListId}`;
-      const listResponse = await clickUpCalendarFetch(projectToken, listUrl);
-      const currentList = await listResponse.json().catch(() => ({}));
-      if (!listResponse.ok) return NextResponse.json({ error: currentList.err || "Unable to load the subproject." }, { status: listResponse.status });
-      if (String(currentList.folder?.id || "") !== folderId) return NextResponse.json({ error: "This subproject does not belong to the selected project." }, { status: 403 });
-      const taskResponse = await clickUpCalendarFetch(projectToken, `https://api.clickup.com/api/v2/task/${encodeURIComponent(taskId)}`);
-      const task = await taskResponse.json().catch(() => ({})) as ClickUpProjectTask;
-      if (!taskResponse.ok) return NextResponse.json({ error: "Unable to load the selected task." }, { status: taskResponse.status });
-      if (String(task.list?.id || "") !== subprojectListId) return NextResponse.json({ error: "The selected task does not belong to this subproject." }, { status: 403 });
-      const actionPlanField = findActionPlanField(task);
-      if (!actionPlanField?.id) return NextResponse.json({ error: "The selected task has no Action Plan field." }, { status: 404 });
-      const previousActionPlan = customFieldText(actionPlanField.value).trim();
-      const userId = String(getUserFromRequest(req)?.id || "");
-      if (!userId) return NextResponse.json({ error: "Sign in again before saving this action plan." }, { status: 401 });
-      await stageMosaicWrite({ token: projectToken, ownerUserId: userId, domain: "project_tasks", recordId: taskId, listId: subprojectListId, recordData: { id: taskId, name: String(body.taskName || task.name || "Task"), actionPlan } as never, operation: "update", method: "POST", resourcePath: `/task/${taskId}/field/${actionPlanField.id}`, requestBody: { value: actionPlan } });
-      scheduleMosaicWriteSync();
-      if (previousActionPlan !== actionPlan) await recordProjectActivity(req, {
-        folderId, listId: subprojectListId, listName: String(currentList.name || "Subproject"), taskId, taskName: String(body.taskName || task.name || "Task"), taskUrl: String(body.taskUrl || task.url || ""), eventType: "action-plan-updated",
-        summary: `Updated the action plan for ${String(body.taskName || task.name || "a task")}`, details: { previous: previousActionPlan, current: actionPlan },
-      });
-      return NextResponse.json({ success: true, actionPlan, taskId });
-    }
-    if (action === "project-task-retry") {
-      if (!projectToken) return NextResponse.json({ error: "Sign in with ClickUp to retry this task." }, { status: 401 });
-      const folderId = String(body.folderId || "");
-      const listId = String(body.listId || "");
-      const taskId = String(body.taskId || "");
-      const access = await requireSubprojectEditor(req, folderId, listId);
-      if (!access.ok) return access.response;
-      const userId = String(getUserFromRequest(req)?.id || "");
-      const staged = await findStagedMosaicRecord(clickUpScope(projectToken), "project_tasks", taskId);
-      if (!staged || String(staged.list_id || "") !== listId || String(staged.owner_user_id || "") !== userId) return NextResponse.json({ error: "This failed task change is not available to your account." }, { status: 404 });
-      const retried = await retryFailedMosaicWrite({ token: projectToken, ownerUserId: userId, domain: "project_tasks", recordId: String(staged.record_id) });
-      if (!retried) return NextResponse.json({ error: "This task has no failed sync to retry." }, { status: 409 });
-      scheduleMosaicWriteSync();
-      return NextResponse.json({ success: true, pendingSync: true, taskId }, { status: 202 });
-    }
-    if (action === "project-task-update" || action === "project-task-create") {
-      if (!projectToken) return NextResponse.json({ error: "Sign in with ClickUp to update this calendar." }, { status: 401 });
-      const folderId = String(body.folderId || "");
-      const subprojectListId = String(body.listId || "");
-      const access = await requireSubprojectEditor(req, folderId, subprojectListId);
-      if (!access.ok) return access.response;
-      if (action === "project-task-update") {
-        const taskId = String(body.taskId || "");
-        if (!/^[A-Za-z0-9_-]+$/.test(taskId)) return NextResponse.json({ error: "A valid task ID is required." }, { status: 400 });
-        const existingStaged = await findStagedMosaicRecord(clickUpScope(projectToken), "project_tasks", taskId);
-        let currentTask: ClickUpProjectTask;
-        if (existingStaged && !existingStaged.clickup_id) {
-          if (String(existingStaged.owner_user_id) !== String(getUserFromRequest(req)?.id || "")) return NextResponse.json({ error: "This task is not available to your account." }, { status: 403 });
-          currentTask = (existingStaged.record_data || {}) as unknown as ClickUpProjectTask;
-        } else {
-          const remoteTaskId = String(existingStaged?.clickup_id || taskId);
-          const snapshot = await readClickUpTaskSnapshot(clickUpScope(projectToken), subprojectListId, 30 * 24 * 60 * 60_000);
-          const snapshotIsFresh = Boolean(snapshot && snapshot.syncState === "ready" && Date.now() - Date.parse(snapshot.syncedAt) < 5 * 60_000);
-          const snapshotTask = snapshotIsFresh
-            ? snapshot?.tasks.find((task) => String(task.id || "") === remoteTaskId) as unknown as ClickUpProjectTask | undefined
-            : undefined;
-          if (snapshotTask) {
-            const stagedData = existingStaged?.record_data && typeof existingStaged.record_data === "object"
-              ? existingStaged.record_data as Record<string, unknown>
-              : {};
-            currentTask = { ...snapshotTask, ...stagedData } as ClickUpProjectTask;
-          } else {
-            const taskResponse = await clickUpCalendarFetch(projectToken, `https://api.clickup.com/api/v2/task/${encodeURIComponent(remoteTaskId)}`, undefined, undefined, { skipCache: true });
-            currentTask = await taskResponse.json().catch(() => ({})) as ClickUpProjectTask;
-            if (!taskResponse.ok) return NextResponse.json({ error: "Unable to verify this task." }, { status: taskResponse.status });
-          }
-        }
-        if (String(currentTask.list?.id || "") !== subprojectListId) return NextResponse.json({ error: "This task does not belong to the selected subproject." }, { status: 403 });
-        const payload: Record<string, unknown> = {};
-        if (body.dueDate !== undefined) { payload.due_date = body.dueDate ? new Date(body.dueDate).getTime() : null; payload.due_date_time = false; }
-        if (body.startDate !== undefined) { payload.start_date = body.startDate ? new Date(body.startDate).getTime() : null; payload.start_date_time = false; }
-        if (body.status !== undefined) payload.status = String(body.status).trim();
-        if (body.description !== undefined) {
-          const description = String(body.description);
-          if (description.length > 10_000) return NextResponse.json({ error: "Keep task remarks under 10,000 characters." }, { status: 400 });
-          payload.description = description;
-        }
-        const previous = body.previous && typeof body.previous === "object" ? body.previous as Record<string, unknown> : {};
-        const previousAssigneeIds: string[] = Array.isArray(previous.assignees) ? previous.assignees.map((id: unknown) => String(id)) : [];
-        const nextAssigneeIds: string[] | null = Array.isArray(body.assignees)
-          ? Array.from(new Set(body.assignees.map(Number).filter(Number.isFinite).map((id: number) => String(id))))
-          : null;
-        if (nextAssigneeIds) {
-          payload.assignees = {
-            add: nextAssigneeIds.filter((id) => !previousAssigneeIds.includes(id)).map(Number),
-            rem: previousAssigneeIds.filter((id) => !nextAssigneeIds.includes(id)).map(Number),
-          };
-        }
-        if (payload.status === "") return NextResponse.json({ error: "Task status cannot be empty." }, { status: 400 });
-        const userId = String(getUserFromRequest(req)?.id || "");
-        if (!userId) return NextResponse.json({ error: "Sign in again before updating this task." }, { status: 401 });
-        const stagedRecordId = String(existingStaged?.record_id || taskId);
-        const remoteTaskId = String(existingStaged?.clickup_id || taskId);
-        const projectedAssignees: Array<{ id: string; username?: string; name?: string }> = nextAssigneeIds
-          ? nextAssigneeIds.map((id) => {
-            const match = currentTask.assignees?.find((assignee) => String(assignee.id) === id);
-            return { id, ...(match?.username ? { username: match.username } : {}), ...(match?.name ? { name: match.name } : {}) };
-          })
-          : (currentTask.assignees || []).map((assignee) => ({ ...assignee, id: String(assignee.id) }));
-        const result = {
-          ...currentTask,
-          ...payload,
-          id: taskId,
-          url: currentTask.url || null,
-          name: String(body.taskName || currentTask.name || "Task"),
-          status: payload.status ? { ...(currentTask.status || {}), status: payload.status } : currentTask.status,
-          assignees: projectedAssignees,
-        };
-        const projectedRecord = {
-          id: taskId,
-          name: result.name,
-          description: typeof payload.description === "string" ? payload.description : currentTask.description || "",
-          status: result.status,
-          priority: (currentTask as ClickUpProjectTask & { priority?: unknown }).priority,
-          due_date: payload.due_date !== undefined ? payload.due_date : currentTask.due_date,
-          start_date: payload.start_date !== undefined ? payload.start_date : currentTask.start_date,
-          assignees: projectedAssignees,
-          list: { id: subprojectListId },
-          url: result.url,
-        };
-        await stageMosaicWrite({ token: projectToken, ownerUserId: userId, domain: "project_tasks", recordId: stagedRecordId, listId: subprojectListId, recordData: projectedRecord as never, operation: "update", method: "PUT", resourcePath: `/task/${remoteTaskId}`, requestBody: payload as never });
-        scheduleMosaicWriteSync();
-        const folderId = String(body.folderId || "");
-        const taskName = String(body.taskName || result.name || "Task");
-        const listName = String(body.listName || "Subproject");
-        const oldStatus = String(previous.status || "");
-        const nextStatus = String(payload.status || "");
-        if (/^\d+$/.test(folderId)) {
-          if (nextStatus && nextStatus.toLowerCase() !== oldStatus.toLowerCase()) await recordProjectActivity(req, {
-            folderId, listId: String(body.listId || ""), listName, taskId: String(body.taskId), taskName,
-            taskUrl: typeof result.url === "string" ? result.url : null, eventType: "task-status-changed",
-            summary: `Changed status from ${oldStatus || "To Do"} to ${nextStatus}`,
-            details: { from: oldStatus, to: nextStatus },
-          });
-          const oldDescription = String(previous.description || "");
-          const nextDescription = typeof payload.description === "string" ? payload.description : oldDescription;
-          if (nextAssigneeIds && (nextAssigneeIds.length !== previousAssigneeIds.length || nextAssigneeIds.some((id) => !previousAssigneeIds.includes(id)))) await recordProjectActivity(req, {
-            folderId, listId: String(body.listId || ""), listName, taskId: String(body.taskId), taskName,
-            taskUrl: typeof result.url === "string" ? result.url : null, eventType: "task-assignees-changed",
-            summary: nextAssigneeIds.length ? `Updated assignees to ${(result.assignees || []).map((assignee: { username?: string; name?: string }) => assignee.username || assignee.name).filter(Boolean).join(", ")}` : "Removed all task assignees",
-            details: { from: previousAssigneeIds, to: nextAssigneeIds, assignees: (result.assignees || []).map((assignee: { username?: string; name?: string }) => assignee.username || assignee.name).filter(Boolean) },
-          });
-          if (nextDescription !== oldDescription) await recordProjectActivity(req, {
-            folderId, listId: String(body.listId || ""), listName, taskId: String(body.taskId), taskName,
-            taskUrl: typeof result.url === "string" ? result.url : null, eventType: "task-remarks-updated",
-            summary: nextDescription.trim() ? "Updated task remarks" : "Cleared task remarks",
-            details: { remarks: nextDescription.slice(0, 1000) },
-          });
-          for (const dateField of ["start", "due"] as const) {
-            const payloadKey = `${dateField}_date` as "start_date" | "due_date";
-            if (payload[payloadKey] === undefined) continue;
-            const previousValue = previous[`${dateField}Date`];
-            const oldDate = previousValue ? new Date(String(previousValue)).getTime() : null;
-            const nextDate = payload[payloadKey] ? Number(payload[payloadKey]) : null;
-            if (oldDate !== nextDate) await recordProjectActivity(req, {
-              folderId, listId: String(body.listId || ""), listName, taskId: String(body.taskId), taskName,
-              taskUrl: typeof result.url === "string" ? result.url : null, eventType: "task-date-moved",
-              summary: `Changed the ${dateField} date${nextDate ? ` to ${new Date(nextDate).toLocaleDateString()}` : ""}`,
-              details: { field: `${dateField}Date`, from: previousValue || null, to: nextDate ? new Date(nextDate).toISOString() : null },
-            });
-          }
-          const oldLinks = new Set((String(previous.description || "").match(/https?:\/\/[^\s)<>]+/g) || []).map((link) => link.replace(/[.,;]+$/, "")));
-          const addedLinks = (nextDescription.match(/https?:\/\/[^\s)<>]+/g) || []).map((link: string) => link.replace(/[.,;]+$/, "")).filter((link: string) => !oldLinks.has(link));
-          if (addedLinks.length) await recordProjectActivity(req, {
-            folderId, listId: String(body.listId || ""), listName, taskId: String(body.taskId), taskName,
-            taskUrl: typeof result.url === "string" ? result.url : null, eventType: "task-file-link-added",
-            summary: `Added ${addedLinks.length} link${addedLinks.length === 1 ? "" : "s"} to task remarks`, details: { links: addedLinks.slice(0, 10) },
-          });
-        }
-        return NextResponse.json({ success: true, task: result, pendingSync: true }, { status: 202 });
-      }
-      if (!/^\d+$/.test(subprojectListId) || !String(body.name || "").trim()) return NextResponse.json({ error: "A valid subproject and task name are required." }, { status: 400 });
-      const payload: Record<string, unknown> = { name: String(body.name).trim(), status: body.status || "to do" };
-      if (body.description) payload.description = String(body.description);
-      if (body.priority) payload.priority = priorityToNumber(body.priority);
-      const requestedAssignees = Array.isArray(body.assignees) ? body.assignees : [];
-      const assigneeIds = Array.from(new Set(requestedAssignees.map(Number).filter(Number.isFinite)));
-      if (assigneeIds.length) payload.assignees = assigneeIds;
-      payload.notify_all = false;
-      if (body.dueDate) { payload.due_date = new Date(body.dueDate).getTime(); payload.due_date_time = false; }
-      if (body.startDate) { payload.start_date = new Date(body.startDate).getTime(); payload.start_date_time = false; }
-      const userId = String(getUserFromRequest(req)?.id || "");
-      if (!userId) return NextResponse.json({ error: "Sign in again before creating this task." }, { status: 401 });
-      const localTaskId = randomUUID();
-      const result = { id: localTaskId, name: payload.name, description: payload.description || "", url: null, status: { status: String(payload.status || "to do") }, priority: { id: String(payload.priority || 3) }, due_date: payload.due_date || null, start_date: payload.start_date || null, assignees: assigneeIds.map((id) => ({ id })), list: { id: subprojectListId } };
-      await stageMosaicWrite({ token: projectToken, ownerUserId: userId, domain: "project_tasks", recordId: localTaskId, listId: subprojectListId, recordData: result as never, operation: "create", method: "POST", resourcePath: `/list/${subprojectListId}/task`, requestBody: payload as never });
-      scheduleMosaicWriteSync();
-      if (/^\d+$/.test(String(body.folderId || ""))) await recordProjectActivity(req, {
-        folderId: String(body.folderId), listId: String(body.listId), listName: String(body.listName || "Subproject"),
-        taskId: String(result.id || ""), taskName: String(result.name || body.name), taskUrl: typeof result.url === "string" ? result.url : null,
-        eventType: "task-created", summary: assigneeIds.length ? "Created and assigned a task" : "Created a task",
-        details: { status: result.status?.status || body.status || "To Do", assigneeIds },
-      });
-      return NextResponse.json({ success: true, task: result, pendingSync: true }, { status: 202 });
-    }
     const targetListId = body.listId || listId;
 
     if (!token) {
@@ -1191,8 +626,6 @@ export async function PUT(req: NextRequest) {
     if (staged && !staged.clickup_id) {
       if (String(staged.owner_user_id) !== userId) return NextResponse.json({ error: "This task is not available to your account." }, { status: 403 });
     } else {
-      const taskAccess = await requireManagedTaskEditor(req, taskId);
-      if (!taskAccess.ok) return taskAccess.response;
     }
 
     const payload: Record<string, any> = {};
@@ -1258,9 +691,6 @@ export async function DELETE(req: NextRequest) {
     const remoteId = String(staged?.clickup_id || taskId);
     if (staged && !staged.clickup_id) {
       if (String(staged.owner_user_id) !== userId) return NextResponse.json({ error: "This task is not available to your account." }, { status: 403 });
-    } else {
-      const taskAccess = await requireManagedTaskEditor(req, remoteId);
-      if (!taskAccess.ok) return taskAccess.response;
     }
     const listIdForSync = String(staged?.list_id || req.cookies.get("echo_clickup_list_id")?.value || listId || "");
     const recordData = staged?.record_data && typeof staged.record_data === "object" ? staged.record_data : { id: remoteId };

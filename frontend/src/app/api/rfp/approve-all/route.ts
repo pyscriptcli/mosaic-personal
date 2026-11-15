@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   approveTaskByApprover,
   getClickUpTask,
-} from "@/lib/forms/clickup";
-import { sendRequestorStatusNotification } from "@/lib/forms/email";
+} from "@/features/forms/lib/clickup";
+import { sendRequestorStatusNotification } from "@/features/forms/lib/email";
 import { getTokenFromRequest } from "@/lib/auth";
 import { getUserFromRequest } from "@/lib/auth";
 import { createClient } from "@supabase/supabase-js";

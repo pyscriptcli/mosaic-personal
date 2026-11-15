@@ -3,6 +3,15 @@ import { clickUpFetch as fetch } from "@/lib/clickupCalendarApi";
 import { getTokenFromRequest, getUserFromRequest, setAuthCookies, clearAuthCookies, ClickUpUserProfile } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  if (process.env.MOSAIC_DESKTOP_NO_LOGIN === "1") {
+    // Let the desktop pilot enter with a local identity; hosted requests keep ClickUp auth.
+    return NextResponse.json({
+      authenticated: true,
+      desktopMode: true,
+      user: { id: "mosaic-local", username: "Local User", email: "", initials: "LU", workspaceName: "This device" },
+    });
+  }
+
   const token = getTokenFromRequest(req);
 
   if (!token) {

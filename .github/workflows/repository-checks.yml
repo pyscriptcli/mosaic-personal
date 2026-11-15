@@ -34,24 +34,8 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
 
-  project-atlas:
-    name: Project Atlas workspaces build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: project-atlas
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: project-atlas/package-lock.json
-      - run: npm ci
-      - run: npm run build
-
   desktop:
-    name: Desktop package syntax
+    name: Desktop local runtime tests
     runs-on: windows-latest
     defaults:
       run:
@@ -62,11 +46,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: |
+            desktop/package-lock.json
+            frontend/package-lock.json
       - run: npm ci
+      - run: npm ci --prefix ../frontend
+      - run: npm --prefix ../frontend run build
       - run: node --check src/main.cjs
       - run: node --check src/preload.cjs
+      - run: node --check src/local-app-server.cjs
       - run: node --check scripts/generate-icons.cjs
-      - run: node --check scripts/prepare-build.cjs
-      - run: node --check scripts/set-release-version.cjs
+      - run: node --check scripts/prepare-local-app.cjs
       - run: node --check scripts/write-checksum.cjs
+      - run: node scripts/prepare-local-app.cjs
+      - run: npm test

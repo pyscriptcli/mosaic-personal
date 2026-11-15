@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeBARequest, getBAStorage } from "@/lib/business-analysis-server";
-import { normalizeBAState } from "@/lib/business-analysis";
+import { authorizeBARequest, getBAStorage } from "@/features/it-projects/lib/business-analysis-server";
+import { normalizeBAState } from "@/features/it-projects/lib/business-analysis";
 
 export const dynamic = "force-dynamic";
 const TABLE = "mosaic_ba_workspaces";

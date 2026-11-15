@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { uploadAttachmentToTask } from "@/lib/forms/clickup";
+import { uploadAttachmentToTask } from "@/features/forms/lib/clickup";
 import { getTokenFromRequest } from "@/lib/auth";
 
 export const maxDuration = 60;

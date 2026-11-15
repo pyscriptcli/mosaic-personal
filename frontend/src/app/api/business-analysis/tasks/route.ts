@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTokenFromRequest } from "@/lib/auth";
-import { authorizeBARequest } from "@/lib/business-analysis-server";
+import { authorizeBARequest } from "@/features/it-projects/lib/business-analysis-server";
 import { clickUpFetch } from "@/lib/clickupCalendarApi";
 import { getUserFromRequest } from "@/lib/auth";
 import { randomUUID } from "node:crypto";

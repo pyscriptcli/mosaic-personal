@@ -11,17 +11,14 @@
 | `/notebook` | Client query caching exists, but the API read enumerated the full daily log from ClickUp on common loads. | High |
 | My Day | Client caching exists, but KPI context and personal notes could paginate ClickUp lists during reads. Some write paths still need fresh upstream lookups. | High |
 | `/meetings` | A cold load can search tags and scan teams, legacy spaces/lists, and personal lists. This is the broadest synchronous discovery path and can fan out into many network requests. | Critical |
-| `/projects` and nested project routes | Client cache and IndexedDB are present; full task data is deferred for calendar use. Cache misses and explicit refreshes still depend on task/ClickUp APIs. | Medium |
 | `/market-insights` | The browser query cache exists, but the API fetched the ClickUp list on each uncached read. | High |
 | `/demands`, `/demands/retail`, `/demands/industrial` | Server ClickUp snapshots and staged writes are already in place. Cold-start fallback can still wait on ClickUp. | Medium |
-| `/contracts` and nested routes | Mostly local folder/IndexedDB state; AI explanation is on demand. Low routine ClickUp dependence. | Low |
 | `/it-projects` | Business analysis data and related meetings/tasks can trigger ClickUp reads on cache misses. | Medium |
 | `/forms` | Form configuration and tracking read ClickUp; file operations happen during user actions. The user-facing list may wait on remote reads. | Medium |
 | `/meetings/notetaker` and `/notetaker` | Recording recovery is local IndexedDB. Audio transcription and minute generation are intentionally remote operations. | Low for navigation; expected for processing |
 | `/admin` | Separate administration/auth and Supabase paths; not on the ordinary ClickUp page path. | Low |
 | `/strategic-alliance-partnership` | Public form backed by Supabase and uploads. No routine ClickUp dependency. | Low |
 | `/reports` | Placeholder page; no material data-loading path observed. | Low |
-| `/ba`, `/business-analysis`, `/delta` | Redirect aliases. | Low |
 
 ### Existing strengths
 

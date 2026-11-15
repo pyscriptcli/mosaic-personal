@@ -27,7 +27,7 @@ import {
   meetingExportTemplateDetails,
   type MeetingExportAction,
   type MeetingExportRequest,
-} from "@/lib/meetingExport";
+} from "@/features/meetings/lib/meetingExport";
 
 const { blue: BLUE, gold: GOLD, gray: GRAY, warmWhite: WARM_WHITE, wordBodyFont: BODY_FONT, wordHeadingFont: DISPLAY_FONT } = MEETING_EXPORT_STYLE;
 

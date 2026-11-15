@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import { StudioRecorderProvider } from "@/components/StudioRecorderProvider";
+import { StudioRecorderProvider } from "@/features/notetaker/components/StudioRecorderProvider";
 import { ClickUpLoadingProvider } from "@/components/ClickUpLoadingProvider";
 
 const cormorant = localFont({

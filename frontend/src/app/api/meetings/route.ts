@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
-import { parseMeetingContent, serializeMeetingContent } from "@/lib/meetingArchive";
+import { parseMeetingContent, serializeMeetingContent } from "@/features/meetings/lib/meetingArchive";
 import { clickUpCalendarFetch, clickUpFetch as fetch, fetchAllClickUpListTasks } from "@/lib/clickupCalendarApi";
 import { scheduleMosaicWriteSync, stageMosaicWrite } from "@/lib/mosaicWriteStore";
 

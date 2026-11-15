@@ -1,10 +1,14 @@
 const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, screen, session, shell, Tray } = require("electron");
-const { autoUpdater } = require("electron-updater");
 const fs = require("node:fs");
 const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
+const { startLocalAppServer } = require("./local-app-server.cjs");
 
-const APP_ORIGIN = loadAppOrigin();
-const APP_PARTITION = "persist:mosaic";
+let APP_ORIGIN = null;
+let localAppServer;
+let localAppOptions;
+let backupTimer;
+const APP_PARTITION = "persist:mosaic-local-first";
 const CLICKUP_HOST = "clickup.com";
 let mainWindow;
 let reminderWindow;
@@ -12,11 +16,6 @@ let reminderTimer;
 let reminderCanClose = false;
 let tray;
 let isQuitting = false;
-let updateStatus = "Updates are checked automatically";
-let updateCheckInProgress = false;
-let manualUpdateCheck = false;
-let downloadedUpdateVersion = null;
-let updateCheckTimer;
 let settings = { startWithWindows: false, closeToTrayNoticeShown: false, mediaPermissionGranted: false };
 
 if (!app.requestSingleInstanceLock()) {
@@ -25,55 +24,56 @@ if (!app.requestSingleInstanceLock()) {
   app.on("second-instance", () => showMainWindow());
   app.on("session-end", () => { isQuitting = true; });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     app.setAppUserModelId("com.primephilippines.mosaic");
     readSettings();
+    const appPath = app.isPackaged
+      ? path.join(process.resourcesPath, "local-app")
+      : path.join(__dirname, "..", "build", "local-app");
+    localAppOptions = { appPath, runtimePath: process.execPath, dataDirectory: path.join(app.getPath("userData"), "data") };
+
+    try {
+      // Start the local web app before opening its desktop window.
+      localAppServer = await startLocalAppServer(localAppOptions);
+      APP_ORIGIN = new URL(localAppServer.url).origin;
+    } catch (error) {
+      dialog.showErrorBox("Mosaic could not start", error instanceof Error ? error.message : String(error));
+      isQuitting = true;
+      app.quit();
+      return;
+    }
+
     setPermissionPolicy();
     registerReminderBridge();
     createTray();
     createMainWindow();
     applyStartupSetting();
     scheduleNextReminder();
-    initializeUpdater();
+    backupTimer = setInterval(() => { tryDailyBackup(); }, 60 * 60 * 1000);
+    tryDailyBackup();
 
     app.on("activate", showMainWindow);
   });
 
   app.on("before-quit", (event) => {
-    if (isQuitting) return;
+    if (isQuitting) {
+      if (!localAppServer) return;
+      event.preventDefault();
+      const server = localAppServer;
+      localAppServer = null;
+      void server.stop()
+        .catch((error) => console.error("Could not stop Mosaic's local server:", error))
+        .finally(() => app.quit());
+      return;
+    }
     event.preventDefault();
     confirmQuit();
   });
 
   app.on("will-quit", () => {
-    if (updateCheckTimer) clearInterval(updateCheckTimer);
+    if (backupTimer) clearInterval(backupTimer);
     if (tray && !tray.isDestroyed()) tray.destroy();
   });
-}
-
-function loadAppOrigin() {
-  const configured = process.env.MOSAIC_APP_URL;
-  if (configured && !app.isPackaged) return validateOrigin(configured);
-
-  const configPath = app.isPackaged
-    ? path.join(process.resourcesPath, "app-origin.json")
-    : path.join(__dirname, "..", "build", "app-origin.json");
-
-  try {
-    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    return validateOrigin(config.origin);
-  } catch (error) {
-    console.error("Mosaic app origin is missing or invalid:", error.message);
-    return null;
-  }
-}
-
-function validateOrigin(value) {
-  const parsed = new URL(value);
-  if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) {
-    throw new Error("MOSAIC_APP_URL must be an HTTPS origin without a path, query, or fragment.");
-  }
-  return parsed.origin;
 }
 
 function readSettings() {
@@ -272,7 +272,7 @@ function createMainWindow() {
   if (APP_ORIGIN) {
     mainWindow.loadURL(APP_ORIGIN).catch(showConnectionError);
   } else {
-    showConnectionError("This Mosaic installer was built without a valid app origin. Rebuild it with MOSAIC_APP_URL set to the deployed HTTPS origin.");
+    showConnectionError("Mosaic's local app server is not ready.");
   }
 }
 
@@ -307,12 +307,11 @@ function createTray() {
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: "Open Mosaic", click: showMainWindow },
+    { label: "Export local backup…", click: () => exportLocalBackup() },
+    { label: "Restore local backup…", click: () => restoreLocalBackup() },
     { type: "separator" },
     { label: `Desktop version ${app.getVersion()}`, enabled: false },
-    { label: updateStatus, enabled: false },
-    downloadedUpdateVersion
-      ? { label: `Install update ${downloadedUpdateVersion} and restart`, click: installDownloadedUpdate }
-      : { label: "Check for desktop updates", enabled: app.isPackaged, click: () => checkForDesktopUpdates(true) },
+    { label: "Updates are disabled for this local pilot", enabled: false },
     { type: "separator" },
     {
       label: "Start with Windows",
@@ -339,102 +338,91 @@ function buildTrayMenu() {
   ]);
 }
 
-function initializeUpdater() {
-  if (!app.isPackaged) {
-    updateStatus = "Desktop updates are available in installed builds";
-    tray.setContextMenu(buildTrayMenu());
+function dataDirectory() {
+  return path.join(app.getPath("userData"), "data");
+}
+
+function createDataBackup(destination) {
+  const source = dataDirectory();
+  const sourceDatabase = path.join(source, "mosaic.sqlite");
+  const target = path.join(destination, "data");
+  fs.mkdirSync(target, { recursive: true });
+  if (!fs.existsSync(sourceDatabase)) throw new Error("There is no local Mosaic data to back up yet.");
+  const targetDatabase = path.join(target, "mosaic.sqlite").replace(/'/g, "''");
+  const database = new DatabaseSync(sourceDatabase);
+  try {
+    database.exec("PRAGMA busy_timeout = 10000");
+    database.exec(`VACUUM INTO '${targetDatabase}'`);
+  } finally {
+    database.close();
+  }
+  for (const name of ["recordings"]) {
+    const folder = path.join(source, name);
+    if (fs.existsSync(folder)) fs.cpSync(folder, path.join(target, name), { recursive: true });
+  }
+  fs.writeFileSync(path.join(destination, "manifest.json"), JSON.stringify({ app: "mosaic-desktop", formatVersion: 1, createdAt: new Date().toISOString() }, null, 2), { encoding: "utf8", mode: 0o600 });
+}
+
+function tryDailyBackup() {
+  const sourceDatabase = path.join(dataDirectory(), "mosaic.sqlite");
+  if (!fs.existsSync(sourceDatabase)) return;
+  const backupRoot = path.join(app.getPath("userData"), "backups", "daily");
+  const date = new Date().toISOString().slice(0, 10);
+  const target = path.join(backupRoot, date);
+  if (fs.existsSync(path.join(target, "manifest.json"))) return;
+  try {
+    fs.mkdirSync(backupRoot, { recursive: true });
+    if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true });
+    createDataBackup(target);
+    const backups = fs.readdirSync(backupRoot).map((name) => ({ name, path: path.join(backupRoot, name) })).filter((item) => fs.statSync(item.path).isDirectory()).sort((a, b) => b.name.localeCompare(a.name));
+    for (const old of backups.slice(7)) fs.rmSync(old.path, { recursive: true, force: true });
+  } catch (error) {
+    console.error("Mosaic daily backup failed:", error);
+  }
+}
+
+async function exportLocalBackup() {
+  const result = await dialog.showOpenDialog(mainWindow, { title: "Choose a folder for the Mosaic backup", properties: ["openDirectory", "createDirectory"] });
+  if (result.canceled || !result.filePaths[0]) return;
+  const name = `Mosaic Backup ${new Date().toISOString().replace(/[:.]/g, "-")}`;
+  const target = path.join(result.filePaths[0], name);
+  try {
+    createDataBackup(target);
+    dialog.showMessageBox(mainWindow, { type: "info", title: "Backup exported", message: `Mosaic data was exported to:\n${target}` });
+  } catch (error) {
+    dialog.showErrorBox("Backup export failed", error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function restoreLocalBackup() {
+  const result = await dialog.showOpenDialog(mainWindow, { title: "Select a Mosaic backup folder", properties: ["openDirectory"] });
+  if (result.canceled || !result.filePaths[0]) return;
+  const backup = path.resolve(result.filePaths[0]);
+  const manifestPath = path.join(backup, "manifest.json");
+  const backupData = path.join(backup, "data");
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (manifest.app !== "mosaic-desktop" || manifest.formatVersion !== 1 || !fs.existsSync(path.join(backupData, "mosaic.sqlite"))) throw new Error("This folder is not a valid Mosaic backup.");
+  } catch (error) {
+    dialog.showErrorBox("Backup could not be restored", error instanceof Error ? error.message : String(error));
     return;
   }
-
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.allowDowngrade = false;
-  autoUpdater.on("checking-for-update", () => {
-    updateCheckInProgress = true;
-    updateStatus = "Checking for desktop updates…";
-    refreshTrayMenu();
-  });
-  autoUpdater.on("update-available", ({ version }) => {
-    updateStatus = `Downloading desktop update ${version}…`;
-    refreshTrayMenu();
-  });
-  autoUpdater.on("update-not-available", () => {
-    updateCheckInProgress = false;
-    updateStatus = "Mosaic is up to date";
-    if (manualUpdateCheck) showUpdateMessage("You're up to date", `Mosaic ${app.getVersion()} is the latest desktop version.`);
-    manualUpdateCheck = false;
-    refreshTrayMenu();
-  });
-  autoUpdater.on("download-progress", ({ percent }) => {
-    updateStatus = `Downloading desktop update (${Math.floor(percent)}%)`;
-    refreshTrayMenu();
-  });
-  autoUpdater.on("update-downloaded", ({ version }) => {
-    updateCheckInProgress = false;
-    downloadedUpdateVersion = version;
-    updateStatus = `Desktop update ${version} is ready`;
-    manualUpdateCheck = false;
-    refreshTrayMenu();
-    showUpdateReadyMessage();
-  });
-  autoUpdater.on("error", (error) => {
-    updateCheckInProgress = false;
-    updateStatus = "Could not check for desktop updates";
-    console.error("Mosaic desktop update failed:", error.message);
-    if (manualUpdateCheck) showUpdateMessage("Update check failed", "Mosaic could not check for updates. Check your connection and try again.");
-    manualUpdateCheck = false;
-    refreshTrayMenu();
-  });
-
-  updateCheckTimer = setInterval(() => checkForDesktopUpdates(false), 6 * 60 * 60 * 1000);
-  setTimeout(() => checkForDesktopUpdates(false), 15_000);
-}
-
-async function checkForDesktopUpdates(manual) {
-  if (!app.isPackaged || updateCheckInProgress || downloadedUpdateVersion) return;
-  manualUpdateCheck = manual;
-  updateCheckInProgress = true;
-  updateStatus = "Checking for desktop updates…";
-  refreshTrayMenu();
+  const choice = await dialog.showMessageBox(mainWindow, { type: "warning", title: "Restore Mosaic backup?", message: "Restoring replaces this desktop app’s current local data.", detail: `Backup date: ${JSON.parse(fs.readFileSync(manifestPath, "utf8")).createdAt || "unknown"}`, buttons: ["Cancel", "Restore backup"], defaultId: 0, cancelId: 0, noLink: true });
+  if (choice.response !== 1) return;
   try {
-    await autoUpdater.checkForUpdates();
+    const target = dataDirectory();
+    if (!localAppServer || path.resolve(target) !== path.resolve(app.getPath("userData"), "data")) throw new Error("The local app is not ready to restore data.");
+    await localAppServer.stop();
+    localAppServer = null;
+    fs.rmSync(target, { recursive: true, force: true });
+    fs.cpSync(backupData, target, { recursive: true });
+    localAppServer = await startLocalAppServer(localAppOptions);
+    APP_ORIGIN = new URL(localAppServer.url).origin;
+    await mainWindow.loadURL(localAppServer.url);
+    dialog.showMessageBox(mainWindow, { type: "info", title: "Backup restored", message: "Mosaic reopened with the restored local data." });
   } catch (error) {
-    updateCheckInProgress = false;
-    updateStatus = "Could not check for desktop updates";
-    console.error("Mosaic desktop update check failed:", error.message);
-    if (manual) showUpdateMessage("Update check failed", "Mosaic could not check for updates. Check your connection and try again.");
-    manualUpdateCheck = false;
-    refreshTrayMenu();
+    dialog.showErrorBox("Backup restore failed", error instanceof Error ? error.message : String(error));
   }
-}
-
-function showUpdateReadyMessage() {
-  showUpdateMessage(
-    "Mosaic update ready",
-    `Version ${downloadedUpdateVersion} has downloaded. Restart Mosaic when you're ready to install it.`,
-    ["Later", "Install and restart"],
-  ).then(({ response }) => {
-    if (response === 1) installDownloadedUpdate();
-  });
-}
-
-function showUpdateMessage(title, message, buttons = ["OK"]) {
-  const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : undefined;
-  return dialog.showMessageBox(parent, {
-    type: "info",
-    title,
-    message,
-    buttons,
-    defaultId: 0,
-    cancelId: 0,
-    noLink: true,
-  });
-}
-
-function installDownloadedUpdate() {
-  if (!downloadedUpdateVersion) return;
-  isQuitting = true;
-  autoUpdater.quitAndInstall(false, true);
 }
 
 function refreshTrayMenu() {

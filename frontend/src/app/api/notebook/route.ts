@@ -17,7 +17,7 @@ import {
   flattenClickUpTaskTree,
   taskOwner,
   writeCategories,
-} from "@/lib/notebookClickup";
+} from "@/features/notebook/lib/notebookClickup";
 import { getUserFromRequest } from "@/lib/auth";
 import { clickUpScope } from "@/lib/clickupReadStore";
 import { readStagedMosaicRecords, scheduleMosaicWriteSync, stageMosaicWrite } from "@/lib/mosaicWriteStore";

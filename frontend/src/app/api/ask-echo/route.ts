@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
-import { answerAskEcho } from "@/lib/ask-echo/service";
+import { answerAskEcho } from "@/features/ask-echo/lib/service";
 import { AdminConfigError, isAskEchoEnabled } from "@/lib/admin-config/store";
 import { requireFeature } from "@/lib/access-control-server";
 

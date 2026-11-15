@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getClickUpTask } from "@/lib/forms/clickup";
+import { getClickUpTask } from "@/features/forms/lib/clickup";
 import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
 import { createClient } from "@supabase/supabase-js";
 

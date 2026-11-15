@@ -21,4 +21,4 @@ Link superseding records to the earlier record. Update the status of the older r
 
 ## Current records
 
-- [0001 — Project Atlas snapshot source](0001-project-atlas-snapshot-source.md)
+No active decision records.
