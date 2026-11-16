@@ -2,14 +2,9 @@
 
 import React from "react";
 import { createPortal } from "react-dom";
-import { MosaicBrand } from "@/components/MosaicBrand";
 import {
-  LayoutGrid,
-  CalendarDays,
-  ChevronLeft,
-  LogOut,
-  NotebookTabs,
-  BriefcaseBusiness,
+  AudioLines, BriefcaseBusiness, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
+  Files, LayoutGrid, LogOut, NotebookTabs, Search,
 } from "lucide-react";
 
 export type NavView = "dashboard" | "tasks" | "notebook" | "meetings" | "minutes" | "business-analysis";
@@ -34,6 +29,14 @@ interface SidebarProps {
   sidebarOrder?: NavView[];
 }
 
+const activityItems = [
+  { id: "explorer", label: "Explorer", icon: Files },
+  { id: "search", label: "Search", icon: Search },
+  { id: "meetings", label: "Meetings", icon: CalendarDays },
+  { id: "notebook", label: "Notebook", icon: NotebookTabs },
+  { id: "notetaker", label: "Notetaker", icon: AudioLines },
+] as const;
+
 export function Sidebar({
   currentView,
   onSelectView,
@@ -46,6 +49,7 @@ export function Sidebar({
   sidebarOrder,
 }: SidebarProps) {
   const [isHovered, setIsHovered] = React.useState(false);
+  const [activeActivity, setActiveActivity] = React.useState<(typeof activityItems)[number]["id"]>("explorer");
   const [isProfileMenuOpen, setIsProfileMenuOpen] = React.useState(false);
   const profileButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -53,12 +57,9 @@ export function Sidebar({
 
   React.useEffect(() => {
     if (!isProfileMenuOpen) return;
-
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!profileMenuRef.current?.contains(target) && !profileButtonRef.current?.contains(target)) {
-        setIsProfileMenuOpen(false);
-      }
+      if (!profileMenuRef.current?.contains(target) && !profileButtonRef.current?.contains(target)) setIsProfileMenuOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -66,7 +67,6 @@ export function Sidebar({
         profileButtonRef.current?.focus();
       }
     };
-
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -76,58 +76,32 @@ export function Sidebar({
   }, [isProfileMenuOpen]);
 
   const handleMouseEnter = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = null;
     setIsHovered(true);
   };
 
   const handleMouseLeave = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-    hoverTimeoutRef.current = setTimeout(() => {
-      setIsHovered(false);
-    }, 150);
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => setIsHovered(false), 150);
   };
 
-  // The parent owns the persistent state. Hover is only a temporary preview
-  // when collapsed, so touch and keyboard users can still pin the drawer open.
   const effectiveCollapsed = externalCollapsed && !isHovered;
-
-
   const allNavItems = [
-    {
-      id: "dashboard" as NavView,
-      label: "Dashboard",
-      icon: LayoutGrid,
-      badge: null
-    },
-    { id: "business-analysis" as NavView, label: "IT Projects", icon: BriefcaseBusiness, badge: null },
-    {
-      id: "meetings" as NavView,
-      label: "Meetings",
-      icon: CalendarDays,
-      badge: null
-    },
-    {
-      id: "notebook" as NavView,
-      label: "Notebook",
-      icon: NotebookTabs,
-      badge: null
-    },
+    { id: "dashboard" as NavView, label: "Dashboard", icon: LayoutGrid },
+    { id: "business-analysis" as NavView, label: "IT Projects", icon: BriefcaseBusiness },
+    { id: "meetings" as NavView, label: "Meetings", icon: CalendarDays },
+    { id: "notebook" as NavView, label: "Notebook", icon: NotebookTabs },
   ];
-
-  const normalizedSidebarOrder = [...(sidebarOrder || [])];
-  const orderIndex = new Map(normalizedSidebarOrder.map((id, index) => [id, index]));
-  const navItems = allNavItems.slice().sort((a, b) => {
-    const fallback = allNavItems.length;
-    return (orderIndex.get(a.id) ?? fallback) - (orderIndex.get(b.id) ?? fallback);
-  }).filter((item) => Boolean(
-    allowedPages?.includes(item.id) ||
-    (item.id === "notebook" && allowedPages?.includes("tasks"))
+  const orderIndex = new Map((sidebarOrder || []).map((id, index) => [id, index]));
+  const navItems = allNavItems.slice().sort((a, b) => (orderIndex.get(a.id) ?? allNavItems.length) - (orderIndex.get(b.id) ?? allNavItems.length)).filter((item) => Boolean(
+    allowedPages?.includes(item.id) || (item.id === "notebook" && allowedPages?.includes("tasks")),
   ));
+
+  const chooseView = (view: NavView) => {
+    setActiveActivity("explorer");
+    onSelectView(view);
+  };
 
   const renderNavItem = (item: (typeof navItems)[number]) => {
     const Icon = item.icon;
@@ -138,144 +112,107 @@ export function Sidebar({
       <button
         key={item.id}
         type="button"
-        onClick={() => onSelectView(item.id)}
+        onClick={() => chooseView(item.id)}
         onPointerEnter={() => onPreloadView?.(item.id)}
         onFocus={() => onPreloadView?.(item.id)}
         title={effectiveCollapsed ? item.label : undefined}
         aria-current={isActive ? "page" : undefined}
         aria-label={effectiveCollapsed ? item.label : undefined}
-        className={`w-full min-h-10 flex items-center gap-2 px-2.5 py-1.5 text-xs font-normal transition-colors cursor-pointer ${
-          isActive
-            ? "bg-[#FFFCFB] text-[#003366] border-l-4 border-[#C9A84C]"
-            : "text-[#FFFCFB] hover:bg-[#174778] border-l-4 border-transparent"
-        } focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#FFBF00] ${effectiveCollapsed ? "justify-center !ml-0 !w-full !px-0 !border-l-0" : ""}`}
+        className={`flex min-h-7 w-full items-center gap-1.5 border-l-2 py-1 pr-2 text-left text-[13px] transition-colors ${isActive ? "border-[#0078d4] bg-[#37373d] text-white" : "border-transparent text-[#cccccc] hover:bg-[#2a2d2e]"} focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#0078d4] ${effectiveCollapsed ? "justify-center px-0" : "pl-5"}`}
       >
-        <Icon size={18} className={`shrink-0 ${isActive ? "text-[#C9A84C]" : "text-[#D7E3EF]"}`} />
+        {isActive ? <ChevronDown size={13} className="shrink-0 text-[#a0a0a0]" /> : <ChevronRight size={13} className="shrink-0 text-[#a0a0a0]" />}
+        <Icon size={15} className={`shrink-0 ${isActive ? "text-[#75beff]" : "text-[#bdbdbd]"}`} />
         {!effectiveCollapsed && <span className="truncate">{item.label}</span>}
       </button>
     );
   };
 
+  const runActivity = (id: (typeof activityItems)[number]["id"]) => {
+    setActiveActivity(id);
+    if (id === "explorer") return;
+    if (id === "search") {
+      window.dispatchEvent(new Event("mosaic-open-search"));
+      return;
+    }
+    if (id === "meetings") chooseView("meetings");
+    if (id === "notebook") chooseView("notebook");
+    if (id === "notetaker") chooseView("minutes");
+  };
+
+  const visibleActivityItems = activityItems.filter(({ id }) => {
+    if (!allowedPages) return true;
+    if (id === "explorer" || id === "search") return true;
+    if (id === "meetings") return allowedPages.includes("meetings") || allowedPages.includes("minutes");
+    if (id === "notebook") return allowedPages.includes("notebook") || allowedPages.includes("tasks");
+    return allowedPages.includes("minutes");
+  });
+  const widthClass = effectiveCollapsed ? "w-12" : "w-[min(272px,calc(100vw-48px))]";
   return (
     <div
-      className={`relative h-full z-40 shrink-0 transition-all duration-300 ease-in-out ${
-        externalCollapsed ? "w-16 min-w-[64px]" : "w-[min(220px,calc(100vw-64px))] min-w-[64px]"
-      }`}
+      className={`relative z-40 h-full shrink-0 transition-[width] duration-200 ease-out ${externalCollapsed ? "w-12" : "w-[min(272px,calc(100vw-48px))]"}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <aside 
-        className={`absolute top-0 left-0 h-full flex flex-col justify-between bg-[#003366] text-[#FFFCFB] border-r border-[#31577D] shadow-[4px_0_24px_rgba(0,51,102,0.18)] transition-all duration-300 ease-in-out z-40 select-none overflow-hidden ${
-          effectiveCollapsed ? "w-16 min-w-[64px]" : "w-[min(220px,calc(100vw-64px))] min-w-[64px]"
-        }`}
-      >
-        {/* Mosaic identity stays visible when the navigation is collapsed. */}
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className={`h-14 shrink-0 flex items-center border-b border-[#31577D] ${effectiveCollapsed ? "justify-center px-2" : "justify-between px-3.5"}`}>
-            <MosaicBrand compact={effectiveCollapsed} size={effectiveCollapsed ? "small" : "medium"} className="text-[#FFFCFB]" />
-
-            {!effectiveCollapsed && (
+      <aside className={`absolute inset-y-0 left-0 z-40 flex ${widthClass} overflow-hidden border-r border-[#333333] bg-[#1e1e1e] text-[#cccccc] shadow-[4px_0_12px_rgba(0,0,0,0.2)] transition-[width] duration-200 ease-out`}>
+        <nav aria-label="Activity bar" className="flex w-12 shrink-0 flex-col items-center border-r border-[#333333] bg-[#181818] py-2">
+          {visibleActivityItems.map(({ id, label, icon: Icon }) => {
+            const active = activeActivity === id;
+            return (
               <button
+                key={id}
                 type="button"
-                onClick={onToggleCollapse}
-                aria-label={externalCollapsed ? "Pin sidebar expanded" : "Collapse sidebar"}
-                aria-expanded={!externalCollapsed}
-                title={externalCollapsed ? "Pin sidebar expanded" : "Collapse sidebar"}
-                className="p-1.5 rounded-none hover:bg-[#174778] text-[#D7E3EF] hover:text-[#FFBF00] transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFBF00]"
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+                title={label}
+                onClick={() => runActivity(id)}
+                className={`relative grid h-11 w-12 shrink-0 place-items-center border-l-2 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-inset focus-visible:outline-[#0078d4] ${active ? "border-[#cccccc] text-white" : "border-transparent text-[#858585] hover:text-white"}`}
               >
-                <ChevronLeft size={16} />
+                <Icon size={24} strokeWidth={1.6} />
               </button>
-            )}
-          </div>
-
-          <nav aria-label="Primary navigation" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 pb-2">
-            <div className="flex flex-col gap-1 py-1">
-              {navItems.map((item) => renderNavItem(item))}
-            </div>
-          </nav>
-        </div>
-
-        {/* Workspace and account actions */}
-        <div className="border-t border-[#31577D] bg-[#002A55]">
-          {/* Workspace Name Header */}
-          {!effectiveCollapsed ? (
-            <div className="px-3.5 pt-2.5 pb-2 border-b border-[#31577D]/80 flex items-center justify-between overflow-hidden">
-              <div className="flex items-center gap-2 overflow-hidden">
-                <span className="w-1.5 h-1.5 bg-[#FFBF00] shrink-0"></span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#FFBF00] truncate">
-                  {user?.workspaceName || "Mosaic Workspace"}
-                </span>
-              </div>
-              <span className="text-[9px] uppercase tracking-widest text-[#9FB8CE] font-semibold shrink-0">
-                Workspace
-              </span>
-            </div>
-          ) : null}
-
-          {/* User Account Details */}
-          <div className="p-3">
-            <div className={`flex min-w-0 items-center ${effectiveCollapsed ? "justify-center" : "gap-2.5"}`}>
-              <button
-                ref={profileButtonRef}
-                type="button"
-                aria-label="Open profile menu"
-                aria-expanded={isProfileMenuOpen}
-                aria-controls="profile-menu"
-                title={user?.username || "Profile and account options"}
-                onClick={() => setIsProfileMenuOpen((isOpen) => !isOpen)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center border border-[#C9A84C]/60 bg-[#174778] text-xs font-bold text-[#FFBF00] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFBF00]"
-              >
-                {user?.profilePicture ? (
-                  <img src={user.profilePicture} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  user?.initials || "CU"
-                )}
-              </button>
-              {!effectiveCollapsed && (
-                <>
-                  <div className="min-w-0 flex-1 truncate">
-                    <div className="truncate text-xs font-semibold text-white">{user?.username || "ClickUp User"}</div>
-                    <div className="truncate text-[10px] text-[#9FB8CE]">{user?.email || (user?.id === "mosaic-local" ? user.workspaceName || "Local desktop" : "ClickUp Portal")}</div>
-                  </div>
-                  {onSignOut && (
-                    <button
-                      type="button"
-                      aria-label="Sign out from ClickUp"
-                      title="Sign out from ClickUp"
-                      onClick={onSignOut}
-                      className="shrink-0 rounded-none p-1.5 text-[#9FB8CE] transition-colors hover:bg-[#174778] hover:text-[#FFBF00] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFBF00]"
-                    >
-                      <LogOut size={15} />
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </aside>
-      {isProfileMenuOpen && createPortal(
-        <div
-          ref={profileMenuRef}
-          id="profile-menu"
-          className="fixed bottom-3 z-[60] w-[min(15rem,calc(100vw-1rem))] rounded-sm border border-[#31577D] bg-[#002A55] p-3 text-[#FFFCFB] shadow-xl"
-          style={{ left: typeof window === "undefined" ? 72 : Math.max(8, Math.min(effectiveCollapsed ? 72 : 228, window.innerWidth - 256)) }}
-        >
-          <div className="truncate text-xs font-semibold">{user?.username || "ClickUp User"}</div>
-          <div className="mt-1 truncate text-[10px] text-[#9FB8CE]">{user?.email || (user?.id === "mosaic-local" ? user.workspaceName || "Local desktop" : "ClickUp Portal")}</div>
-          {onSignOut && (
+            );
+          })}
+          <div className="mt-auto flex w-full flex-col items-center gap-1">
+            {onSignOut && <button type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out" className="grid h-9 w-12 place-items-center text-[#858585] hover:text-white"><LogOut size={19} /></button>}
             <button
+              ref={profileButtonRef}
               type="button"
-              onClick={() => {
-                setIsProfileMenuOpen(false);
-                onSignOut();
-              }}
-              className="mt-3 flex w-full items-center gap-2 border-t border-[#31577D] px-1 pt-2 text-left text-xs text-[#D7E3EF] hover:text-[#FFBF00] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FFBF00]"
+              aria-label="Open profile menu"
+              aria-expanded={isProfileMenuOpen}
+              aria-controls="profile-menu"
+              title={user?.username || "Local profile"}
+              onClick={() => setIsProfileMenuOpen((open) => !open)}
+              className="mb-1 grid h-8 w-8 place-items-center rounded-full border border-[#555555] bg-[#2d2d30] text-[10px] font-semibold text-[#cccccc] hover:border-[#8a8a8a] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#0078d4]"
             >
-              <LogOut size={15} />
-              Sign out from ClickUp
+              {user?.profilePicture ? <img src={user.profilePicture} alt="" className="h-full w-full rounded-full object-cover" /> : user?.initials || "MO"}
             </button>
-          )}
+          </div>
+        </nav>
+
+        {!effectiveCollapsed && (
+          <section aria-label="Explorer" className="flex min-w-0 flex-1 flex-col bg-[#1e1e1e]">
+            <header className="flex h-9 shrink-0 items-center justify-between px-4 text-[11px] font-semibold tracking-[0.08em] text-[#cccccc]">
+              <span>EXPLORER</span>
+              <button type="button" onClick={onToggleCollapse} aria-label="Collapse Explorer" title="Collapse Explorer" className="grid h-7 w-7 place-items-center text-[#858585] hover:bg-[#2a2d2e] hover:text-white"><ChevronLeft size={15} /></button>
+            </header>
+            <div className="flex h-8 shrink-0 items-center gap-1.5 px-3 text-[12px] font-semibold text-[#cccccc]">
+              <ChevronDown size={14} className="text-[#a0a0a0]" />
+              <span className="truncate uppercase">{user?.workspaceName || "Mosaic Personal"}</span>
+            </div>
+            <nav aria-label="Primary navigation" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
+              <div className="flex flex-col py-0.5">{navItems.map(renderNavItem)}</div>
+            </nav>
+            <div className="border-t border-[#333333] px-3 py-2 text-[11px] text-[#858585]">
+              {user?.username || (user?.id === "mosaic-local" ? "Local profile" : "Workspace")}
+            </div>
+          </section>
+        )}
+      </aside>
+
+      {isProfileMenuOpen && createPortal(
+        <div ref={profileMenuRef} id="profile-menu" className="fixed bottom-3 z-[60] w-[min(15rem,calc(100vw-1rem))] rounded border border-[#3c3c3c] bg-[#252526] p-3 text-[#cccccc] shadow-xl" style={{ left: typeof window === "undefined" ? 56 : Math.max(8, Math.min(effectiveCollapsed ? 56 : 280, window.innerWidth - 256)) }}>
+          <div className="truncate text-xs font-semibold">{user?.username || "Local profile"}</div>
+          <div className="mt-1 truncate text-[10px] text-[#a0a0a0]">{user?.email || (user?.id === "mosaic-local" ? user.workspaceName || "This device" : "Mosaic workspace")}</div>
+          {onSignOut && <button type="button" onClick={() => { setIsProfileMenuOpen(false); onSignOut(); }} className="mt-3 flex w-full items-center gap-2 border-t border-[#3c3c3c] px-1 pt-2 text-left text-xs text-[#cccccc] hover:text-white"><LogOut size={15} /> Sign out</button>}
         </div>,
         document.body,
       )}

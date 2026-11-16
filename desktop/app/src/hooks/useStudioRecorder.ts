@@ -49,6 +49,7 @@ export interface UseStudioRecorderReturn {
   isSilenceDetected: boolean;
   /** Path in Documents/Mosaic Meetings where local file was saved. */
   localSavedPath: string | null;
+  localSaveStatus: "idle" | "saving" | "saved" | "failed";
   /** True if another tab is currently recording. */
   hasOtherTabRecording: boolean;
 
@@ -106,6 +107,7 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
   const [screenInfo, setScreenInfo] = useState<ScreenCaptureInfo | null>(null);
   const [isSilenceDetected, setIsSilenceDetected] = useState(false);
   const [localSavedPath, setLocalSavedPath] = useState<string | null>(null);
+  const [localSaveStatus, setLocalSaveStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [hasOtherTabRecording, setHasOtherTabRecording] = useState(false);
 
   // ── Refs ───────────────────────────────────────────────────────────────
@@ -538,6 +540,8 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
       enumerateDevices();
 
       const newSessionId = `echo_rec_${Date.now()}`;
+      setLocalSavedPath(null);
+      setLocalSaveStatus("idle");
       sessionIdRef.current = newSessionId;
       setSessionId(newSessionId);
       chunkIndexRef.current = 0;
@@ -615,10 +619,13 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
             const file = new File([blob], `${prefix}-${sid}.${ext}`, { type: fileType });
             setRecordedFile(file);
 
-            // Auto-save completed recording directly to Documents/Mosaic Meetings
+            setLocalSaveStatus("saving");
             const saveRes = await saveToLocalDocuments(sid, blob, "completed", mediaTypeRef.current, file.name);
             if (saveRes.success && saveRes.filePath) {
               setLocalSavedPath(saveRes.filePath);
+              setLocalSaveStatus("saved");
+            } else {
+              setLocalSaveStatus("failed");
             }
 
             // Mark session as completed in IndexedDB
@@ -631,6 +638,7 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
           }
         } catch (err) {
           console.error("[Studio] Failed to assemble recording:", err);
+          setLocalSaveStatus("failed");
           setError("Failed to assemble recording. Audio is checkpointed in Documents/Mosaic Meetings.");
         }
       };
@@ -760,6 +768,7 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
     setScreenInfo(null);
     setIsSilenceDetected(false);
     setLocalSavedPath(null);
+    setLocalSaveStatus("idle");
     chunksBufferRef.current = [];
     chunkIndexRef.current = 0;
     sessionMetaRef.current = null;
@@ -843,6 +852,7 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
     screenInfo,
     isSilenceDetected,
     localSavedPath,
+    localSaveStatus,
     hasOtherTabRecording,
     start,
     pause,

@@ -14,17 +14,41 @@
   --color-mosaic-deep-ink: #0c0c0e;
   --mosaic-radius: 0px;
   
-  --font-display: var(--font-cormorant), Georgia, serif;
-  --font-serif: var(--font-cormorant), Georgia, serif;
-  --font-ui: var(--font-montserrat), Arial, Helvetica, sans-serif;
-  --font-sans: var(--font-montserrat), Arial, Helvetica, sans-serif;
-  --font-impact: var(--font-bebas), Impact, sans-serif;
-  --font-bebas: var(--font-bebas), Impact, sans-serif;
+  --font-display: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  --font-serif: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  --font-ui: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  --font-sans: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  --font-impact: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  --font-bebas: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  --font-mono: Consolas, "Courier New", monospace;
 }
 
 :root {
   --mosaic-motion-standard: 250ms;
   --mosaic-motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html,
+body {
+  font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+}
+
+body :where(button, input, textarea, select) {
+  font-family: inherit;
+}
+
+body :where(h1, h2, h3, h4) {
+  font-style: normal;
+}
+
+.echo-chat-docked {
+  padding-right: min(520px, 34vw);
+}
+
+@media (max-width: 767px) {
+  .echo-chat-docked {
+    padding-right: 0;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -64,6 +88,174 @@
 @keyframes mosaic-sync-progress {
   from { transform: translateX(-110%); }
   to { transform: translateX(310%); }
+}
+
+/* VS Code typography and readable secondary text for the workbench preview. */
+.vscode-workbench {
+  --vscode-editor-background: #1e1e1e;
+  --vscode-panel-background: #252526;
+  --vscode-input-background: #3c3c3c;
+  --vscode-border: #3c3c3c;
+  --vscode-foreground: #d4d4d4;
+  --vscode-muted: #a6a6a6;
+  --vscode-accent: #0078d4;
+  background-color: #1e1e1e;
+  color: var(--vscode-foreground);
+  font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.vscode-workbench :where(button, input, textarea, select) {
+  font-family: inherit;
+}
+
+.vscode-workbench :where(.font-mono, code, kbd) {
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.vscode-workbench :where(h1, h2, h3) {
+  color: #e7e7e7;
+}
+
+.vscode-workbench [class*="bg-[#FFFCFB]"],
+.vscode-workbench [class*="bg-[#FAF9F7]"],
+.vscode-workbench [class~="bg-white"],
+.vscode-workbench [class*="bg-bg-primary"] {
+  background-color: var(--vscode-editor-background) !important;
+}
+
+.vscode-workbench [class*="bg-white/"],
+.vscode-workbench [class*="bg-slate-50"],
+.vscode-workbench [class*="bg-slate-100"],
+.vscode-workbench [class*="bg-slate-200"],
+.vscode-workbench [class*="bg-gray-50"],
+.vscode-workbench [class*="bg-gray-100"],
+.vscode-workbench [class*="bg-gray-200"],
+.vscode-workbench [class*="bg-[#F"] {
+  background-color: var(--vscode-panel-background) !important;
+}
+
+.vscode-workbench [class*="bg-[#003366]"],
+.vscode-workbench [class*="bg-brand-blue"] {
+  background-color: #0078d4 !important;
+}
+
+.vscode-workbench [class*="text-[#003366]"],
+.vscode-workbench [class*="text-brand-blue"],
+.vscode-workbench [class*="text-[#1b1d1e]"],
+.vscode-workbench [class*="text-[#181D1E]"],
+.vscode-workbench [class*="text-slate-800"],
+.vscode-workbench [class*="text-slate-700"],
+.vscode-workbench [class*="text-slate-600"] {
+  color: var(--vscode-foreground) !important;
+}
+
+.vscode-workbench [class*="text-gray-"],
+.vscode-workbench [class*="text-slate-"] {
+  color: var(--vscode-muted) !important;
+}
+
+.vscode-workbench [class*="text-gray-900"] {
+  color: var(--vscode-foreground) !important;
+}
+
+.vscode-workbench [class*="border-[#C9"],
+.vscode-workbench [class*="border-[#003366]"],
+.vscode-workbench [class*="border-slate-"],
+.vscode-workbench [class*="border-gray-"] {
+  border-color: #3c3c3c !important;
+}
+
+.vscode-workbench [class*="text-[#C9"],
+.vscode-workbench [class*="text-amber-"] {
+  color: #4fc1ff !important;
+}
+
+.vscode-workbench :where(button, a, input, textarea, select):focus-visible {
+  outline: 1px solid #007fd4;
+  outline-offset: 1px;
+}
+
+.vscode-workbench [class*="text-[#7f"],
+.vscode-workbench [class*="text-[#77"],
+.vscode-workbench [class*="text-[#84"],
+.vscode-workbench [class*="text-[#85"],
+.vscode-workbench [class*="text-[#8b"],
+.vscode-workbench [class*="text-[#92"],
+.vscode-workbench [class*="text-[#96"],
+.vscode-workbench [class*="text-[#9b"],
+.vscode-workbench [class*="text-[#9c"] {
+  color: var(--vscode-muted) !important;
+}
+
+.vscode-workbench :is(button, input, textarea, select):disabled {
+  color: var(--vscode-muted) !important;
+  opacity: 0.86 !important;
+  cursor: not-allowed;
+}
+
+.codex-chat {
+  --chat-bg: #1e1e1e;
+  --chat-panel: #252526;
+  --chat-raised: #2d2d30;
+  --chat-border: #3c3c3c;
+  --chat-text: #cccccc;
+  --chat-muted: #a0a0a0;
+  --chat-accent: #75beff;
+  background: var(--chat-bg) !important;
+  color: var(--chat-text);
+  font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+}
+
+.codex-chat :where(button, input, textarea, select) {
+  font-family: inherit;
+}
+
+.codex-chat [class*="bg-[#FFFCFB]"],
+.codex-chat [class~="bg-white"],
+.codex-chat [class*="bg-white/"] {
+  background-color: var(--chat-bg) !important;
+}
+
+.codex-chat [class*="bg-[#003366]"] {
+  background-color: var(--chat-raised) !important;
+}
+
+.codex-chat [class*="text-[#003366]"] {
+  color: var(--chat-accent) !important;
+}
+
+.codex-chat [class*="text-[#181D1E]"],
+.codex-chat [class*="text-slate-600"],
+.codex-chat [class*="text-slate-700"] {
+  color: var(--chat-text) !important;
+}
+
+.codex-chat [class*="text-slate-400"],
+.codex-chat [class*="text-slate-500"] {
+  color: var(--chat-muted) !important;
+}
+
+.codex-chat [class*="text-[#858585]"],
+.codex-chat [class*="text-[#8b"],
+.codex-chat [class*="text-[#9b"] {
+  color: #a6a6a6 !important;
+}
+
+.codex-chat [class*="border-[#003366]"],
+.codex-chat [class*="border-[#C9A84C]"],
+.codex-chat [class*="border-slate-"],
+.codex-chat [class*="border-gray-"] {
+  border-color: var(--chat-border) !important;
+}
+
+.codex-chat :where(button, a, input, textarea, select):focus-visible {
+  outline: 1px solid #0078d4;
+  outline-offset: 1px;
+}
+
+.codex-chat form:focus-within {
+  border-color: #0078d4 !important;
 }
 
 .contracts-pdf-text-layer {

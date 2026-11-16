@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { BookOpen, ChevronDown, ChevronUp, Clock, ExternalLink, Maximize2, Minimize2, RotateCcw, Send, Sparkles, Square, User, X } from "lucide-react";
+import { BookOpen, Clock, ExternalLink, Maximize2, Minimize2, RotateCcw, Send, Sparkles, Square, User, X } from "lucide-react";
 import { askEcho } from "@/lib/api";
 import type { ArchivedMeeting } from "@/features/meetings/types/meeting";
 import type { AskEchoResponse } from "@/features/ask-echo/lib/schema";
-import { MosaicBrand } from "@/components/MosaicBrand";
+import { CodexChatPane } from "@/features/ask-echo/components/CodexChatPane";
 
 interface Message {
   role: "user" | "assistant";
@@ -37,8 +37,9 @@ export function UniversalEchoDrawer({ isOpen, onClose, onOpenSource }: Universal
   });
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [chatTab, setChatTab] = useState<"echo" | "codex">("echo");
   const [userName, setUserName] = useState("");
   const [conversationLoaded, setConversationLoaded] = useState(!desktopMode);
   const [openSources, setOpenSources] = useState<Record<number, boolean>>({});
@@ -100,7 +101,7 @@ export function UniversalEchoDrawer({ isOpen, onClose, onOpenSource }: Universal
       const number = Number(match[1]);
       const citation = citations.find((item) => item.marker === `[${number}]`) || citations[number - 1];
       const source = citation ? message.response?.sources.find((item) => item.sourceId === citation.sourceId) : message.response?.sources[number - 1];
-      return <button key={`${lineKey}-${index}`} type="button" aria-label={`Open source ${number}`} disabled={!source} onClick={() => { if (source?.sourceId.startsWith("current-meeting:")) setOpenSources((current) => ({ ...current, [messageIndex]: true })); else if (source) onOpenSource?.(source.page || "meetings", source.meetingId, source.url); }} className="align-super mx-0.5 text-[10px] font-semibold text-[#003366] underline decoration-[#C9A84C] underline-offset-2 disabled:cursor-default">[{number}]</button>;
+      return <button key={`${lineKey}-${index}`} type="button" aria-label={`Open source ${number}`} disabled={!source} onClick={() => { if (source?.sourceId.startsWith("current-meeting:")) setOpenSources((current) => ({ ...current, [messageIndex]: true })); else if (source) onOpenSource?.(source.page || "meetings", source.meetingId, source.url); }} className="align-super mx-0.5 text-[10px] font-semibold text-[#75beff] underline decoration-[#75beff] underline-offset-2 disabled:cursor-default">[{number}]</button>;
     });
   };
   const renderAnswer = (message: Message, messageIndex: number) => message.content.split("\n").map((line, index) => {
@@ -108,35 +109,33 @@ export function UniversalEchoDrawer({ isOpen, onClose, onOpenSource }: Universal
     if (!cleaned) return <div key={index} className="h-2" />;
     const isBullet = /^[-•]\s/.test(cleaned);
     const content = isBullet ? cleaned.replace(/^[-•]\s*/, "") : cleaned;
-    return <div key={index} className={`${isBullet ? "flex gap-2 pl-1" : ""} ${/^(your |today|summary|open items|next steps|deadlines|decisions)/i.test(content) ? "font-medium text-[#003366]" : ""}`}>{isBullet && <span className="text-[#C9A84C]">•</span>}<span>{renderInline(message, content, String(index), messageIndex)}</span></div>;
+    return <div key={index} className={`${isBullet ? "flex gap-2 pl-1" : ""} ${/^(your |today|summary|open items|next steps|deadlines|decisions)/i.test(content) ? "font-medium text-[#e3e3e3]" : ""}`}>{isBullet && <span className="text-[#75beff]">•</span>}<span>{renderInline(message, content, String(index), messageIndex)}</span></div>;
   });
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
-      <button aria-label="Close Ask Echo" onClick={onClose} className="fixed inset-0 bg-[#003366]/30 backdrop-blur-[2px]" />
-      <section aria-label="Ask Echo" className={`relative h-full bg-[#FFFCFB] border-l border-[#C9A84C] shadow-2xl flex flex-col transition-[width] duration-300 ${expanded ? "w-full" : "w-full max-w-xl"}`}>
-        <header className="min-h-20 px-5 bg-[#003366] text-[#FFFCFB] flex items-center justify-between border-b border-[#C9A84C]">
-          <div className="flex items-center gap-3">
-            <MosaicBrand size="small" className="text-[#FFFCFB]" />
-            <div className="border-l border-[#C9A84C] pl-3"><h2 className="font-serif italic text-xl">Ask Echo</h2><p className="text-xs font-normal text-[#FFFCFB]/70">{userName ? `Here for you, ${userName}` : "Your work, made clearer"}</p></div>
-          </div>
+    <div className={`${isOpen ? "fixed" : "hidden"} inset-0 z-50 flex justify-end overflow-hidden`}>
+      <button aria-label="Close Ask Echo" onClick={onClose} className="fixed inset-0 hidden bg-black/60 backdrop-blur-[2px] max-md:block" />
+      <section aria-label="Ask Echo" className={`codex-chat relative flex h-full w-full flex-col border-l border-[#3c3c3c] bg-[#1e1e1e] text-[#cccccc] shadow-2xl transition-[width] duration-300 md:max-w-none ${expanded ? "md:w-full" : "md:w-[min(520px,34vw)]"}`}>
+        <header className="flex min-h-14 items-center justify-between border-b border-[#3c3c3c] bg-[#252526] px-4">
+          {desktopMode ? <div className="flex items-center gap-1" role="tablist" aria-label="Chat assistant">
+            <button type="button" role="tab" aria-selected={chatTab === "echo"} onClick={() => setChatTab("echo")} className={`flex items-center gap-2 rounded px-3 py-2 text-xs ${chatTab === "echo" ? "bg-[#37373d] text-white" : "text-[#b0b0b0] hover:bg-[#2d2d30] hover:text-white"}`}><Sparkles size={14} className="text-[#75beff]" />Ask Echo</button>
+            <button type="button" role="tab" aria-selected={chatTab === "codex"} onClick={() => setChatTab("codex")} className={`flex items-center gap-2 rounded px-3 py-2 text-xs ${chatTab === "codex" ? "bg-[#37373d] text-white" : "text-[#b0b0b0] hover:bg-[#2d2d30] hover:text-white"}`}><span className="font-semibold text-[#75beff]">C</span>Codex</button>
+          </div> : <div className="flex items-center gap-2.5">
+            <Sparkles size={16} className="text-[#75beff]" />
+            <div><h2 className="text-sm font-semibold">Ask Echo</h2><p className="text-[11px] text-[#b0b0b0]">{userName ? `Workspace assistant · ${userName}` : "Workspace assistant"}</p></div>
+          </div>}
           <div className="flex items-center gap-1">
-            <button type="button" onClick={reset} aria-label="Reset conversation" title="Reset conversation" className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide hover:bg-[#174778]"><RotateCcw size={14} /> Reset</button>
-            <button type="button" onClick={() => setExpanded(!expanded)} aria-label={expanded ? "Close full view" : "Open full view"} className="p-2 hover:bg-[#174778]">{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
-            <button type="button" onClick={onClose} aria-label="Close" className="p-2 hover:bg-[#174778]"><X size={18} /></button>
+            {chatTab === "echo" && <button type="button" onClick={reset} aria-label="Reset conversation" title="Reset conversation" className="rounded p-2 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><RotateCcw size={14} /></button>}
+            <button type="button" onClick={() => setExpanded(!expanded)} aria-label={expanded ? "Close full view" : "Open full view"} className="rounded p-2 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white">{expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+            <button type="button" onClick={onClose} aria-label="Close" className="rounded p-2 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><X size={16} /></button>
           </div>
         </header>
 
-        {showSuggestions && <div className="border-b border-[#C9A84C]/40 px-5 py-4 bg-[#FFFCFB]">
-          <button type="button" onClick={() => setShowSuggestions(!showSuggestions)} className="w-full flex justify-between text-[10px] font-medium tracking-[0.2em] uppercase text-[#003366]"><span className="flex items-center gap-2"><BookOpen size={13} /> Try asking</span>{showSuggestions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">{quickPrompts.map((prompt) => <button key={prompt} type="button" onClick={() => send(prompt)} disabled={isThinking} className="text-left text-xs text-[#181D1E] border border-[#003366]/20 px-3 py-2 hover:border-[#C9A84C] bg-[#FFFCFB]">{prompt}</button>)}</div>
-        </div>}
-
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-[#FFFCFB]">
-          {messages.map((message, index) => <div key={`${index}-${message.timestamp}`} className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}>
-            <div className={`w-7 h-7 flex items-center justify-center shrink-0 ${message.role === "assistant" ? "bg-[#003366] text-[#C9A84C]" : "border border-[#003366] text-[#003366]"}`}>{message.role === "assistant" ? <Sparkles size={13} /> : <User size={13} />}</div>
-            <div className={`max-w-[85%] p-3 text-sm leading-relaxed ${message.role === "assistant" ? "border border-[#003366]/15 text-[#181D1E]" : "bg-[#003366] text-[#FFFCFB]"}`}>
+        {desktopMode && <CodexChatPane visible={chatTab === "codex"} />}
+        <div className={`${chatTab === "echo" ? "flex" : "hidden"} min-h-0 flex-1 flex-col`}>
+        <div className="flex-1 space-y-5 overflow-y-auto bg-[#1e1e1e] px-4 py-5 sm:px-6">
+          {messages.map((message, index) => <div key={`${index}-${message.timestamp}`} className={`flex min-w-0 gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}>
+            <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${message.role === "assistant" ? "bg-[#2d2d30] text-[#75beff]" : "bg-[#37373d] text-[#cccccc]"}`}>{message.role === "assistant" ? <Sparkles size={13} /> : <User size={13} />}</div>
+            <div className={`min-w-0 whitespace-normal [overflow-wrap:anywhere] text-sm leading-6 ${message.role === "assistant" ? "flex-1 py-1 text-[#cccccc]" : "w-fit max-w-[86%] rounded-2xl bg-[#2d2d30] px-4 py-3 text-[#e3e3e3]"}`}>
               <div className="space-y-1">{message.role === "assistant" ? renderAnswer(message, index) : message.content}</div>
               {message.response?.sources?.length ? <div className="mt-4 border-t border-[#C9A84C]/40 pt-3"><button type="button" onClick={() => setOpenSources((current) => ({ ...current, [index]: !current[index] }))} className="flex w-full items-center justify-between text-left text-[10px] font-medium tracking-[0.2em] uppercase text-[#003366]"><span>Sources · {message.response.sources.length}</span><span className="text-xs normal-case tracking-normal">{openSources[index] ? "Hide" : "Show"}</span></button>{openSources[index] && <div className="mt-3 space-y-2">{message.response.sources.map((source, sourceIndex) => { const currentMeeting = source.sourceId.startsWith("current-meeting:"); return <button key={source.sourceId} type="button" disabled={currentMeeting} onClick={() => onOpenSource?.(source.page || "meetings", source.meetingId, source.url)} className="block w-full text-left border-l-2 border-[#C9A84C] pl-3 py-2 enabled:hover:bg-[#003366]/5 disabled:cursor-default"><span className="flex items-center justify-between gap-2 text-xs font-medium text-[#003366]"><span><span className="mr-2 text-[10px] text-[#C9A84C]">[{sourceIndex + 1}]</span>{source.meetingTitle}</span>{!currentMeeting && <ExternalLink size={11} />}</span><span className="block text-[10px] uppercase tracking-wide text-[#003366]/55">{currentMeeting ? "Processed audio" : (source.page || "workspace")}{source.meetingDate ? ` · ${source.meetingDate}` : ""}{source.topic ? ` · ${source.topic}` : ""}</span><span className="block mt-1 text-xs text-[#181D1E]/80">{source.excerpt}</span></button>; })}</div>}</div> : null}
               {message.response?.followUps?.length ? <div className="mt-3 flex flex-wrap gap-2">{message.response.followUps.map((followUp) => <button key={followUp} type="button" onClick={() => send(followUp)} className="border border-[#003366]/25 px-2 py-1 text-[11px] text-[#003366] hover:border-[#C9A84C]">{followUp}</button>)}</div> : null}
@@ -147,14 +146,19 @@ export function UniversalEchoDrawer({ isOpen, onClose, onOpenSource }: Universal
           <div ref={messagesEndRef} />
         </div>
 
-        <footer className="p-4 bg-[#FFFCFB] border-t border-[#C9A84C]/50">
-          <div className="mb-2 text-[10px] font-medium tracking-[0.18em] uppercase text-[#003366]/70">Ask Echo uses the work you’re allowed to access</div>
-          <form onSubmit={(event) => { event.preventDefault(); send(); }} className="flex items-end border border-[#003366]/35 focus-within:border-[#003366]">
-            <textarea aria-label="Message Ask Echo" rows={1} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder="Ask about your tasks, daily log, meetings, or deadlines…" disabled={isThinking} className="min-h-11 max-h-32 flex-1 resize-y bg-[#FFFCFB] px-3 py-3 text-sm text-[#181D1E] outline-none" />
-            {isThinking ? <button type="button" onClick={() => abortRef.current?.abort()} aria-label="Stop response" className="m-1.5 p-2 text-[#003366]"><Square size={15} /></button> : <button type="submit" disabled={!input.trim()} aria-label="Send message" className="m-1.5 p-2 text-[#003366] disabled:opacity-30"><Send size={16} /></button>}
+        <footer className="shrink-0 border-t border-[#3c3c3c] bg-[#1e1e1e] px-3 pb-3 pt-2 sm:px-4">
+          {showSuggestions && <div className="mb-2 grid grid-cols-2 gap-1.5">{quickPrompts.map((prompt) => <button key={prompt} type="button" onClick={() => send(prompt)} disabled={isThinking} className="rounded-lg border border-[#3c3c3c] bg-[#252526] px-2.5 py-2 text-left text-[11px] text-[#c5c5c5] hover:border-[#5a5a5a] hover:bg-[#2d2d30]">{prompt}</button>)}</div>}
+          <form onSubmit={(event) => { event.preventDefault(); send(); }} className="rounded-xl border border-[#4a4a4a] bg-[#252526] p-2 focus-within:border-[#0078d4]">
+            <textarea aria-label="Message Ask Echo" rows={2} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder="Message Echo" disabled={isThinking} className="max-h-32 min-h-12 w-full resize-y bg-transparent px-2 py-1.5 text-sm leading-5 text-[#e3e3e3] outline-none placeholder:text-[#858585]" />
+            <div className="flex items-center gap-1 px-1 pt-1">
+              <button type="button" onClick={() => setShowSuggestions(!showSuggestions)} aria-label={showSuggestions ? "Hide prompt suggestions" : "Show prompt suggestions"} title="Prompt suggestions" className="rounded-md p-1.5 text-[#a0a0a0] hover:bg-[#3c3c3c] hover:text-white"><BookOpen size={15} /></button>
+              <span className="ml-1 text-[10px] text-[#858585]">Enter to send · Shift+Enter for newline</span>
+              {isThinking ? <button type="button" onClick={() => abortRef.current?.abort()} aria-label="Stop response" className="ml-auto rounded-lg bg-[#3c3c3c] p-2 text-white hover:bg-[#4a4a4a]"><Square size={14} /></button> : <button type="submit" disabled={!input.trim()} aria-label="Send message" className="ml-auto rounded-lg bg-[#0078d4] p-2 text-white hover:bg-[#1683d8] disabled:bg-[#3c3c3c] disabled:text-[#858585]"><Send size={15} /></button>}
+            </div>
           </form>
-          <p className="mt-2 text-center text-[10px] text-[#181D1E]/50">{desktopMode ? "Ask Echo uses information stored on this device." : "Ask Echo matches “me” and “my” to your signed-in profile."}</p>
+          <p className="mt-2 text-center text-[10px] text-[#858585]">{desktopMode ? "Uses information stored on this device." : "Uses information available in your workspace."}</p>
         </footer>
+        </div>
       </section>
     </div>
   );

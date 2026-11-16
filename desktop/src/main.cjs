@@ -3,20 +3,25 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 const { startLocalAppServer } = require("./local-app-server.cjs");
+const { CodexAppServer } = require("./codex-app-server.cjs");
 
 let APP_ORIGIN = null;
 let localAppServer;
 let localAppOptions;
+let codexAppServer;
 let backupTimer;
 const APP_PARTITION = "persist:mosaic-local-first";
 const CLICKUP_HOST = "clickup.com";
 let mainWindow;
+let mainWindowWasShown = false;
 let reminderWindow;
 let reminderTimer;
 let reminderCanClose = false;
 let tray;
 let isQuitting = false;
-let settings = { startWithWindows: false, closeToTrayNoticeShown: false, mediaPermissionGranted: false };
+let settings = { startWithWindows: false, closeToTrayNoticeShown: false, mediaPermissionGranted: false, codexWorkspaceDirectory: null };
+let displayCaptureSequence = 0;
+const pendingDisplayCaptures = new Map();
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -30,7 +35,12 @@ if (!app.requestSingleInstanceLock()) {
     const appPath = app.isPackaged
       ? path.join(process.resourcesPath, "local-app")
       : path.join(__dirname, "..", "build", "local-app");
-    localAppOptions = { appPath, runtimePath: process.execPath, dataDirectory: path.join(app.getPath("userData"), "data") };
+    localAppOptions = {
+      appPath,
+      runtimePath: process.execPath,
+      dataDirectory: path.join(app.getPath("userData"), "data"),
+      recordingsDirectory: path.join(app.getPath("documents"), "Mosaic Meetings"),
+    };
 
     try {
       // Start the local web app before opening its desktop window.
@@ -45,6 +55,8 @@ if (!app.requestSingleInstanceLock()) {
 
     setPermissionPolicy();
     registerReminderBridge();
+    registerRecordingBridge();
+    registerCodexBridge();
     createTray();
     createMainWindow();
     applyStartupSetting();
@@ -63,6 +75,8 @@ if (!app.requestSingleInstanceLock()) {
       localAppServer = null;
       void server.stop()
         .catch((error) => console.error("Could not stop Mosaic's local server:", error))
+        .then(() => codexAppServer?.stop())
+        .catch((error) => console.error("Could not stop Codex CLI:", error))
         .finally(() => app.quit());
       return;
     }
@@ -84,6 +98,8 @@ function readSettings() {
       startWithWindows: saved.startWithWindows === true,
       closeToTrayNoticeShown: saved.closeToTrayNoticeShown === true,
       mediaPermissionGranted: saved.mediaPermissionGranted === true,
+      codexWorkspaceDirectory: typeof saved.codexWorkspaceDirectory === "string" && fs.existsSync(saved.codexWorkspaceDirectory) && fs.statSync(saved.codexWorkspaceDirectory).isDirectory()
+        ? path.resolve(saved.codexWorkspaceDirectory) : null,
       reminder: saved.reminder && saved.reminder.enabled === true && Number.isFinite(Number(saved.reminder.intervalSeconds))
         ? { enabled: true, intervalSeconds: Math.max(1, Math.min(359999, Number(saved.reminder.intervalSeconds))), nextAt: Number.isFinite(Number(saved.reminder.nextAt)) ? Number(saved.reminder.nextAt) : Date.now() + 30 * 60_000, taskNames: [] }
         : null,
@@ -160,44 +176,15 @@ function setPermissionPolicy() {
     try {
       const sources = await desktopCapturer.getSources({
         types: ["screen", "window"],
-        thumbnailSize: { width: 0, height: 0 },
-        fetchWindowIcons: false,
+        thumbnailSize: { width: 400, height: 225 },
+        fetchWindowIcons: true,
       });
       if (sources.length === 0) return callback(null);
-
-      const sourceNames = sources.map((source, index) => `${index + 1}. ${source.name}`);
-      const choice = dialog.showMessageBoxSync(mainWindow, {
-        type: "question",
-        title: "Choose what to share",
-        message: "Choose a screen or window for this meeting.",
-        detail: sourceNames.join("\n"),
-        buttons: sources.map((_source, index) => `Share ${index + 1}`).concat("Cancel"),
-        defaultId: 0,
-        cancelId: sources.length,
-        noLink: true,
-      });
-      const selectedSource = sources[choice];
+      const selectedSource = await chooseDisplaySource(sources);
       if (!selectedSource) return callback(null);
-
-      let includeSystemAudio = false;
-      if (request.audioRequested) {
-        const audioChoice = dialog.showMessageBoxSync(mainWindow, {
-          type: "question",
-          title: "Include meeting audio?",
-          message: "Include audio playing on this device?",
-          detail: "This can include other sounds from your computer.",
-          buttons: ["Without system audio", "Include system audio", "Cancel"],
-          defaultId: 0,
-          cancelId: 2,
-          noLink: true,
-        });
-        if (audioChoice === 2) return callback(null);
-        includeSystemAudio = audioChoice === 1;
-      }
-
       callback({
         video: selectedSource,
-        ...(includeSystemAudio ? { audio: "loopback" } : {}),
+        ...(request.audioRequested ? { audio: "loopback" } : {}),
       });
     } catch (error) {
       console.error("Screen selection failed:", error.message);
@@ -207,12 +194,13 @@ function setPermissionPolicy() {
 }
 
 function createMainWindow() {
+  const startHidden = process.argv.includes("--hidden");
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 960,
     minHeight: 640,
-    show: !process.argv.includes("--hidden"),
+    show: !startHidden,
     backgroundColor: "#FFFCFB",
       icon: path.join(__dirname, "..", "build", "mosaic.ico"),
     autoHideMenuBar: true,
@@ -225,6 +213,10 @@ function createMainWindow() {
       preload: path.join(__dirname, "preload.cjs"),
     },
   });
+  if (!startHidden) {
+    mainWindow.maximize();
+    mainWindowWasShown = true;
+  }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isClickUpPage(url)) {
@@ -442,6 +434,10 @@ function showMainWindow() {
     return;
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindowWasShown) {
+    mainWindow.maximize();
+    mainWindowWasShown = true;
+  }
   mainWindow.show();
   mainWindow.focus();
 }
@@ -488,6 +484,127 @@ function registerReminderBridge() {
       saveSettings();
       scheduleNextReminder();
     }
+  });
+}
+
+function chooseDisplaySource(sources) {
+  return new Promise((resolve) => {
+    const requestId = `capture-${++displayCaptureSequence}`;
+    const sourceById = new Map(sources.map((source) => [source.id, source]));
+    const finish = (source) => {
+      const pending = pendingDisplayCaptures.get(requestId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      pendingDisplayCaptures.delete(requestId);
+      resolve(source);
+    };
+    const timeout = setTimeout(() => finish(null), 120_000);
+    pendingDisplayCaptures.set(requestId, { timeout, finish, sourceById });
+    mainWindow.webContents.send("mosaic:display-capture-request", {
+      requestId,
+      sources: sources.map((source) => ({
+        id: source.id,
+        name: source.name,
+        thumbnail: source.thumbnail.toDataURL(),
+        appIcon: source.appIcon && !source.appIcon.isEmpty() ? source.appIcon.toDataURL() : null,
+      })),
+    });
+  });
+}
+
+function registerRecordingBridge() {
+  ipcMain.handle("mosaic:display-capture-select", (event, requestId, sourceId) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || !isAppOrigin(event.senderFrame?.url || "")) return false;
+    const pending = pendingDisplayCaptures.get(requestId);
+    if (!pending) return false;
+    const source = typeof sourceId === "string" ? pending.sourceById.get(sourceId) : null;
+    if (sourceId !== null && !source) return false;
+    pending.finish(source || null);
+    return true;
+  });
+
+  ipcMain.handle("mosaic:open-recording-location", (event, fileName) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || !isAppOrigin(event.senderFrame?.url || "")) return false;
+    if (typeof fileName !== "string" || path.basename(fileName) !== fileName) return false;
+    const directory = path.resolve(localAppOptions.recordingsDirectory);
+    const filePath = path.resolve(directory, fileName);
+    if (!filePath.startsWith(`${directory}${path.sep}`) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false;
+    shell.showItemInFolder(filePath);
+    return true;
+  });
+}
+
+function registerCodexBridge() {
+  const isTrustedSender = (event) => Boolean(
+    mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents &&
+    isAppOrigin(event.senderFrame?.url || ""),
+  );
+  const getCodexServer = () => {
+    codexAppServer ||= new CodexAppServer((payload) => {
+      if (mainWindow && !mainWindow.isDestroyed() && isAppOrigin(mainWindow.webContents.getURL())) {
+        mainWindow.webContents.send("mosaic:codex-event", payload);
+      }
+    });
+    return codexAppServer;
+  };
+
+  ipcMain.handle("mosaic:codex-status", async (event) => {
+    if (!isTrustedSender(event)) throw new Error("Codex is only available inside Mosaic.");
+    try {
+      const accountResponse = await getCodexServer().readAccount();
+      const account = accountResponse.account;
+      return {
+        available: true,
+        signedIn: Boolean(account),
+        email: account?.email || null,
+        accountType: account?.type || null,
+        planType: account?.planType || null,
+        workspaceDirectory: settings.codexWorkspaceDirectory,
+      };
+    } catch (error) {
+      return { available: false, signedIn: false, email: null, workspaceDirectory: settings.codexWorkspaceDirectory, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle("mosaic:codex-login", async (event) => {
+    if (!isTrustedSender(event)) throw new Error("Codex is only available inside Mosaic.");
+    const login = await getCodexServer().beginChatGptLogin();
+    await openExternalUrl(login.authUrl);
+    return { started: true };
+  });
+
+  ipcMain.handle("mosaic:codex-choose-workspace", async (event) => {
+    if (!isTrustedSender(event)) throw new Error("Codex is only available inside Mosaic.");
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose a folder Codex can work in",
+      properties: ["openDirectory"],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    settings.codexWorkspaceDirectory = path.resolve(result.filePaths[0]);
+    saveSettings();
+    return { workspaceDirectory: settings.codexWorkspaceDirectory };
+  });
+
+  ipcMain.handle("mosaic:codex-start-thread", async (event) => {
+    if (!isTrustedSender(event)) throw new Error("Codex is only available inside Mosaic.");
+    if (!settings.codexWorkspaceDirectory) throw new Error("Choose a workspace folder first.");
+    return getCodexServer().startThread(settings.codexWorkspaceDirectory);
+  });
+
+  ipcMain.handle("mosaic:codex-send", async (event, prompt) => {
+    if (!isTrustedSender(event)) throw new Error("Codex is only available inside Mosaic.");
+    if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 20_000) throw new Error("Enter a message under 20,000 characters.");
+    return getCodexServer().sendMessage(prompt.trim());
+  });
+
+  ipcMain.handle("mosaic:codex-interrupt", async (event) => {
+    if (!isTrustedSender(event)) throw new Error("Codex is only available inside Mosaic.");
+    return getCodexServer()?.interruptTurn() || false;
+  });
+
+  ipcMain.handle("mosaic:codex-approval", (event, id, accepted) => {
+    if (!isTrustedSender(event) || typeof accepted !== "boolean" || (typeof id !== "number" && typeof id !== "string")) return false;
+    return getCodexServer()?.respondToApproval(id, accepted) || false;
   });
 }
 

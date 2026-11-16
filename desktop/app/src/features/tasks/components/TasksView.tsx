@@ -1212,7 +1212,7 @@ export default function TasksView({
         )}
 
         {/* Auth / Connection Warning Card */}
-        {needsAuth && (
+        {!desktopMode && needsAuth && (
           <div className="max-w-2xl mx-auto mb-6 bg-[#FFFCFB] border-2 border-[#003366] p-6 shadow-md">
             <div className="flex items-start gap-3 mb-4">
               <AlertCircle className="text-[#c9ab4c] shrink-0 mt-0.5" size={22} />

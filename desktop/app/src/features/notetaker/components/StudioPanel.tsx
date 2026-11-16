@@ -8,6 +8,7 @@ import {
   Clock,
   Download,
   ExternalLink,
+  FolderOpen,
   MessageCircle,
   Mic,
   Pause,
@@ -61,6 +62,14 @@ interface EchoMessage {
   timestamp: string;
   response?: AskEchoResponse;
 }
+
+type DisplayCaptureSource = { id: string; name: string; thumbnail: string; appIcon: string | null };
+type DisplayCaptureRequest = { requestId: string; sources: DisplayCaptureSource[] };
+type MosaicDesktopBridge = {
+  onDisplayCaptureRequest: (listener: (request: DisplayCaptureRequest) => void) => () => void;
+  selectDisplayCaptureSource: (requestId: string, sourceId: string | null) => Promise<boolean>;
+  openRecordingLocation: (fileName: string) => Promise<boolean>;
+};
 
 const ECHO_STORAGE_KEY = "echo_ask_conversation";
 const ECHO_STARTER: EchoMessage = { role: "assistant", content: "Hi — I’m Echo. What would you like to get done today?", timestamp: "Just now" };
@@ -147,8 +156,47 @@ export function StudioPanel({
   const [openEchoSources, setOpenEchoSources] = useState<Record<number, boolean>>({});
   const [isEchoThinking, setIsEchoThinking] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [displayCaptureRequest, setDisplayCaptureRequest] = useState<DisplayCaptureRequest | null>(null);
+  const [selectedDisplaySourceId, setSelectedDisplaySourceId] = useState<string | null>(null);
+  const [displayCaptureError, setDisplayCaptureError] = useState("");
+  const [isOpeningRecordingLocation, setIsOpeningRecordingLocation] = useState(false);
+  const [recordingLocationError, setRecordingLocationError] = useState("");
   const notesEndRef = useRef<HTMLDivElement>(null);
   const echoEndRef = useRef<HTMLDivElement>(null);
+  const isVideoRecording = recorder.recordedFile?.type.startsWith("video/") || recorder.mediaType === "video";
+
+  React.useEffect(() => {
+    const bridge = (window as Window & { mosaicDesktop?: MosaicDesktopBridge }).mosaicDesktop;
+    return bridge?.onDisplayCaptureRequest((request) => {
+      setDisplayCaptureRequest(request);
+      setSelectedDisplaySourceId(null);
+      setDisplayCaptureError("");
+    });
+  }, []);
+
+  const respondToDisplayCapture = useCallback(async (sourceId: string | null) => {
+    if (!displayCaptureRequest) return;
+    setSelectedDisplaySourceId(sourceId);
+    try {
+      const bridge = (window as Window & { mosaicDesktop?: MosaicDesktopBridge }).mosaicDesktop;
+      const accepted = await bridge?.selectDisplayCaptureSource(displayCaptureRequest.requestId, sourceId);
+      if (accepted) setDisplayCaptureRequest(null);
+      else setDisplayCaptureError("Mosaic could not use that source. Choose again.");
+    } catch {
+      setDisplayCaptureError("Mosaic could not use that source. Choose again.");
+    } finally {
+      setSelectedDisplaySourceId(null);
+    }
+  }, [displayCaptureRequest]);
+
+  React.useEffect(() => {
+    if (!displayCaptureRequest) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") void respondToDisplayCapture(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [displayCaptureRequest, respondToDisplayCapture]);
 
   // The top-bar New Meeting action starts the same botless recorder session.
   React.useEffect(() => {
@@ -276,6 +324,22 @@ export function StudioPanel({
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const handleOpenRecordingLocation = async () => {
+    const fileName = recorder.localSavedPath?.split(/[/\\]/).pop();
+    if (!fileName) return;
+    setIsOpeningRecordingLocation(true);
+    setRecordingLocationError("");
+    try {
+      const bridge = (window as Window & { mosaicDesktop?: MosaicDesktopBridge }).mosaicDesktop;
+      const opened = await bridge?.openRecordingLocation(fileName);
+      if (!opened) setRecordingLocationError("Recording file could not be found.");
+    } catch {
+      setRecordingLocationError("Recording folder could not be opened.");
+    } finally {
+      setIsOpeningRecordingLocation(false);
+    }
   };
 
   const sendEchoBot = async () => {
@@ -648,11 +712,22 @@ export function StudioPanel({
                   <span className="font-mono">{formatTime(recorder.elapsedSeconds)}</span>
                 </div>
 
-                {recorder.localSavedPath && (
+                {recorder.localSaveStatus === "saving" && (
+                  <div className="text-[10px] text-blue-800 bg-blue-50 border border-blue-200 p-1.5" role="status">
+                    Saving to Documents/Mosaic Meetings…
+                  </div>
+                )}
+                {recorder.localSaveStatus === "failed" && (
+                  <div className="text-[10px] text-red-800 bg-red-50 border border-red-200 p-1.5" role="alert">
+                    Automatic save failed. Use Download video copy to keep this recording.
+                  </div>
+                )}
+                {recorder.localSaveStatus === "saved" && recorder.localSavedPath && (
                   <div className="text-[10px] text-emerald-700 bg-emerald-50/80 border border-emerald-200 p-1.5 truncate">
                     Saved to Documents/Mosaic Meetings: <span className="font-mono">{recorder.localSavedPath.split(/[/\\]/).pop()}</span>
                   </div>
                 )}
+                {recordingLocationError && <p className="text-[10px] text-red-700" role="alert">{recordingLocationError}</p>}
 
                 <div className="space-y-1.5">
                   <button
@@ -665,13 +740,25 @@ export function StudioPanel({
                     {isFinalizing ? "Finishing…" : "Send to Notetaker"}
                   </button>
                   <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleSaveRecording}
-                      className="h-7 inline-flex items-center justify-center gap-1 bg-white text-[#003366] font-semibold py-1 px-2 border border-slate-300 text-[11px] hover:border-[#003366] transition-colors cursor-pointer"
-                    >
-                      <Download size={11} /> {recorder.recordedFile?.type.startsWith("video/") || recorder.mediaType === "video" ? "Save Video" : "Save Audio"}
-                    </button>
+                    {isVideoRecording && recorder.localSavedPath ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleOpenRecordingLocation()}
+                        disabled={isOpeningRecordingLocation}
+                        className="h-7 inline-flex items-center justify-center gap-1 bg-white text-[#003366] font-semibold py-1 px-2 border border-slate-300 text-[11px] hover:border-[#003366] transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        <FolderOpen size={11} /> {isOpeningRecordingLocation ? "Opening…" : "Open file location"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleSaveRecording}
+                        disabled={isVideoRecording && recorder.localSaveStatus === "saving"}
+                        className="h-7 inline-flex items-center justify-center gap-1 bg-white text-[#003366] font-semibold py-1 px-2 border border-slate-300 text-[11px] hover:border-[#003366] transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        <Download size={11} /> {isVideoRecording ? "Download video copy" : "Save Audio"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={handleDiscard}
@@ -900,7 +987,7 @@ export function StudioPanel({
           )}
 
           {/* ── Right / Bottom: Ask Echo ───────────────────────── */}
-          <div id="meeting-assistant-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Assistant" : undefined} className={`${isFullscreen ? "w-full min-w-0 min-h-0 lg:h-full lg:flex-none" : "flex-1 border-t border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "assistant" ? "hidden lg:flex" : "flex"} flex-1 flex-col bg-[#FFFCFB]`}>
+          <div id="meeting-assistant-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Assistant" : undefined} className={`${canAskEcho && workspaceTab === "echo" ? "codex-chat" : ""} ${isFullscreen ? "w-full min-w-0 min-h-0 lg:h-full lg:flex-none" : "flex-1 border-t border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "assistant" ? "hidden lg:flex" : "flex"} flex-1 flex-col bg-[#FFFCFB]`}>
             <div className="px-5 py-3.5 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between min-h-[68px]">
               <div className="flex items-center gap-3">
                 <div>
@@ -1040,6 +1127,58 @@ export function StudioPanel({
           </div>
         </div>
       </section>
+
+      {displayCaptureRequest && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#001A33]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="display-capture-title">
+          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col border border-[#C9A84C] bg-[#FFFCFB] shadow-2xl">
+            <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#C9A84C]">Meeting recording</p>
+                <h2 id="display-capture-title" className="mt-1 font-serif text-xl font-bold italic text-[#003366]">Choose a screen or window</h2>
+                <p className="mt-1 text-sm text-slate-600">System audio is included automatically.</p>
+              </div>
+              <button type="button" onClick={() => void respondToDisplayCapture(null)} className="grid h-9 w-9 shrink-0 place-items-center border border-slate-300 text-slate-600 hover:border-[#003366] hover:text-[#003366]" aria-label="Cancel screen selection">
+                <X size={17} />
+              </button>
+            </header>
+
+            <div className="min-h-0 overflow-y-auto p-4 sm:p-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {displayCaptureRequest.sources.map((source) => {
+                  const isScreen = source.id.startsWith("screen:");
+                  const isSelected = selectedDisplaySourceId === source.id;
+                  return (
+                    <button
+                      key={source.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedDisplaySourceId(source.id)}
+                      className={`overflow-hidden border text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#C9A84C] ${isSelected ? "border-[#C9A84C] ring-2 ring-[#C9A84C]/40" : "border-slate-200 hover:border-[#31577D]"}`}
+                    >
+                      <div className="relative aspect-video bg-slate-100">
+                        <img src={source.thumbnail} alt="" className="h-full w-full object-contain" />
+                        {source.appIcon && <img src={source.appIcon} alt="" className="absolute bottom-2 left-2 h-7 w-7 border border-white bg-white p-0.5 shadow" />}
+                      </div>
+                      <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <span className="min-w-0 truncate text-sm font-semibold text-[#003366]">{source.name}</span>
+                        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-[#31577D]">{isScreen ? "Screen" : "Window"}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {displayCaptureError && <p className="mt-3 text-sm text-red-700" role="alert">{displayCaptureError}</p>}
+            </div>
+
+            <footer className="flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3">
+              <button type="button" onClick={() => void respondToDisplayCapture(null)} className="border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:border-[#003366]">Cancel</button>
+              <button type="button" onClick={() => void respondToDisplayCapture(selectedDisplaySourceId)} disabled={!selectedDisplaySourceId} className="border border-[#C9A84C] bg-[#003366] px-5 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-[#002244] disabled:opacity-40">
+                Share {selectedDisplaySourceId?.startsWith("screen:") ? "screen" : "window"}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
 
       {showCloseConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#001E3C]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="close-recording-title">

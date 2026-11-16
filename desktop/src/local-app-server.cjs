@@ -5,12 +5,21 @@ const path = require("node:path");
 const HOST = "127.0.0.1";
 const START_TIMEOUT_MS = 90_000;
 
-async function startLocalAppServer({ appPath, runtimePath, dataDirectory }) {
+async function startLocalAppServer({ appPath, runtimePath, dataDirectory, recordingsDirectory }) {
   const nextCli = path.join(appPath, "node_modules", "next", "dist", "bin", "next");
   const port = await getAvailablePort();
   const url = `http://${HOST}:${port}/`;
   const output = [];
-  const env = { ELECTRON_RUN_AS_NODE: "1", HOSTNAME: HOST, MOSAIC_DESKTOP: "1", MOSAIC_DESKTOP_NO_LOGIN: "1", MOSAIC_DATA_DIR: path.resolve(dataDirectory), NODE_ENV: "production", PORT: String(port) };
+  const env = {
+    ELECTRON_RUN_AS_NODE: "1",
+    HOSTNAME: HOST,
+    MOSAIC_DESKTOP: "1",
+    MOSAIC_DESKTOP_NO_LOGIN: "1",
+    MOSAIC_DATA_DIR: path.resolve(dataDirectory),
+    MOSAIC_RECORDINGS_DIR: path.resolve(recordingsDirectory || path.join(dataDirectory, "recordings")),
+    NODE_ENV: "production",
+    PORT: String(port),
+  };
 
   // Pass OS paths only. Do not inherit API keys from the desktop launch environment.
   for (const name of ["PATH", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "HOME", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA"]) {

@@ -46,7 +46,6 @@ import { QuickAddTaskModal } from "@/components/QuickAddTaskModal";
 import { FinalizeMeetingModal } from "@/features/meetings/components/FinalizeMeetingModal";
 import { DiscoverTopicsModal } from "@/features/meetings/components/DiscoverTopicsModal";
 import { EmailMeetingModal } from "@/features/meetings/components/EmailMeetingModal";
-import { LoginView } from "@/components/LoginView";
 import { ArchivedMeeting, MeetingActionItem } from "@/features/meetings/types/meeting";
 import { createActionFromDiscussion } from "@/features/meetings/lib/meetingArchive";
 import { mergeMeetings } from "@/features/meetings/lib/meetingsData";
@@ -111,6 +110,12 @@ const VENUE_OPTIONS = [
 
 type SignedInUser = { id: number | string; username: string; email: string; color?: string; profilePicture?: string | null; initials?: string };
 let activeBrowserUser: SignedInUser | null = null;
+const localDesktopUser: SignedInUser = {
+  id: "mosaic-local",
+  username: "Local User",
+  email: "",
+  initials: "LU",
+};
 
 function formatMeetingDate(value?: string) {
   if (!value) return "Automatic";
@@ -130,17 +135,20 @@ function formatMeetingTime(value?: string) {
 export default function Home() {
   const pathname = usePathname();
   const router = useRouter();
-  // ClickUp OAuth Authentication State
-  const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "unauthenticated">(activeBrowserUser ? "authenticated" : "loading");
-  const [authUser, setAuthUser] = useState<SignedInUser | null>(activeBrowserUser);
-  const [desktopNoLogin, setDesktopNoLogin] = useState(false);
+  // Desktop uses a local profile; hosted web keeps ClickUp authentication.
+  const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "unauthenticated">(desktopMode || activeBrowserUser ? "authenticated" : "loading");
+  const [authUser, setAuthUser] = useState<SignedInUser | null>(desktopMode ? localDesktopUser : activeBrowserUser);
 
   const checkAuth = async () => {
+    if (desktopMode) {
+      setAuthUser(localDesktopUser);
+      setAuthStatus("authenticated");
+      return;
+    }
     try {
       const res = await fetch("/api/auth/me");
       if (res.ok) {
         const data = await res.json();
-        setDesktopNoLogin(data.desktopMode === true);
         if (data.authenticated && data.user) {
           const nextUser = data.user as SignedInUser;
           if (activeBrowserUser && String(activeBrowserUser.id) !== String(nextUser.id)) {
@@ -164,7 +172,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!activeBrowserUser) void checkAuth();
+    if (!desktopMode && !activeBrowserUser) void checkAuth();
   }, []);
 
   useEffect(() => {
@@ -1104,17 +1112,12 @@ export default function Home() {
     );
   }
 
-  // ClickUp Authentication Gate
-  if (authStatus === "unauthenticated") {
-    return <LoginView onLoginSuccess={() => checkAuth()} />;
-  }
-
   const loadingSteps = ["Getting your recording ready", "Transcribing the audio", "Finding the key details", "Preparing your meeting notes"];
   const loadingStepIndex = loadingText.toLowerCase().includes("synth") || loadingText.toLowerCase().includes("minutes") ? 3 : loadingText.toLowerCase().includes("metadata") || loadingText.toLowerCase().includes("details") ? 2 : loadingText.toLowerCase().includes("transcrib") ? 1 : 0;
   const isMeetingWorkspace = currentView === "minutes" && stage === "Input" && sourceTab === "record";
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg-primary font-sans text-[#1b1d1e]">
+    <div className={`vscode-workbench flex h-screen w-screen overflow-hidden bg-bg-primary font-sans text-[#cccccc] ${isUniversalEchoOpen ? "echo-chat-docked" : ""}`}>
       
       {/* Loading Overlay */}
       {isLoading && (
@@ -1175,15 +1178,15 @@ export default function Home() {
 
 
 
-      {/* Collapsible Sidebar (Deep Charcoal & Gold, Expanded by default) */}
+      {/* Explorer stays icon-only and opens while hovered. */}
       <Sidebar
           currentView={currentView}
           onSelectView={(view) => handleSelectView(view)}
           onPreloadView={(view) => { if (authUser && isPageAllowed(view)) prefetchPageApis(String(authUser.id), view); }}
           isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          onToggleCollapse={() => setIsSidebarCollapsed(true)}
           user={authUser}
-          onSignOut={desktopNoLogin ? undefined : handleSignOut}
+          onSignOut={desktopMode ? undefined : handleSignOut}
           allowedPages={allowedPages}
           sidebarOrder={sidebarOrder}
         />

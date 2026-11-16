@@ -200,6 +200,16 @@ export function Topbar({
   // Keyboard shortcut Ctrl+K / Cmd+K to focus search
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
+    const openFromActivityBar = () => {
+      setIsOpen(true);
+      onOpenSearch?.();
+      requestAnimationFrame(() => inputRef.current?.focus());
+    };
+    window.addEventListener("mosaic-open-search", openFromActivityBar);
+    return () => window.removeEventListener("mosaic-open-search", openFromActivityBar);
+  }, [onOpenSearch]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();

@@ -7,8 +7,13 @@ import os from "os";
  * Returns the resolved path to the user's "Documents/Mosaic Meetings" directory.
  */
 function getMosaicMeetingsDir(): string {
-  if (process.env.MOSAIC_DESKTOP === "1" && process.env.MOSAIC_DATA_DIR) {
-    const directory = path.join(process.env.MOSAIC_DATA_DIR, "recordings");
+  if (process.env.MOSAIC_DESKTOP === "1") {
+    const userHome = process.env.USERPROFILE || process.env.HOME || os.homedir();
+    const directory = process.env.MOSAIC_RECORDINGS_DIR
+      ? path.resolve(process.env.MOSAIC_RECORDINGS_DIR)
+      : process.env.MOSAIC_DATA_DIR
+        ? path.join(process.env.MOSAIC_DATA_DIR, "recordings")
+        : path.join(userHome, "Documents", "Mosaic Meetings");
     if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
     return directory;
   }
@@ -49,9 +54,12 @@ function getSafeTimestamp(): string {
 export async function GET() {
   try {
     const directory = getMosaicMeetingsDir();
-    const filesByName = new Map((process.env.MOSAIC_DESKTOP === "1" ? [] : listFiles(getLegacyEchoMeetingsDir())).map((file) => [file.name, file]));
-    listFiles(directory).forEach((file) => filesByName.set(file.name, file));
-    const files = [...filesByName.values()].sort((a, b) => Date.parse(b.modifiedAt) - Date.parse(a.modifiedAt));
+    const legacyDesktopDirectory = process.env.MOSAIC_DESKTOP === "1" && process.env.MOSAIC_DATA_DIR
+      ? path.join(process.env.MOSAIC_DATA_DIR, "recordings")
+      : null;
+    const legacyWebFiles = process.env.MOSAIC_DESKTOP === "1" ? [] : listFiles(getLegacyEchoMeetingsDir());
+    const filesByPath = new Map([...legacyWebFiles, ...(legacyDesktopDirectory ? listFiles(legacyDesktopDirectory) : []), ...listFiles(directory)].map((file) => [path.resolve(file.path), file]));
+    const files = [...filesByPath.values()].sort((a, b) => Date.parse(b.modifiedAt) - Date.parse(a.modifiedAt));
 
     return NextResponse.json({
       directory,

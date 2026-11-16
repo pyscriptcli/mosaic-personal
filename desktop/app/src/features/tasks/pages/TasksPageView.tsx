@@ -28,19 +28,21 @@ export default function TasksPageView(props: Props) {
     ? props.currentView === "tasks" ? "all-tasks" : "my-day"
     : "activity";
   const [tab, setTab] = useState<WorkspaceTab>(firstTab);
-  const tabs: Array<{ id: WorkspaceTab; label: string }> = [
-    ...(props.canAccessTasks ? [{ id: "my-day" as const, label: "My Day" }] : []),
-    ...(props.canAccessNotebook ? [{ id: "activity" as const, label: "Daily Log" }] : []),
-    ...(props.canAccessTasks ? [{ id: "all-tasks" as const, label: "Tasks" }] : []),
-    ...(props.canAccessNotebook ? [{ id: "dashboard" as const, label: "Dashboard" }] : []),
-  ];
+  const tabs: Array<{ id: WorkspaceTab; label: string }> = props.currentView === "notebook"
+    ? (props.canAccessTasks ? [{ id: "my-day", label: "My Day" }] : [])
+    : [
+      ...(props.canAccessTasks ? [{ id: "my-day" as const, label: "My Day" }] : []),
+      ...(props.canAccessNotebook ? [{ id: "activity" as const, label: "Daily Log" }] : []),
+      ...(props.canAccessTasks ? [{ id: "all-tasks" as const, label: "Tasks" }] : []),
+      ...(props.canAccessNotebook ? [{ id: "dashboard" as const, label: "Dashboard" }] : []),
+    ];
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-5 pb-8">
       <header className="border-b border-[#003366]/15 pb-3">
         <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#31577D]">Mosaic workspace</p>
         <h1 className="mt-0.5 font-serif text-2xl font-bold italic text-[#003366]">Notebook</h1>
-        <p className="mt-1 text-sm text-slate-600">Plan your day, capture activity, and review work in one place.</p>
+        <p className="mt-1 text-sm text-slate-600">{props.currentView === "notebook" ? "Plan and focus on your day." : "Plan your day, capture activity, and review work in one place."}</p>
       </header>
       <div role="tablist" aria-label="Notebook views" className="flex flex-wrap border-b border-slate-200" onKeyDown={(event) => {
         const tabButtons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[role='tab']"));

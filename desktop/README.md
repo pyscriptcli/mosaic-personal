@@ -31,6 +31,7 @@ npm start
 
 - Electron starts the packaged desktop app on `127.0.0.1`; other devices cannot connect to it.
 - The app does not require Mosaic sign-in.
+- Ask Echo remains available without sign-in. The Codex chat uses the locally installed Codex CLI; sign in with ChatGPT in the system browser and choose a workspace folder before starting an agent conversation. Codex can write inside that folder and asks before actions that need approval. AI responses require an internet connection.
 - User records and preferences are stored in SQLite under Electron's per-user data folder. Meeting recordings are stored beside the database.
 - Automatic daily backups keep the latest seven snapshots. Use the Mosaic tray menu to export or restore a backup; restoring replaces the current local workspace.
 - Closing the window hides Mosaic in the system tray. Choose **Quit Mosaic** to stop Electron and the local app server.
