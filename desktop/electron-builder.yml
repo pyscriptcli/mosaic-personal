@@ -19,6 +19,7 @@ extraResources:
       - "**/*"
 win:
   icon: build/mosaic.ico
+  verifyUpdateCodeSignature: false
   target:
     - target: nsis
       arch:
@@ -33,3 +34,8 @@ nsis:
   deleteAppDataOnUninstall: false
   runAfterFinish: true
 artifactName: Mosaic-Setup-${version}-${arch}.${ext}
+publish:
+  provider: github
+  owner: pyscriptcli
+  repo: mosaic-personal
+  releaseType: prerelease

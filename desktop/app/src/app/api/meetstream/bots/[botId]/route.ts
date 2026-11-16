@@ -6,7 +6,7 @@ const MEETSTREAM_BASE_URL = "https://api.meetstream.ai/api/v1";
 export async function GET(req: NextRequest, context: { params: Promise<{ botId: string }> }) {
   const token = getTokenFromRequest(req);
   const user = getUserFromRequest(req);
-  if (!token || !user?.email) return NextResponse.json({ error: "Please sign in before checking the meeting bot." }, { status: 401 });
+  if (!token || !user?.email) return NextResponse.json({ error: "Connect ClickUp before checking the meeting bot." }, { status: 401 });
 
   const apiKey = cleanEnv(process.env.MEETSTREAM_API_KEY);
   if (!apiKey) return NextResponse.json({ error: "Meeting bot setup is not configured yet." }, { status: 503 });

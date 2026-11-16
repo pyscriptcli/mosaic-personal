@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   const token = getTokenFromRequest(request);
   const user = getUserFromRequest(request);
-  if (!token || !user?.id) return NextResponse.json({ error: "Sign in to connect ClickUp updates." }, { status: 401 });
+  if (!token || !user?.id) return NextResponse.json({ error: "Connect ClickUp to enable update notifications." }, { status: 401 });
   const { listId } = await request.json().catch(() => ({}));
   const normalizedListId = String(listId || "");
   if (!/^\d+$/.test(normalizedListId)) return NextResponse.json({ error: "Choose a valid list." }, { status: 400 });

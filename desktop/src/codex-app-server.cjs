@@ -38,17 +38,6 @@ class CodexAppServer {
     return response;
   }
 
-  async beginChatGptLogin() {
-    await this.start();
-    const response = await this.request("account/login/start", {
-      type: "chatgpt",
-      useHostedLoginSuccessPage: true,
-      appBrand: "chatgpt",
-    });
-    if (response.type !== "chatgpt" || !response.authUrl) throw new Error("Codex did not return a ChatGPT sign-in link.");
-    return response;
-  }
-
   async startThread(workspacePath) {
     await this.start();
     const cwd = path.resolve(workspacePath);
@@ -233,7 +222,7 @@ class CodexAppServer {
       }
       if (message.method === "turn/started") this.turnId = params.turn?.id || this.turnId;
       if (message.method === "turn/completed") this.turnId = null;
-      if (message.method === "account/login/completed" || message.method === "account/updated" || message.method === "turn/completed" || message.method === "item/completed") {
+      if (message.method === "account/updated" || message.method === "turn/completed" || message.method === "item/completed") {
         this.onEvent({ type: message.method, params });
       }
     }

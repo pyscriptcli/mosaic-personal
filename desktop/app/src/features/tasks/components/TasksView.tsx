@@ -1221,21 +1221,14 @@ export default function TasksView({
                   Connect Your ClickUp Workspace
                 </h3>
                 <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-                  Mosaic synchronizes live tasks with ClickUp. Please sign in with ClickUp or provide a personal API token.
+                  Mosaic synchronizes live tasks with ClickUp. Connect a workspace using a personal API token below.
                 </p>
               </div>
             </div>
 
             <div className="space-y-3.5 pt-2 border-t border-gray-100">
               <div className="flex items-center gap-3">
-                <a
-                  href="/api/auth/clickup"
-                  className="btn-primary !py-2 !px-4 !text-xs flex items-center gap-1.5"
-                >
-                  <ExternalLink size={13} />
-                  <span>Sign In with ClickUp</span>
-                </a>
-                <span className="text-xs text-gray-400">or configure a token below</span>
+                <span className="text-xs text-gray-400">Configure a token below to connect ClickUp.</span>
               </div>
 
               <div>

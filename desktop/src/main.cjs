@@ -1,4 +1,5 @@
 const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, screen, session, shell, Tray } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const fs = require("node:fs");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
@@ -19,6 +20,8 @@ let reminderTimer;
 let reminderCanClose = false;
 let tray;
 let isQuitting = false;
+let updatePollTimer;
+const updateState = { status: "idle", currentVersion: app.getVersion(), version: null, percent: 0, error: null };
 let settings = { startWithWindows: false, closeToTrayNoticeShown: false, mediaPermissionGranted: false, codexWorkspaceDirectory: null };
 let displayCaptureSequence = 0;
 const pendingDisplayCaptures = new Map();
@@ -57,8 +60,10 @@ if (!app.requestSingleInstanceLock()) {
     registerReminderBridge();
     registerRecordingBridge();
     registerCodexBridge();
+    registerUpdateBridge();
     createTray();
     createMainWindow();
+    startUpdateChecks();
     applyStartupSetting();
     scheduleNextReminder();
     backupTimer = setInterval(() => { tryDailyBackup(); }, 60 * 60 * 1000);
@@ -86,6 +91,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on("will-quit", () => {
     if (backupTimer) clearInterval(backupTimer);
+    if (updatePollTimer) clearInterval(updatePollTimer);
     if (tray && !tray.isDestroyed()) tray.destroy();
   });
 }
@@ -555,22 +561,15 @@ function registerCodexBridge() {
       const account = accountResponse.account;
       return {
         available: true,
-        signedIn: Boolean(account),
+        connected: Boolean(account),
         email: account?.email || null,
         accountType: account?.type || null,
         planType: account?.planType || null,
         workspaceDirectory: settings.codexWorkspaceDirectory,
       };
     } catch (error) {
-      return { available: false, signedIn: false, email: null, workspaceDirectory: settings.codexWorkspaceDirectory, error: error instanceof Error ? error.message : String(error) };
+      return { available: false, connected: false, email: null, workspaceDirectory: settings.codexWorkspaceDirectory, error: error instanceof Error ? error.message : String(error) };
     }
-  });
-
-  ipcMain.handle("mosaic:codex-login", async (event) => {
-    if (!isTrustedSender(event)) throw new Error("Codex is only available inside Mosaic.");
-    const login = await getCodexServer().beginChatGptLogin();
-    await openExternalUrl(login.authUrl);
-    return { started: true };
   });
 
   ipcMain.handle("mosaic:codex-choose-workspace", async (event) => {
@@ -606,6 +605,83 @@ function registerCodexBridge() {
     if (!isTrustedSender(event) || typeof accepted !== "boolean" || (typeof id !== "number" && typeof id !== "string")) return false;
     return getCodexServer()?.respondToApproval(id, accepted) || false;
   });
+}
+
+function setUpdateState(nextState) {
+  Object.assign(updateState, nextState, { currentVersion: app.getVersion() });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("mosaic:update-state", { ...updateState });
+  }
+}
+
+function registerUpdateBridge() {
+  const isTrustedSender = (event) => Boolean(
+    mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents &&
+    isAppOrigin(event.senderFrame?.url || ""),
+  );
+
+  ipcMain.handle("mosaic:update-state", (event) => {
+    if (!isTrustedSender(event)) throw new Error("Updates are only available inside Mosaic.");
+    return { ...updateState };
+  });
+
+  ipcMain.handle("mosaic:update-check", async (event) => {
+    if (!isTrustedSender(event)) throw new Error("Updates are only available inside Mosaic.");
+    if (!app.isPackaged || process.platform !== "win32") {
+      setUpdateState({ status: "unsupported", error: null });
+      return { ...updateState };
+    }
+    if (["checking", "downloading", "downloaded", "installing"].includes(updateState.status)) return { ...updateState };
+    setUpdateState({ status: "checking", version: null, percent: 0, error: null });
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (error) {
+      setUpdateState({ status: "error", error: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240) });
+    }
+    return { ...updateState };
+  });
+
+  ipcMain.handle("mosaic:update-install", (event) => {
+    if (!isTrustedSender(event)) throw new Error("Updates are only available inside Mosaic.");
+    if (updateState.status !== "downloaded") return false;
+    setUpdateState({ status: "installing", error: null });
+    setTimeout(() => autoUpdater.quitAndInstall(false, true), 300);
+    return true;
+  });
+}
+
+function startUpdateChecks() {
+  if (!app.isPackaged || process.platform !== "win32") return;
+
+  autoUpdater.allowPrerelease = true;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on("checking-for-update", () => setUpdateState({ status: "checking", error: null }));
+  autoUpdater.on("update-available", (info) => setUpdateState({ status: "available", version: info.version, percent: 0, error: null }));
+  autoUpdater.on("update-not-available", () => setUpdateState({ status: "up-to-date", version: null, percent: 0, error: null }));
+  autoUpdater.on("download-progress", (progress) => setUpdateState({
+    status: "downloading",
+    percent: Math.max(0, Math.min(100, Math.round(progress.percent || 0))),
+    bytesPerSecond: Math.max(0, Math.round(progress.bytesPerSecond || 0)),
+    error: null,
+  }));
+  autoUpdater.on("update-downloaded", (info) => setUpdateState({ status: "downloaded", version: info.version, percent: 100, error: null }));
+  autoUpdater.on("error", (error) => {
+    console.error("Mosaic update check failed:", error);
+    setUpdateState({ status: "error", error: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240) });
+  });
+
+  const check = () => {
+    if (["checking", "downloading", "downloaded", "installing"].includes(updateState.status)) return;
+    setUpdateState({ status: "checking", error: null });
+    void autoUpdater.checkForUpdates().catch((error) => {
+      setUpdateState({ status: "error", error: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240) });
+    });
+  };
+  setTimeout(check, 12_000).unref?.();
+  updatePollTimer = setInterval(check, 4 * 60 * 60 * 1000);
+  updatePollTimer.unref?.();
 }
 
 function scheduleNextReminder() {

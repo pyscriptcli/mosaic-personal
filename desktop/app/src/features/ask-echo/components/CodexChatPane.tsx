@@ -5,7 +5,7 @@ import { Check, FolderOpen, LoaderCircle, Play, Send, ShieldAlert, Square, X } f
 
 type CodexStatus = {
   available: boolean;
-  signedIn: boolean;
+  connected: boolean;
   email: string | null;
   accountType: string | null;
   planType: string | null;
@@ -18,7 +18,6 @@ type CodexApproval = { id: string | number; method: string; params: Record<strin
 type CodexEvent = { type: string; [key: string]: unknown };
 type CodexBridge = {
   getCodexStatus: () => Promise<CodexStatus>;
-  beginCodexLogin: () => Promise<{ started: boolean }>;
   chooseCodexWorkspace: () => Promise<{ workspaceDirectory: string } | null>;
   startCodexThread: () => Promise<{ threadId: string; cwd: string }>;
   sendCodexMessage: (prompt: string) => Promise<{ turnId: string | null }>;
@@ -54,7 +53,6 @@ export function CodexChatPane({ visible }: { visible: boolean }) {
   const [input, setInput] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
-  const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState("");
   const [approval, setApproval] = useState<CodexApproval | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<number | null>(null);
@@ -63,14 +61,14 @@ export function CodexChatPane({ visible }: { visible: boolean }) {
   const statusLabel = useMemo(() => {
     if (!status) return "Checking Codex CLI";
     if (!status.available) return "Codex CLI unavailable";
-    if (!status.signedIn) return "Sign in required";
+    if (!status.connected) return "Codex CLI not connected";
     return status.email || "Connected to ChatGPT";
   }, [status]);
 
   const refreshStatus = useCallback(async () => {
     const bridge = desktopBridge();
     if (!bridge) {
-      setStatus({ available: false, signedIn: false, email: null, accountType: null, planType: null, workspaceDirectory: null, error: "Codex controls are available in the installed Mosaic desktop app." });
+      setStatus({ available: false, connected: false, email: null, accountType: null, planType: null, workspaceDirectory: null, error: "Codex controls are available in the installed Mosaic desktop app." });
       return;
     }
     const nextStatus = await bridge.getCodexStatus();
@@ -85,15 +83,6 @@ export function CodexChatPane({ visible }: { visible: boolean }) {
       return;
     }
     const unsubscribe = bridge.onCodexEvent((event) => {
-      if (event.type === "account/login/completed") {
-        setIsSigningIn(false);
-        if (event.params && typeof event.params === "object" && (event.params as { success?: boolean }).success === false) {
-          setError(String((event.params as { error?: string }).error || "ChatGPT sign-in did not complete."));
-        } else {
-          setError("");
-          void refreshStatus();
-        }
-      }
       if (event.type === "account/updated") void refreshStatus();
       if (event.type === "thread/started") {
         setMessages([]);
@@ -139,20 +128,6 @@ export function CodexChatPane({ visible }: { visible: boolean }) {
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, approval]);
 
-  const beginLogin = async () => {
-    const bridge = desktopBridge();
-    if (!bridge) return;
-    setIsSigningIn(true);
-    setError("");
-    try {
-      await bridge.beginCodexLogin();
-      setError("Complete the ChatGPT sign-in in your browser. Mosaic will connect when it finishes.");
-    } catch (nextError) {
-      setIsSigningIn(false);
-      setError(nextError instanceof Error ? nextError.message : String(nextError));
-    }
-  };
-
   const startThread = async () => {
     const bridge = desktopBridge();
     if (!bridge) return;
@@ -187,7 +162,7 @@ export function CodexChatPane({ visible }: { visible: boolean }) {
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
     const prompt = input.trim();
-    if (!prompt || isWorking || !status?.signedIn || !status.workspaceDirectory) return;
+    if (!prompt || isWorking || !status?.connected || !status.workspaceDirectory) return;
     const userId = ++messageSequence.current;
     setMessages((current) => [...current, { id: userId, role: "user", content: prompt, timestamp: timeNow() }]);
     setInput("");
@@ -217,13 +192,13 @@ export function CodexChatPane({ visible }: { visible: boolean }) {
     <div className={`${visible ? "flex" : "hidden"} min-h-0 flex-1 flex-col bg-[#1e1e1e] text-[#cccccc]`}>
       <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-[#3c3c3c] bg-[#252526] px-4">
         <div className="flex min-w-0 items-center gap-2 text-xs">
-          <span className={`h-2 w-2 shrink-0 rounded-full ${status?.signedIn ? "bg-emerald-400" : status?.available === false ? "bg-[#f14c4c]" : "bg-[#cca700]"}`} />
+          <span className={`h-2 w-2 shrink-0 rounded-full ${status?.connected ? "bg-emerald-400" : status?.available === false ? "bg-[#f14c4c]" : "bg-[#cca700]"}`} />
           <span className="truncate text-[#cccccc]">{statusLabel}</span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button type="button" onClick={() => void refreshStatus()} title="Refresh Codex status" aria-label="Refresh Codex status" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><LoaderCircle size={14} /></button>
           <button type="button" onClick={() => void chooseWorkspace()} title="Choose workspace folder" aria-label="Choose workspace folder" className="flex items-center gap-1.5 rounded border border-[#454545] px-2 py-1.5 text-[11px] text-[#cccccc] hover:border-[#0078d4] hover:bg-[#2d2d30]"><FolderOpen size={13} />Workspace</button>
-          {status?.signedIn && status.workspaceDirectory && <button type="button" onClick={() => void startThread()} disabled={isStarting || isWorking} title="Start a new Codex conversation" aria-label="Start a new Codex conversation" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white disabled:opacity-50"><Play size={14} /></button>}
+          {status?.connected && status.workspaceDirectory && <button type="button" onClick={() => void startThread()} disabled={isStarting || isWorking} title="Start a new Codex conversation" aria-label="Start a new Codex conversation" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white disabled:opacity-50"><Play size={14} /></button>}
         </div>
       </div>
 
@@ -236,19 +211,16 @@ export function CodexChatPane({ visible }: { visible: boolean }) {
           <p className="mt-2 leading-6 text-[#c9c9c9]">{status.error || "Install Codex CLI, then restart Mosaic."}</p>
           <a href="https://developers.openai.com/codex/cli" target="_blank" rel="noreferrer" className="mt-3 inline-block text-[#75beff] underline underline-offset-2">Codex CLI installation guide</a>
         </div>}
-        {status?.available && !status.signedIn && <div className="rounded-lg border border-[#3c3c3c] bg-[#252526] p-5">
-          <h3 className="font-semibold text-[#e7e7e7]">Connect your Codex account</h3>
-          <p className="mt-2 max-w-lg text-sm leading-6 text-[#b0b0b0]">Sign in with ChatGPT in your browser. Mosaic uses Codex CLI’s local sign-in and never asks you to paste a password or API key here.</p>
-          <button type="button" onClick={() => void beginLogin()} disabled={isSigningIn} className="mt-4 flex items-center gap-2 rounded bg-[#0078d4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1683d8] disabled:cursor-wait disabled:opacity-70">
-            {isSigningIn ? <LoaderCircle size={14} className="animate-spin" /> : null}{isSigningIn ? "Waiting for sign-in…" : "Sign in with ChatGPT"}
-          </button>
+        {status?.available && !status.connected && <div className="rounded-lg border border-[#3c3c3c] bg-[#252526] p-5">
+          <h3 className="font-semibold text-[#e7e7e7]">Codex CLI is not connected</h3>
+          <p className="mt-2 max-w-lg text-sm leading-6 text-[#b0b0b0]">Use Ask Echo for AI chat. Codex conversations are available when Codex CLI is already configured on this device.</p>
         </div>}
-        {status?.signedIn && !status.workspaceDirectory && <div className="rounded-lg border border-[#3c3c3c] bg-[#252526] p-5">
+        {status?.connected && !status.workspaceDirectory && <div className="rounded-lg border border-[#3c3c3c] bg-[#252526] p-5">
           <h3 className="font-semibold text-[#e7e7e7]">Choose a workspace</h3>
           <p className="mt-2 text-sm leading-6 text-[#b0b0b0]">Codex can read and write files inside the folder you select. It will ask before running commands that need your approval.</p>
           <button type="button" onClick={() => void chooseWorkspace()} className="mt-4 flex items-center gap-2 rounded bg-[#0078d4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1683d8]"><FolderOpen size={14} />Choose folder</button>
         </div>}
-        {messages.length === 0 && status?.signedIn && status.workspaceDirectory && <div className="mx-auto mt-12 max-w-sm text-center">
+        {messages.length === 0 && status?.connected && status.workspaceDirectory && <div className="mx-auto mt-12 max-w-sm text-center">
           <div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-[#252526] text-[#75beff]"><Check size={19} /></div>
           <h3 className="mt-4 text-sm font-semibold text-[#e7e7e7]">Codex is ready</h3>
           <p className="mt-2 text-xs leading-5 text-[#b0b0b0]">Ask Codex to inspect or update files in the selected workspace. You’ll review agent requests that need approval.</p>
@@ -278,10 +250,10 @@ export function CodexChatPane({ visible }: { visible: boolean }) {
 
       <footer className="shrink-0 border-t border-[#3c3c3c] bg-[#1e1e1e] px-3 pb-3 pt-2 sm:px-4">
         <form onSubmit={(event) => void send(event)} className="rounded-xl border border-[#4a4a4a] bg-[#252526] p-2 focus-within:border-[#0078d4]">
-          <textarea aria-label="Message Codex" rows={2} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder={status?.signedIn && status.workspaceDirectory ? "Ask Codex to work in this folder…" : "Connect Codex and choose a workspace first"} disabled={!status?.signedIn || !status.workspaceDirectory || isWorking} className="max-h-32 min-h-12 w-full resize-y bg-transparent px-2 py-1.5 text-sm leading-5 text-[#e3e3e3] outline-none placeholder:text-[#a0a0a0] disabled:cursor-not-allowed" />
+          <textarea aria-label="Message Codex" rows={2} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder={status?.connected && status.workspaceDirectory ? "Ask Codex to work in this folder…" : "Connect Codex and choose a workspace first"} disabled={!status?.connected || !status.workspaceDirectory || isWorking} className="max-h-32 min-h-12 w-full resize-y bg-transparent px-2 py-1.5 text-sm leading-5 text-[#e3e3e3] outline-none placeholder:text-[#a0a0a0] disabled:cursor-not-allowed" />
           <div className="flex items-center gap-2 px-1 pt-1">
             <span className="text-[10px] text-[#b0b0b0]">Enter to send · Shift+Enter for newline</span>
-            {isWorking ? <button type="button" onClick={() => void desktopBridge()?.interruptCodexTurn()} aria-label="Stop Codex" className="ml-auto rounded-lg bg-[#3c3c3c] p-2 text-white hover:bg-[#4a4a4a]"><Square size={14} /></button> : <button type="submit" disabled={!input.trim() || !status?.signedIn || !status.workspaceDirectory} aria-label="Send to Codex" className="ml-auto rounded-lg bg-[#0078d4] p-2 text-white hover:bg-[#1683d8] disabled:bg-[#3c3c3c] disabled:text-[#b0b0b0]"><Send size={15} /></button>}
+            {isWorking ? <button type="button" onClick={() => void desktopBridge()?.interruptCodexTurn()} aria-label="Stop Codex" className="ml-auto rounded-lg bg-[#3c3c3c] p-2 text-white hover:bg-[#4a4a4a]"><Square size={14} /></button> : <button type="submit" disabled={!input.trim() || !status?.connected || !status.workspaceDirectory} aria-label="Send to Codex" className="ml-auto rounded-lg bg-[#0078d4] p-2 text-white hover:bg-[#1683d8] disabled:bg-[#3c3c3c] disabled:text-[#b0b0b0]"><Send size={15} /></button>}
           </div>
         </form>
         <p className="mt-2 text-center text-[10px] text-[#b0b0b0]">Codex CLI runs on this device; AI responses require internet access.</p>

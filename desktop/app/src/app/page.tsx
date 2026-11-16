@@ -40,6 +40,8 @@ import {
 import { Sidebar, NavView } from "@/components/Sidebar";
 import { AutoResizeTextarea } from "@/features/notetaker/components/AutoResizeTextarea";
 import { Topbar } from "@/components/Topbar";
+import { DesktopUpdateDialog, WorkbenchMenuBar, WorkbenchStatusBar } from "@/components/WorkbenchChrome";
+import { useDesktopUpdater } from "@/hooks/useDesktopUpdater";
 import { DashboardView } from "@/features/dashboard/pages/DashboardView";
 import type { ClickUpTask } from "@/features/tasks/components/TasksView";
 import { QuickAddTaskModal } from "@/components/QuickAddTaskModal";
@@ -135,9 +137,16 @@ function formatMeetingTime(value?: string) {
 export default function Home() {
   const pathname = usePathname();
   const router = useRouter();
+  const { state: updateState, checkForUpdates, installUpdate } = useDesktopUpdater();
+  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   // Desktop uses a local profile; hosted web keeps ClickUp authentication.
   const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "unauthenticated">(desktopMode || activeBrowserUser ? "authenticated" : "loading");
   const [authUser, setAuthUser] = useState<SignedInUser | null>(desktopMode ? localDesktopUser : activeBrowserUser);
+
+  const openUpdateDialog = () => {
+    setIsUpdateDialogOpen(true);
+    if (["idle", "up-to-date", "error", "unsupported"].includes(updateState.status)) void checkForUpdates();
+  };
 
   const checkAuth = async () => {
     if (desktopMode) {
@@ -1115,9 +1124,16 @@ export default function Home() {
   const loadingSteps = ["Getting your recording ready", "Transcribing the audio", "Finding the key details", "Preparing your meeting notes"];
   const loadingStepIndex = loadingText.toLowerCase().includes("synth") || loadingText.toLowerCase().includes("minutes") ? 3 : loadingText.toLowerCase().includes("metadata") || loadingText.toLowerCase().includes("details") ? 2 : loadingText.toLowerCase().includes("transcrib") ? 1 : 0;
   const isMeetingWorkspace = currentView === "minutes" && stage === "Input" && sourceTab === "record";
+  const viewTitle = ({ dashboard: "Dashboard", "business-analysis": "IT Projects", meetings: "Meetings", notebook: "Notebook", minutes: "Notetaker", tasks: "Tasks" } as Record<string, string>)[currentView] || "Mosaic";
 
   return (
-    <div className={`vscode-workbench flex h-screen w-screen overflow-hidden bg-bg-primary font-sans text-[#cccccc] ${isUniversalEchoOpen ? "echo-chat-docked" : ""}`}>
+    <div className={`vscode-workbench flex h-screen w-screen flex-col overflow-hidden bg-bg-primary font-sans text-[#cccccc] ${isUniversalEchoOpen ? "echo-chat-docked" : ""}`}>
+      <WorkbenchMenuBar
+        viewTitle={viewTitle}
+        onOpenSearch={() => { void loadUniversalSearchTasks(); }}
+        onOpenUpdates={openUpdateDialog}
+        onNavigate={(view) => handleSelectView(view)}
+      />
       
       {/* Loading Overlay */}
       {isLoading && (
@@ -1178,6 +1194,7 @@ export default function Home() {
 
 
 
+      <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* Explorer stays icon-only and opens while hovered. */}
       <Sidebar
           currentView={currentView}
@@ -2362,6 +2379,16 @@ export default function Home() {
           )}
         </main>
       </div>
+      </div>
+
+      <WorkbenchStatusBar updateState={updateState} onOpenUpdates={openUpdateDialog} />
+      <DesktopUpdateDialog
+        open={isUpdateDialogOpen}
+        state={updateState}
+        onClose={() => setIsUpdateDialogOpen(false)}
+        onCheck={() => void checkForUpdates()}
+        onInstall={() => void installUpdate()}
+      />
 
             {/* Discover & Search Topics Modal */}
       <DiscoverTopicsModal

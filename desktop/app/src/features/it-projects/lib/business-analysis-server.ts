@@ -11,12 +11,12 @@ const BA_OWNER_EMAIL = "dave.policarpio@primephilippines.com";
 export async function authorizeBARequest(req: NextRequest) {
   const token = getTokenFromRequest(req);
   const cachedUser = token ? getUserFromRequest(req) : null;
-  if (!cachedUser?.email || !cachedUser.id) return { user: null, denied: NextResponse.json({ error: "Sign in to use Business Analysis." }, { status: 401 }) };
+  if (!cachedUser?.email || !cachedUser.id) return { user: null, denied: NextResponse.json({ error: "Connect your account to use Business Analysis." }, { status: 401 }) };
   const identityResponse = await clickUpRequest("https://api.clickup.com/api/v2/user", { headers: { Authorization: token }, cache: "no-store" });
   const identityBody = identityResponse.ok ? await identityResponse.json().catch(() => ({})) : {};
   const identity = identityBody.user;
   if (!identity?.id || String(identity.id) !== String(cachedUser.id) || String(identity.email || "").toLowerCase().trim() !== cachedUser.email.toLowerCase().trim()) {
-    return { user: null, denied: NextResponse.json({ error: "Your sign-in could not be verified. Sign in again." }, { status: 401 }) };
+    return { user: null, denied: NextResponse.json({ error: "Your account could not be verified. Reconnect and try again." }, { status: 401 }) };
   }
   const user = { ...cachedUser, id: identity.id, email: String(identity.email).toLowerCase().trim(), username: String(identity.username || cachedUser.username) };
   const email = user.email.toLowerCase().trim();

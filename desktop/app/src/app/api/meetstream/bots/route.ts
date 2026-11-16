@@ -24,7 +24,7 @@ function appUrl(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const token = getTokenFromRequest(req);
   const user = getUserFromRequest(req);
-  if (!token || !user?.email) return NextResponse.json({ error: "Please sign in before inviting Mosaic Notetaker." }, { status: 401 });
+  if (!token || !user?.email) return NextResponse.json({ error: "Connect ClickUp before inviting Mosaic Notetaker." }, { status: 401 });
 
   const apiKey = cleanEnv(process.env.MEETSTREAM_API_KEY);
   if (!apiKey) return NextResponse.json({ error: "Meeting bot setup is not configured yet." }, { status: 503 });

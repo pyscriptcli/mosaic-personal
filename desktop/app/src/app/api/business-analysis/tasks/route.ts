@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const { denied } = await authorizeBARequest(req);
   if (denied) return denied;
   const token = getTokenFromRequest(req);
-  if (!token) return NextResponse.json({ error: "Sign in with ClickUp to choose a task list." }, { status: 401 });
+  if (!token) return NextResponse.json({ error: "Connect ClickUp to choose a task list." }, { status: 401 });
   try {
     const teamsResponse = await clickUpFetch("https://api.clickup.com/api/v2/team", { headers: { Authorization: token }, cache: "no-store" });
     if (!teamsResponse.ok) return NextResponse.json({ error: "Could not load your task lists." }, { status: teamsResponse.status });
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   const { denied } = await authorizeBARequest(req);
   if (denied) return denied;
   const token = getTokenFromRequest(req);
-  if (!token) return NextResponse.json({ error: "Sign in with ClickUp to save this task." }, { status: 401 });
+  if (!token) return NextResponse.json({ error: "Connect ClickUp to save this task." }, { status: 401 });
   try {
     const body = await req.json() as { listId?: unknown; taskName?: unknown; requirementId?: unknown; requirement?: unknown; localTaskId?: unknown };
     const listId = typeof body.listId === "string" ? body.listId : "";

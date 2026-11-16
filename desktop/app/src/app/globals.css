@@ -13,6 +13,21 @@
   --color-mosaic-gray: #181d1e;
   --color-mosaic-deep-ink: #0c0c0e;
   --mosaic-radius: 0px;
+
+  --color-vscode-editor: #1e1e1e;
+  --color-vscode-sidebar: #252526;
+  --color-vscode-activity: #181818;
+  --color-vscode-panel: #252526;
+  --color-vscode-raised: #2d2d30;
+  --color-vscode-border: #3c3c3c;
+  --color-vscode-text: #d4d4d4;
+  --color-vscode-muted: #a0a0a0;
+  --color-vscode-icon: #858585;
+  --color-vscode-accent: #007acc;
+  --color-vscode-selection: #094771;
+  --color-vscode-hover: #2a2d2e;
+  --color-vscode-status: #007acc;
+  --color-vscode-command: #3c3c3c;
   
   --font-display: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
   --font-serif: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
@@ -92,14 +107,15 @@ body :where(h1, h2, h3, h4) {
 
 /* VS Code typography and readable secondary text for the workbench preview. */
 .vscode-workbench {
-  --vscode-editor-background: #1e1e1e;
-  --vscode-panel-background: #252526;
-  --vscode-input-background: #3c3c3c;
-  --vscode-border: #3c3c3c;
-  --vscode-foreground: #d4d4d4;
-  --vscode-muted: #a6a6a6;
-  --vscode-accent: #0078d4;
-  background-color: #1e1e1e;
+  --vscode-editor-background: var(--color-vscode-editor);
+  --vscode-panel-background: var(--color-vscode-panel);
+  --vscode-input-background: var(--color-vscode-command);
+  --vscode-border: var(--color-vscode-border);
+  --vscode-foreground: var(--color-vscode-text);
+  --vscode-muted: var(--color-vscode-muted);
+  --vscode-accent: var(--color-vscode-accent);
+  color-scheme: dark;
+  background-color: var(--color-vscode-editor);
   color: var(--vscode-foreground);
   font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
   font-size: 13px;
@@ -192,6 +208,51 @@ body :where(h1, h2, h3, h4) {
   color: var(--vscode-muted) !important;
   opacity: 0.86 !important;
   cursor: not-allowed;
+}
+
+.vscode-workbench :where(button, input, textarea, select) {
+  border-radius: 2px;
+}
+
+.vscode-workbench [class*="font-serif"],
+.vscode-workbench [class*="font-display"] {
+  font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif !important;
+  font-style: normal !important;
+}
+
+.vscode-workbench :is(h1, h2, h3, h4) {
+  color: var(--color-vscode-text);
+  font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.vscode-workbench h1 {
+  font-size: 1.35rem;
+  line-height: 1.6rem;
+}
+
+.vscode-workbench h2 {
+  font-size: 1.1rem;
+  line-height: 1.4rem;
+}
+
+.vscode-workbench [class*="rounded-"] {
+  border-radius: 2px !important;
+}
+
+.vscode-workbench [class*="rounded-full"] {
+  border-radius: 9999px !important;
+}
+
+.vscode-workbench :where(button, a, input, textarea, select):focus-visible {
+  outline: 1px solid var(--color-vscode-accent);
+  outline-offset: 1px;
+}
+
+.vscode-workbench ::selection {
+  color: white;
+  background: var(--color-vscode-selection);
 }
 
 .codex-chat {

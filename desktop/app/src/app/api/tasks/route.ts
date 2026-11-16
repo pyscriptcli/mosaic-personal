@@ -259,7 +259,7 @@ export async function GET(req: NextRequest) {
     const verifiedListResponse = await clickUpCalendarFetch(token, `https://api.clickup.com/api/v2/list/${encodeURIComponent(targetListId)}`, undefined, undefined, { skipCache: true });
     if (!verifiedListResponse.ok) {
       const status = verifiedListResponse.status;
-      return NextResponse.json({ error: status === 401 ? "Your ClickUp session has expired. Sign in again to continue." : "This account cannot access the selected ClickUp list." }, { status });
+      return NextResponse.json({ error: status === 401 ? "Your ClickUp connection has expired. Reconnect to continue." : "This account cannot access the selected ClickUp list." }, { status });
     }
 
     const membersUrl = `https://api.clickup.com/api/v2/list/${encodeURIComponent(targetListId)}/member`;
@@ -616,7 +616,7 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = String(getUserFromRequest(req)?.id || "");
-    if (!userId) return NextResponse.json({ error: "Sign in again before creating a task." }, { status: 401 });
+    if (!userId) return NextResponse.json({ error: "Reconnect ClickUp before creating a task." }, { status: 401 });
     const localTaskId = randomUUID();
     const localTask = {
       id: localTaskId,
@@ -685,7 +685,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const userId = String(getUserFromRequest(req)?.id || "");
-    if (!userId) return NextResponse.json({ error: "Sign in again before updating this task." }, { status: 401 });
+    if (!userId) return NextResponse.json({ error: "Reconnect ClickUp before updating this task." }, { status: 401 });
     const scope = clickUpScope(token);
     const staged = await findStagedMosaicRecord(scope, "tasks", String(body.taskId));
     const taskId = String(staged?.clickup_id || body.taskId);
@@ -763,7 +763,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     const userId = String(getUserFromRequest(req)?.id || "");
-    if (!userId) return NextResponse.json({ error: "Sign in again before deleting this task." }, { status: 401 });
+    if (!userId) return NextResponse.json({ error: "Reconnect ClickUp before deleting this task." }, { status: 401 });
     const staged = await findStagedMosaicRecord(clickUpScope(token), "tasks", taskId);
     const remoteId = String(staged?.clickup_id || taskId);
     if (staged && !staged.clickup_id) {

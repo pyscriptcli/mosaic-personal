@@ -13,7 +13,6 @@ contextBridge.exposeInMainWorld("mosaicDesktop", Object.freeze({
     if (action === "dismiss" || action === "snooze") ipcRenderer.send("mosaic:reminder-response", action);
   },
   getCodexStatus: () => ipcRenderer.invoke("mosaic:codex-status"),
-  beginCodexLogin: () => ipcRenderer.invoke("mosaic:codex-login"),
   chooseCodexWorkspace: () => ipcRenderer.invoke("mosaic:codex-choose-workspace"),
   startCodexThread: () => ipcRenderer.invoke("mosaic:codex-start-thread"),
   sendCodexMessage: (prompt) => ipcRenderer.invoke("mosaic:codex-send", prompt),
@@ -23,5 +22,13 @@ contextBridge.exposeInMainWorld("mosaicDesktop", Object.freeze({
     const handler = (_event, payload) => listener(payload);
     ipcRenderer.on("mosaic:codex-event", handler);
     return () => ipcRenderer.removeListener("mosaic:codex-event", handler);
+  },
+  getUpdateState: () => ipcRenderer.invoke("mosaic:update-state"),
+  checkForUpdates: () => ipcRenderer.invoke("mosaic:update-check"),
+  installUpdate: () => ipcRenderer.invoke("mosaic:update-install"),
+  onUpdateState: (listener) => {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on("mosaic:update-state", handler);
+    return () => ipcRenderer.removeListener("mosaic:update-state", handler);
   },
 }));
