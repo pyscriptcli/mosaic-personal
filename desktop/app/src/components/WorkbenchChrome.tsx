@@ -155,7 +155,7 @@ function updateLabel(state: DesktopUpdateState) {
 export function WorkbenchStatusBar({ updateState, onOpenUpdates }: WorkbenchStatusBarProps) {
   const busy = updateState.status === "checking" || updateState.status === "downloading" || updateState.status === "available";
   return (
-    <footer className="flex h-6 shrink-0 items-center justify-between bg-vscode-status px-2 text-[11px] text-white" aria-label="Status bar">
+    <footer className="flex h-6 shrink-0 items-center justify-between border-t border-vscode-border bg-vscode-status px-2 text-[11px] text-vscode-text" aria-label="Status bar">
       <div className="flex min-w-0 items-center gap-3">
         <button type="button" onClick={onOpenUpdates} aria-label={updateLabel(updateState)} title={updateState.error || updateLabel(updateState)} className="flex h-6 shrink-0 items-center gap-1.5 px-1.5 hover:bg-black/15 focus-visible:outline focus-visible:outline-1 focus-visible:outline-white">
           {updateState.status === "up-to-date" ? <Check size={13} /> : busy ? <Activity size={13} className="animate-pulse" /> : <CloudDownload size={13} />}

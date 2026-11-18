@@ -2,6 +2,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { getTokenFromRequest } from "@/lib/auth";
 import { clickUpCalendarFetch } from "@/lib/clickupCalendarApi";
 import { clickUpScope, enqueueClickUpSyncRun, persistClickUpConnection, readClickUpConnectionUserId, readClickUpSyncRun, readClickUpSyncStatus } from "@/lib/clickupReadStore";
+import { rejectDesktopClickUpRoute } from "@/lib/desktopBoundary";
 
 export const maxDuration = 60;
 
@@ -21,6 +22,8 @@ async function identity(request: NextRequest, persist = true) {
 }
 
 export async function GET(request: NextRequest) {
+  const disabled = rejectDesktopClickUpRoute();
+  if (disabled) return disabled;
   const token = getTokenFromRequest(request);
   if (!token) return NextResponse.json({ error: "ClickUp authentication required." }, { status: 401 });
   const scope = clickUpScope(token);
@@ -39,6 +42,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const disabled = rejectDesktopClickUpRoute();
+  if (disabled) return disabled;
   const current = await identity(request, false);
   if (!current) return NextResponse.json({ error: "ClickUp authentication required." }, { status: 401 });
   const body = await request.json().catch(() => ({})) as { listIds?: unknown; listLabels?: unknown };

@@ -635,7 +635,7 @@ export function FinalizeMeetingModal({
                 )}
 
                 {desktopMode && <div className="space-y-3 border border-slate-200 bg-white p-4">
-                  <p className="text-xs text-slate-600">Meeting details, notes, decisions and transcript will be saved on this device. No ClickUp account is needed.</p>
+                  <p className="text-xs text-slate-600">Meeting details, notes, decisions and transcript will be saved in your local Mosaic workspace.</p>
                   <div className="flex justify-end"><button type="button" onClick={handleArchiveClick} disabled={isProcessing} className="btn-primary !py-2 !px-5 text-xs flex items-center gap-2 rounded-none disabled:opacity-40">{isProcessing ? <><Loader2 size={13} className="animate-spin" /><span>Saving locally…</span></> : <><CheckCircle2 size={14} /><span>Save meeting locally</span></>}</button></div>
                 </div>}
 

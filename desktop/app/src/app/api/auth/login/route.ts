@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLocalDevelopmentClickUpPersonalToken, getOAuthCredentials, isAllowedClickUpSignIn, setAuthCookies, type ClickUpUserProfile } from "@/lib/auth";
 import { clickUpFetch as fetch } from "@/lib/clickupCalendarApi";
+import { rejectDesktopLoginRoute } from "@/lib/desktopBoundary";
 
 async function loginWithLocalPersonalToken(req: NextRequest, token: string) {
   const profileResponse = await fetch("https://api.clickup.com/api/v2/user", {
@@ -56,6 +57,8 @@ function isLoopbackRequest(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const disabled = rejectDesktopLoginRoute();
+  if (disabled) return disabled;
   const { clientId, clientSecret, redirectUri: configuredUri } = getOAuthCredentials();
   const url = new URL(req.url);
   const redirectUri = configuredUri || `${url.origin}/api/auth/callback`;

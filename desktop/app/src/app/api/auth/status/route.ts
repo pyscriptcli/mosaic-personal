@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOAuthCredentials } from "@/lib/auth";
+import { rejectDesktopLoginRoute } from "@/lib/desktopBoundary";
 
 export async function GET(req: NextRequest) {
+  const disabled = rejectDesktopLoginRoute();
+  if (disabled) return disabled;
   const { clientId, clientSecret, redirectUri } = getOAuthCredentials();
   const url = new URL(req.url);
 

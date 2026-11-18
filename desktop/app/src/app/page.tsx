@@ -13,38 +13,20 @@ import { useStudioRecorderContext } from "@/features/notetaker/components/Studio
 import type { StudioNote, StudioDisplayMode } from "@/features/notetaker/types/studio";
 import { clearSession } from "@/features/notetaker/lib/studioStorage";
 import { 
-  processSource, 
-  generateMinutes, 
   saveMeeting, 
   fetchMeetings,
   deleteMeeting,
   exportWord, 
   exportPdf,
-  askEcho,
-  fetchClickUpTasks,
-  getStoredApiKey,
-  setStoredApiKey,
-  getStoredOpenAiKey,
-  setStoredOpenAiKey,
-  getStoredOpenRouterKey,
-  setStoredOpenRouterKey,
-  getStoredGeminiKey,
-  setStoredGeminiKey,
-  getStoredClickUpToken,
-  setStoredClickUpToken,
-  getStoredClickUpListId,
-  setStoredClickUpListId,
   discoverClickUpLists,
   AudioTelemetry
 } from "@/lib/api";
 import { Sidebar, NavView } from "@/components/Sidebar";
 import { AutoResizeTextarea } from "@/features/notetaker/components/AutoResizeTextarea";
 import { Topbar } from "@/components/Topbar";
-import { DesktopUpdateDialog, WorkbenchMenuBar, WorkbenchStatusBar } from "@/components/WorkbenchChrome";
+import { DesktopUpdateDialog, WorkbenchStatusBar } from "@/components/WorkbenchChrome";
 import { useDesktopUpdater } from "@/hooks/useDesktopUpdater";
 import { DashboardView } from "@/features/dashboard/pages/DashboardView";
-import type { ClickUpTask } from "@/features/tasks/components/TasksView";
-import { QuickAddTaskModal } from "@/components/QuickAddTaskModal";
 import { FinalizeMeetingModal } from "@/features/meetings/components/FinalizeMeetingModal";
 import { DiscoverTopicsModal } from "@/features/meetings/components/DiscoverTopicsModal";
 import { EmailMeetingModal } from "@/features/meetings/components/EmailMeetingModal";
@@ -55,6 +37,7 @@ import { formatEchoDate } from "@/lib/dateUtils";
 import type { DiscoveredTopicItem } from "@/app/api/discover-topics/route";
 import { navRouteForView, navViewForPath } from "@/lib/navRoutes";
 import { clearBrowserPageCache, prefetchPageApis, useBrowserPageQuery } from "@/lib/browserPageCache";
+import { useEchoAI } from "@/features/ask-echo/components/EchoAI";
 import { 
   Upload, 
   X, 
@@ -62,7 +45,6 @@ import {
   ChevronDown, 
   Plus, 
   FileText, 
-  CheckSquare,
   Download, 
   Loader2, 
   Sparkles, 
@@ -97,8 +79,9 @@ const PanelLoading = () => <section role="status" aria-live="polite" className="
 const StudioPanel = dynamic(() => import("@/features/notetaker/components/StudioPanel").then((module) => module.StudioPanel), { loading: PanelLoading });
 const UniversalEchoDrawer = dynamic(() => import("@/features/ask-echo/components/UniversalEchoDrawer").then((module) => module.UniversalEchoDrawer), { loading: PanelLoading });
 const MeetingsView = dynamic(() => import("@/features/meetings/pages/MeetingsView").then((module) => module.MeetingsView), { loading: PanelLoading });
-const TasksPageView = dynamic(() => import("@/features/tasks/pages/TasksPageView"), { loading: PanelLoading });
+const NotebookPage = dynamic(() => import("@/features/notebook/pages/NotebookPage").then((module) => module.NotebookPage), { loading: PanelLoading });
 const BusinessAnalysisView = dynamic(() => import("@/features/it-projects/pages/BusinessAnalysisView").then((module) => module.BusinessAnalysisView), { loading: PanelLoading });
+const SettingsPage = dynamic(() => import("@/features/settings/pages/SettingsPage").then((module) => module.SettingsPage), { loading: PanelLoading });
 
 const VENUE_OPTIONS = [
   "GreatWork Mega Tower 32F - Secret Room",
@@ -135,6 +118,7 @@ function formatMeetingTime(value?: string) {
 }
 
 export default function Home() {
+  const { runStructured, processSource } = useEchoAI();
   const pathname = usePathname();
   const router = useRouter();
   const { state: updateState, checkForUpdates, installUpdate } = useDesktopUpdater();
@@ -269,64 +253,6 @@ export default function Home() {
   }, [showArchiveModal]);
 
   // System Key state
-  const [apiKey, setApiKey] = useState("");
-  const [showKeyModal, setShowKeyModal] = useState(false);
-  const [keyInput, setKeyInput] = useState("");
-  const [openaiKeyInput, setOpenaiKeyInput] = useState("");
-  const [openrouterKeyInput, setOpenrouterKeyInput] = useState("");
-  const [geminiKeyInput, setGeminiKeyInput] = useState("");
-  const [clickupTokenInput, setClickupTokenInput] = useState("");
-  const [clickupListIdInput, setClickupListIdInput] = useState("");
-  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
-
-  // Quick Add ClickUp Task state
-  const [quickAddTaskData, setQuickAddTaskData] = useState<{
-    isOpen: boolean;
-    data: {
-      name?: string;
-      description?: string;
-      meetingTitle?: string;
-      meetingDate?: string;
-      dueDate?: string;
-      priority?: string;
-      assigneeName?: string;
-      assigneeId?: string;
-      assigneeIds?: string[];
-      topic?: string;
-      evidence?: string;
-      discussionPointId?: string;
-      existingTaskId?: string;
-      existingTaskUrl?: string;
-    };
-    actionIndex?: number;
-  }>({
-    isOpen: false,
-    data: {},
-  });
-
-  useEffect(() => {
-    const key = getStoredApiKey();
-    if (key) {
-      setApiKey(key);
-      setKeyInput(key);
-    }
-    setOpenaiKeyInput(getStoredOpenAiKey());
-    setOpenrouterKeyInput(getStoredOpenRouterKey());
-    setGeminiKeyInput(getStoredGeminiKey());
-    setClickupTokenInput(getStoredClickUpToken());
-    setClickupListIdInput(getStoredClickUpListId());
-  }, []);
-
-  const saveKey = () => {
-    setStoredApiKey(keyInput.trim());
-    setApiKey(keyInput.trim());
-    setStoredOpenAiKey(openaiKeyInput.trim());
-    setStoredOpenRouterKey(openrouterKeyInput.trim());
-    setStoredGeminiKey(geminiKeyInput.trim());
-    setStoredClickUpToken(clickupTokenInput.trim());
-    setStoredClickUpListId(clickupListIdInput.trim());
-    setShowKeyModal(false);
-  };
 
   // Unified Meeting Source state
   // Live recording is the primary meeting path. Upload remains available as a secondary path.
@@ -407,7 +333,7 @@ export default function Home() {
 
   // The standalone desktop app has no account or page-permission service.
   useEffect(() => {
-    const pages: NavView[] = ["dashboard", "business-analysis", "meetings", "notebook", "tasks", "minutes"];
+    const pages: NavView[] = ["dashboard", "business-analysis", "meetings", "notebook", "minutes", "settings"];
     setAllowedPages(pages);
     setSidebarOrder(pages);
     setAskEchoEnabled(true);
@@ -417,7 +343,7 @@ export default function Home() {
 
   const isPageAllowed = (view: NavView) => {
     if (isAdminUser || authUser?.email?.toLowerCase().trim() === "admin@primephilippines.com") return true;
-    if (view === "notebook") return allowedPages.includes("notebook") || allowedPages.includes("tasks");
+    if (view === "notebook") return allowedPages.includes("notebook");
     return allowedPages.includes(view);
   };
 
@@ -447,22 +373,6 @@ export default function Home() {
     }
   }, [currentView, stage, sourceTab]);
 
-  // Universal Search Tasks State
-  const [tasks, setTasks] = useState<ClickUpTask[]>([]);
-
-  const searchTasksLoaded = useRef(false);
-  const loadUniversalSearchTasks = async () => {
-    if (searchTasksLoaded.current || authStatus !== "authenticated" || !isPageAllowed("tasks")) return;
-    searchTasksLoaded.current = true;
-    try {
-      const data = await fetchClickUpTasks();
-      if (Array.isArray(data.tasks)) setTasks(data.tasks);
-    } catch (error) {
-      searchTasksLoaded.current = false;
-      console.warn("Universal search tasks could not be loaded:", error);
-    }
-  };
-
   // App Meeting Data
   const [transcript, setTranscript] = useState("");
   const [metadata, setMetadata] = useState<any>({
@@ -481,6 +391,7 @@ export default function Home() {
     confirmed_by: "Client Rep or Lead",
     conf_designation: "Designation / Title"
   });
+  const autoMeetingNameRef = useRef<string | null>(null);
 
   // PRIME Team Attendees (Tag Chips)
   const [primeAttendees, setPrimeAttendees] = useState<string[]>([]);
@@ -630,25 +541,38 @@ export default function Home() {
           setRecordedDurationSeconds(Math.round(res.telemetry.originalDurationSec));
         }
       }
-      if (res.metadata) {
-        setMetadata((prev: any) => ({
-          ...prev,
-          ...res.metadata,
-          location: res.metadata.location && VENUE_OPTIONS.includes(res.metadata.location) 
-            ? res.metadata.location 
-            : prev.location
-        }));
-        // Attendees are always entered manually by the user. Do not infer or
-        // auto-populate internal/external attendees from transcript metadata.
+      if (rawTranscript.trim()) {
+        try {
+          const suggestion = await runStructured<{ meeting_title: string; meeting_type: string; location: string; attendees: string[] }>(
+            'Extract meeting details from the transcript. Create a concise, specific title in 3 to 8 words; use a company or client only if named and avoid generic titles. Set meeting_type to Internal, External, or Team only when supported, otherwise an empty string. Set location only if a venue is explicitly mentioned, otherwise an empty string. Return strict JSON with meeting_title, meeting_type, location, and attendees (names explicitly mentioned). Do not infer details.',
+            rawTranscript,
+          );
+          const suggestedTitle = String(suggestion.meeting_title || "").trim();
+          const suggestedType = ["Internal", "External", "Team"].find((value) => value === suggestion.meeting_type);
+          const suggestedLocation = VENUE_OPTIONS.find((value) => value === suggestion.location);
+          setMetadata((current: any) => {
+            const currentTitle = String(current.client_name || "").trim();
+            const canApplyTitle = Boolean(suggestedTitle && (!currentTitle || currentTitle === autoMeetingNameRef.current));
+            if (canApplyTitle) autoMeetingNameRef.current = suggestedTitle;
+            return {
+              ...current,
+              client_name: canApplyTitle ? suggestedTitle : current.client_name,
+              meeting_type: suggestedType || current.meeting_type,
+              location: suggestedLocation || current.location,
+            };
+          });
+          // Attendees remain manual, even if names appear in the transcript.
+        } catch {
+          // Keep processing if Codex metadata extraction is unavailable.
+        }
       }
 
       // Automatically synthesize minutes draft
       setLoadingText("Synthesizing structured Minutes of the Meeting...");
       const topics = "Meeting discussions and decisions";
-      const momRes = await generateMinutes(
-        rawTranscript || pastedText,
-        topics,
-        notesToUse
+      const momRes = await runStructured<any>(
+        `Create factual meeting minutes in JSON. Return fields: summary, bottom_line, matched_items (array of objects with topic_title, category, importance, why_it_matters, discussion_point, evidence_quote, action_plan, indicative_delivery_date, person_in_charge, confidence), recommended_missed_points (same item shape), and other_discussions. Use only supported facts. Distinguish decisions from proposals and open questions. Only create action plans for explicit commitments. Use direct transcript evidence and timestamps; meeting notes are context and never evidence quotes. Summary should be one concise paragraph; bottom_line should separately state the outcome or unresolved status. Omit routine chatter. For each discussion point, write one introductory paragraph followed by optional hyphen bullets. Use empty arrays or strings where appropriate.`,
+        `<topics_of_interest>\n${topics}\n</topics_of_interest>\n\n<meeting_notes>\n${notesToUse || "No meeting notes provided."}\n</meeting_notes>\n\n<transcript>\n${rawTranscript || pastedText}\n</transcript>`,
       );
 
       if (!metadata.end_time) setMetadata((current: any) => ({ ...current, end_time: new Date().toTimeString().slice(0, 5) }));
@@ -732,7 +656,10 @@ export default function Home() {
     setLoadingText("Synthesizing structured minutes...");
     try {
       const topics = "Meeting discussions and decisions";
-      const res = await generateMinutes(content, topics, additionalMeetingNotes);
+      const res = await runStructured<any>(
+        `Create factual meeting minutes in JSON. Return fields: summary, bottom_line, matched_items (array of objects with topic_title, category, importance, why_it_matters, discussion_point, evidence_quote, action_plan, indicative_delivery_date, person_in_charge, confidence), recommended_missed_points (same item shape), and other_discussions. Use only supported facts. Distinguish decisions from proposals and open questions. Only create action plans for explicit commitments. Use direct transcript evidence and timestamps; meeting notes are context and never evidence quotes. Summary should be one concise paragraph; bottom_line should separately state the outcome or unresolved status. Omit routine chatter. For each discussion point, write one introductory paragraph followed by optional hyphen bullets. Use empty arrays or strings where appropriate.`,
+        `<topics_of_interest>\n${topics}\n</topics_of_interest>\n\n<meeting_notes>\n${additionalMeetingNotes || "No meeting notes provided."}\n</meeting_notes>\n\n<transcript>\n${content}\n</transcript>`,
+      );
       if (!metadata.end_time) setMetadata((current: any) => ({ ...current, end_time: new Date().toTimeString().slice(0, 5) }));
       setMomItems(
         (res.matched_items || []).map((item: any, idx: number) => ({
@@ -891,21 +818,10 @@ export default function Home() {
     setIsDiscoveringTopics(true);
     const activeQuery = queryOverride !== undefined ? queryOverride : topicQuery;
     try {
-      const response = await fetch("/api/discover-topics", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": getStoredApiKey() || ""
-        },
-        body: JSON.stringify({
-          transcript,
-          notes: additionalMeetingNotes,
-          query: activeQuery,
-          existingTopics: momItems.map((item) => item.topic_title)
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to discover topics.");
+      const data = await runStructured<{ topics: DiscoveredTopicItem[] }>(
+        `Find material discussion points missing from the current minutes. ${activeQuery?.trim() ? `Focus the review on: ${activeQuery.trim()}.` : "Review the whole transcript."} Exclude topics already covered. Return JSON {"topics":[...]}; each item must have topic_title, discussion_point, evidence_quote, action_plan, indicative_delivery_date, person_in_charge, confidence (High, Medium, or Low). Only include source-supported decisions, actions, risks, open questions, or important context. Existing topics: ${momItems.map((item) => item.topic_title).join("; ") || "none"}.`,
+        `<meeting_notes>\n${additionalMeetingNotes}\n</meeting_notes>\n\n<transcript>\n${transcript}\n</transcript>`,
+      );
       const incomingList: DiscoveredTopicItem[] = data.topics || [];
       if (activeQuery?.trim() && missedTopics.length > 0) {
         const existingSet = new Set(missedTopics.map((t) => t.topic_title.toLowerCase().trim()));
@@ -1124,17 +1040,9 @@ export default function Home() {
   const loadingSteps = ["Getting your recording ready", "Transcribing the audio", "Finding the key details", "Preparing your meeting notes"];
   const loadingStepIndex = loadingText.toLowerCase().includes("synth") || loadingText.toLowerCase().includes("minutes") ? 3 : loadingText.toLowerCase().includes("metadata") || loadingText.toLowerCase().includes("details") ? 2 : loadingText.toLowerCase().includes("transcrib") ? 1 : 0;
   const isMeetingWorkspace = currentView === "minutes" && stage === "Input" && sourceTab === "record";
-  const viewTitle = ({ dashboard: "Dashboard", "business-analysis": "IT Projects", meetings: "Meetings", notebook: "Notebook", minutes: "Notetaker", tasks: "Tasks" } as Record<string, string>)[currentView] || "Mosaic";
 
   return (
     <div className={`vscode-workbench flex h-screen w-screen flex-col overflow-hidden bg-bg-primary font-sans text-[#cccccc] ${isUniversalEchoOpen ? "echo-chat-docked" : ""}`}>
-      <WorkbenchMenuBar
-        viewTitle={viewTitle}
-        onOpenSearch={() => { void loadUniversalSearchTasks(); }}
-        onOpenUpdates={openUpdateDialog}
-        onNavigate={(view) => handleSelectView(view)}
-      />
-      
       {/* Loading Overlay */}
       {isLoading && (
         <div className="fixed inset-0 bg-[#FFFCFB]/85 z-50 flex flex-col items-center justify-center backdrop-blur-xs">
@@ -1195,7 +1103,7 @@ export default function Home() {
 
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-      {/* Explorer stays icon-only and opens while hovered. */}
+      {/* One persistent Explorer sidebar replaces the icon rail plus flyout panel. */}
       <Sidebar
           currentView={currentView}
           onSelectView={(view) => handleSelectView(view)}
@@ -1213,20 +1121,12 @@ export default function Home() {
         {/* Persistent Slim Topbar */}
         <Topbar
           meetings={archivedMeetings}
-          tasks={tasks}
-          userId={authUser?.id ? String(authUser.id) : undefined}
-          onOpenSearch={() => { void loadUniversalSearchTasks(); }}
+          onOpenUpdates={openUpdateDialog}
           onOpenUniversalEcho={() => setIsUniversalEchoOpen(true)}
           onSelectMeeting={(meetingId) => {
             if (isPageAllowed("meetings")) {
               setSelectedMeetingId(meetingId);
               setCurrentView("meetings");
-            }
-          }}
-          onSelectTask={(taskId) => {
-            if (isPageAllowed("tasks")) {
-              setFocusedTaskId(taskId);
-              setCurrentView("tasks");
             }
           }}
           onOpenStudio={() => {
@@ -1335,27 +1235,9 @@ export default function Home() {
               />
             )}
 
-            {/* VIEW: TASKS (CLICKUP PORTAL) */}
-            {(currentView === "tasks" || currentView === "notebook") && (
-              <TasksPageView
-                key={currentView}
-                userId={authUser?.id ? String(authUser.id) : undefined}
-                currentUserName={authUser?.username}
-                currentView={currentView}
-                canAccessTasks={isPageAllowed("tasks")}
-                canAccessNotebook={isPageAllowed("notebook")}
-                onNavigateToMeetings={() => setCurrentView("meetings")}
-                onSelectMeeting={(meetingTitle) => {
-                  const match = archivedMeetings.find((m) =>
-                    m.title.toLowerCase().includes(meetingTitle.toLowerCase())
-                  );
-                  if (match) setSelectedMeetingId(match.id);
-                  setCurrentView("meetings");
-                }}
-                focusedTaskId={focusedTaskId}
-                onClearFocusedTask={() => setFocusedTaskId(null)}
-              />
-            )}
+            {currentView === "settings" && <SettingsPage />}
+
+            {currentView === "notebook" && <NotebookPage />}
 
             {currentView === "business-analysis" && <BusinessAnalysisView userId={authUser?.id ? String(authUser.id) : undefined} meetings={archivedMeetings} onLoadMeetings={async () => {
               const personalListId = typeof window !== "undefined" ? localStorage.getItem("project_echo_personal_list_id") || undefined : undefined;
@@ -1387,10 +1269,6 @@ export default function Home() {
                   }
                 }}
                 canExport={allowedFeatures.includes("meetings-export")}
-                onNavigateToTasks={(taskId) => {
-                  setFocusedTaskId(taskId);
-                  setCurrentView("tasks");
-                }}
                 onUpdateMeeting={async (updated, previousMeeting) => {
                   const response = await fetch("/api/meetings", {
                     method: "POST",
@@ -1437,8 +1315,7 @@ export default function Home() {
             {/* VIEW 3: MINUTES GENERATOR */}
             {currentView === "minutes" && (
               <div ref={notetakerRef} className={`relative flex ${isMeetingWorkspace ? "h-full min-h-0 overflow-hidden" : "min-h-full"} flex-col bg-[#F7F9FC] font-sans text-gray-800`}>
-                {/* Header bar (Uniform text-2xl font-serif) */}
-                <div className="flex flex-col justify-between gap-4 border-b border-slate-200 bg-[#FFFCFB] px-5 py-3 sm:flex-row sm:items-center md:px-7 shrink-0">
+                {!isMeetingWorkspace && <div className="flex flex-col justify-between gap-4 border-b border-slate-200 bg-[#FFFCFB] px-5 py-3 sm:flex-row sm:items-center md:px-7 shrink-0">
                   <div>
                     <h1 className="text-2xl font-serif font-bold text-[#003366] italic">Notetaker Workspace</h1>
                     <p className="text-xs font-bold tracking-wider text-gray-400 uppercase mt-0.5">
@@ -1474,7 +1351,7 @@ export default function Home() {
                       </div>
                     )}
                   </div>
-                </div>
+                </div>}
 
                 <Stepper 
                   currentStage={stage} 
@@ -1670,8 +1547,11 @@ export default function Home() {
                             <input
                               type="text"
                               value={metadata.client_name || ""}
-                              onChange={(event) => setMetadata({ ...metadata, client_name: event.target.value })}
-                              placeholder="e.g. Q3 Commercial Real Estate Strategy"
+                              onChange={(event) => {
+                                autoMeetingNameRef.current = null;
+                                setMetadata({ ...metadata, client_name: event.target.value });
+                              }}
+                              placeholder="Suggested from transcript after processing"
                               className="w-full border border-slate-200 bg-[#FFFCFB] px-2 py-1 text-xs text-slate-800 outline-none focus:border-[#C9A84C] transition-colors"
                             />
                           </div>
@@ -1867,9 +1747,9 @@ export default function Home() {
                             <div className="space-y-1.5 border-t border-slate-200 bg-white p-2">
                               <div className="grid grid-cols-2 gap-1.5">
                                 <input aria-label="Department" value={metadata.department || ""} onChange={(event) => setMetadata({ ...metadata, department: event.target.value })} placeholder="Department (e.g. CRD)" className="w-full min-w-0 border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />
-                                <input aria-label="ClickUp workspace" value={metadata.workspace || ""} onChange={(event) => setMetadata({ ...metadata, workspace: event.target.value })} placeholder="ClickUp workspace" className="w-full min-w-0 border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />
+                                {!desktopMode && <input aria-label="ClickUp workspace" value={metadata.workspace || ""} onChange={(event) => setMetadata({ ...metadata, workspace: event.target.value })} placeholder="ClickUp workspace" className="w-full min-w-0 border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />}
                               </div>
-                              <input aria-label="ClickUp space ID" value={metadata.space_id || ""} onChange={(event) => setMetadata({ ...metadata, space_id: event.target.value })} placeholder="ClickUp Space ID" className="w-full border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />
+                              {!desktopMode && <input aria-label="ClickUp space ID" value={metadata.space_id || ""} onChange={(event) => setMetadata({ ...metadata, space_id: event.target.value })} placeholder="ClickUp Space ID" className="w-full border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />}
                               <div className="grid grid-cols-2 gap-1.5">
                                 <input aria-label="Prepared by" value={metadata.prepared_by || "Dave Policarpio"} onChange={(event) => setMetadata({ ...metadata, prepared_by: event.target.value })} placeholder="Prepared by" className="w-full min-w-0 border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />
                                 <input aria-label="Confirmed by" value={metadata.confirmed_by || "Client Rep or Lead"} onChange={(event) => setMetadata({ ...metadata, confirmed_by: event.target.value })} placeholder="Confirmed by" className="w-full min-w-0 border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />
@@ -1883,8 +1763,7 @@ export default function Home() {
                     onSendToNotetaker={handleSendToNotetaker}
                     onOpenSource={(page, recordId, url) => {
                       if (page === "meetings") setSelectedMeetingId(recordId);
-                      if (page === "tasks") setFocusedTaskId(recordId);
-                      if (["meetings", "tasks", "notebook"].includes(page)) setCurrentView(page as NavView);
+                      if (["meetings", "notebook", "tasks"].includes(page)) setCurrentView(page === "tasks" ? "notebook" : page as NavView);
                       else if (url) window.open(url, "_blank", "noopener,noreferrer");
                     }}
                   />
@@ -1987,17 +1866,20 @@ export default function Home() {
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Meeting Name</label>
                   <input 
                     type="text" 
-                    placeholder="e.g. Acme Corp or Internal Mosaic Project"
+                    placeholder="Suggested from transcript after processing"
                     value={metadata.client_name || ""}
-                    onChange={(e) => setMetadata({ ...metadata, client_name: e.target.value })}
+                    onChange={(e) => {
+                      autoMeetingNameRef.current = null;
+                      setMetadata({ ...metadata, client_name: e.target.value });
+                    }}
                     className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 focus:bg-[#FFFCFB] focus:border-[#C9AB4C] outline-none transition-colors rounded-none" 
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-                  <div><label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">ClickUp Workspace</label><input value={metadata.workspace || ""} onChange={(e) => setMetadata({ ...metadata, workspace: e.target.value })} placeholder="Workspace name" className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200" /></div>
+                <div className={`grid grid-cols-1 ${desktopMode ? "md:grid-cols-2" : "md:grid-cols-3"} gap-3 mt-3`}>
+                  {!desktopMode && <div><label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">ClickUp Workspace</label><input value={metadata.workspace || ""} onChange={(e) => setMetadata({ ...metadata, workspace: e.target.value })} placeholder="Workspace name" className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200" /></div>}
                   <div><label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Department</label><input value={metadata.department || ""} onChange={(e) => setMetadata({ ...metadata, department: e.target.value })} placeholder="e.g. CRD or IT" className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200" /></div>
-                  <div><label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">ClickUp Space ID</label><input value={metadata.space_id || ""} onChange={(e) => setMetadata({ ...metadata, space_id: e.target.value })} placeholder="Required for archive" className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200" /></div>
+                  {!desktopMode && <div><label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">ClickUp Space ID</label><input value={metadata.space_id || ""} onChange={(e) => setMetadata({ ...metadata, space_id: e.target.value })} placeholder="Required for archive" className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200" /></div>}
                 </div>
 
                 {/* Team Attendees & External Attendees */}
@@ -2230,40 +2112,6 @@ export default function Home() {
                     const fields = { actionPlan: "action_plan", targetDate: "target_date", personInCharge: "person_in_charge" } as const;
                     setActionItems((current) => current.map((action) => String(action.id) === id ? { ...action, [fields[field]]: value, ...(field === "personInCharge" ? { assignee_ids: assigneeIds || [], assignee_id: assigneeIds?.[0] } : {}) } : action));
                   }}
-                  renderAction={(row) => {
-                    const index = actionItems.findIndex((item) => String(item.id) === row.id);
-                    const item = actionItems[index];
-                    if (!item) return null;
-                    const source = momItems.find((discussion) => String(discussion.id) === String(item.discussion_point_id));
-                    return item.clickUpTaskId ? (
-                      <button type="button" onClick={() => { setFocusedTaskId(item.clickUpTaskId || null); setCurrentView("tasks"); }} className="mt-2 flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100" title="Already added to ClickUp. Click to view or edit in Tasks portal">
-                        <CheckCircle2 size={13} className="text-emerald-600" /><span>Added to Tasks</span>
-                      </button>
-                    ) : (
-                      <button type="button" onClick={() => setQuickAddTaskData({
-                        isOpen: true,
-                        data: {
-                          name: item.action_plan || source?.topic_title || `Action ${index + 1}`,
-                          description: source?.discussion_point || "",
-                          topic: source?.topic_title || source?.topic || "",
-                          evidence: source?.evidence_quote || source?.evidence || "",
-                          meetingTitle: metadata.client_name || "Executive Meeting",
-                          meetingDate: metadata.date,
-                          dueDate: item.target_date || "",
-                          priority: "normal",
-                          assigneeName: item.person_in_charge || "",
-                          assigneeId: item.assignee_id || "",
-                          assigneeIds: item.assignee_ids || (item.assignee_id ? [item.assignee_id] : []),
-                          discussionPointId: String(item.discussion_point_id),
-                          existingTaskId: item.clickUpTaskId,
-                          existingTaskUrl: item.clickUpUrl,
-                        },
-                        actionIndex: index,
-                      })} className="mt-2 flex items-center gap-1.5 border border-[#003366]/30 bg-[#FFFCFB] px-2.5 py-1 text-[11px] font-bold text-[#003366] transition-colors hover:border-[#003366] hover:bg-blue-50/50">
-                        <CheckSquare size={13} className="text-[#c9ab4c]" /><span>Add to Tasks</span>
-                      </button>
-                    );
-                  }}
                 />
               </div>
             ) : (
@@ -2409,23 +2257,6 @@ export default function Home() {
         transcript={transcript}
       />
 
-      {/* Quick Add Task to ClickUp Modal */}
-      <QuickAddTaskModal
-        isOpen={quickAddTaskData.isOpen}
-        onClose={() => setQuickAddTaskData({ isOpen: false, data: {} })}
-        initialData={quickAddTaskData.data}
-        onTaskCreated={(created) => {
-          if (quickAddTaskData.actionIndex !== undefined) {
-            const idx = quickAddTaskData.actionIndex;
-            setActionItems((current) => current.map((action, actionIndex) => actionIndex === idx ? { ...action, clickUpTaskId: created.id, clickUpUrl: created.url } : action));
-          }
-        }}
-        onOpenInTasks={(taskId) => {
-          setFocusedTaskId(taskId);
-          setCurrentView("tasks");
-        }}
-      />
-
       {/* Universal Slide-Over AI Assistant Drawer */}
       {askEchoEnabled && allowedFeatures.includes("ask-echo") && <UniversalEchoDrawer
         isOpen={isUniversalEchoOpen}
@@ -2433,8 +2264,7 @@ export default function Home() {
         meetings={archivedMeetings}
         onOpenSource={(page, recordId, url) => {
           if (page === "meetings") setSelectedMeetingId(recordId);
-          if (page === "tasks") setFocusedTaskId(recordId);
-          if (["meetings", "tasks", "notebook"].includes(page)) setCurrentView(page as NavView);
+          if (["meetings", "notebook", "tasks"].includes(page)) setCurrentView(page === "tasks" ? "notebook" : page as NavView);
           else if (url) window.open(url, "_blank", "noopener,noreferrer");
           setIsUniversalEchoOpen(false);
         }}

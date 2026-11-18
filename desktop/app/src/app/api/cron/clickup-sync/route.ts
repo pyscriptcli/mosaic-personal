@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { processClickUpSyncQueue } from "@/lib/clickupSync";
 import { isClickUpWorkerRequest, purgeExpiredClickUpData } from "@/lib/clickupReadStore";
 import { processMosaicWriteOutbox } from "@/lib/mosaicWriteStore";
+import { rejectDesktopClickUpRoute } from "@/lib/desktopBoundary";
 
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
+  const disabled = rejectDesktopClickUpRoute();
+  if (disabled) return disabled;
   const secret = process.env.CRON_SECRET;
   const configuredSecret = Boolean(secret && request.headers.get("authorization") === `Bearer ${secret}`);
   const scheduledSecret = await isClickUpWorkerRequest(request.headers.get("x-clickup-worker-key") || "");

@@ -5,7 +5,7 @@ const path = require("node:path");
 const HOST = "127.0.0.1";
 const START_TIMEOUT_MS = 90_000;
 
-async function startLocalAppServer({ appPath, runtimePath, dataDirectory, recordingsDirectory }) {
+async function startLocalAppServer({ appPath, runtimePath, dataDirectory, recordingsDirectory, internalDataDirectory, apiKeys }) {
   const nextCli = path.join(appPath, "node_modules", "next", "dist", "bin", "next");
   const port = await getAvailablePort();
   const url = `http://${HOST}:${port}/`;
@@ -16,10 +16,23 @@ async function startLocalAppServer({ appPath, runtimePath, dataDirectory, record
     MOSAIC_DESKTOP: "1",
     MOSAIC_DESKTOP_NO_LOGIN: "1",
     MOSAIC_DATA_DIR: path.resolve(dataDirectory),
+    MOSAIC_INTERNAL_DATA_DIR: path.resolve(internalDataDirectory || path.join(dataDirectory, ".internal")),
     MOSAIC_RECORDINGS_DIR: path.resolve(recordingsDirectory || path.join(dataDirectory, "recordings")),
     NODE_ENV: "production",
     PORT: String(port),
   };
+
+  const apiKeyEnvironment = {
+    DEEPSEEK_API_KEY: "deepseek",
+    GROQ_API_KEY: "groq",
+    OPENAI_API_KEY: "openai",
+    OPENROUTER_API_KEY: "openrouter",
+    GEMINI_API_KEY: "gemini",
+  };
+  for (const [name, provider] of Object.entries(apiKeyEnvironment)) {
+    const value = apiKeys?.[provider];
+    if (typeof value === "string" && value) env[name] = value;
+  }
 
   // Pass OS paths only. Do not inherit API keys from the desktop launch environment.
   for (const name of ["PATH", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "HOME", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA"]) {

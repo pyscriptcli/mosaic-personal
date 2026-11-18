@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
 import { clickUpFetch as fetch } from "@/lib/clickupCalendarApi";
 import { scheduleMosaicWriteSync, stageMosaicWrite } from "@/lib/mosaicWriteStore";
+import { rejectDesktopClickUpRoute } from "@/lib/desktopBoundary";
 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const disabled = rejectDesktopClickUpRoute();
+  if (disabled) return disabled;
   try {
     const token = getTokenFromRequest(req);
     if (!token) {

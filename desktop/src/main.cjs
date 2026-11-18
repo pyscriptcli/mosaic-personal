@@ -1,10 +1,11 @@
-const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, screen, session, shell, Tray } = require("electron");
+const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, safeStorage, screen, session, shell, Tray } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const fs = require("node:fs");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 const { startLocalAppServer } = require("./local-app-server.cjs");
 const { CodexAppServer } = require("./codex-app-server.cjs");
+const { syncWorkspace } = require("./workspace-sync.cjs");
 
 let APP_ORIGIN = null;
 let localAppServer;
@@ -21,8 +22,13 @@ let reminderCanClose = false;
 let tray;
 let isQuitting = false;
 let updatePollTimer;
+let workspaceWatcher;
+let workspaceSyncTimer;
+let workspaceSyncInterval;
+let workspaceSyncInProgress = false;
+let workspaceSyncState = { status: "idle", uploaded: 0, downloaded: 0, deleted: 0, syncedAt: null, error: null };
 const updateState = { status: "idle", currentVersion: app.getVersion(), version: null, percent: 0, error: null };
-let settings = { startWithWindows: false, closeToTrayNoticeShown: false, mediaPermissionGranted: false, codexWorkspaceDirectory: null };
+let settings = { startWithWindows: false, closeToTrayNoticeShown: false, mediaPermissionGranted: false, codexWorkspaceDirectory: null, workspaceParentDirectory: null, supabaseUrl: "", encryptedSupabaseKey: null, encryptedApiKeys: {} };
 let displayCaptureSequence = 0;
 const pendingDisplayCaptures = new Map();
 
@@ -35,14 +41,30 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     app.setAppUserModelId("com.primephilippines.mosaic");
     readSettings();
+    removeLegacyClickUpRecords();
+    if (!settings.workspaceParentDirectory) {
+      const selected = await dialog.showOpenDialog({ title: "Choose where Mosaic saves its local files", properties: ["openDirectory", "createDirectory"] });
+      if (selected.canceled || !selected.filePaths[0]) {
+        app.quit();
+        return;
+      }
+      settings.workspaceParentDirectory = path.resolve(selected.filePaths[0]);
+      saveSettings();
+    }
+    const workspaceDirectory = path.join(settings.workspaceParentDirectory, "Mosaic");
+    for (const folder of ["IT Projects", "Meetings", "Notebook", "Notetaker", path.join("Notetaker", "Recordings")]) {
+      fs.mkdirSync(path.join(workspaceDirectory, folder), { recursive: true });
+    }
     const appPath = app.isPackaged
       ? path.join(process.resourcesPath, "local-app")
       : path.join(__dirname, "..", "build", "local-app");
     localAppOptions = {
       appPath,
       runtimePath: process.execPath,
-      dataDirectory: path.join(app.getPath("userData"), "data"),
-      recordingsDirectory: path.join(app.getPath("documents"), "Mosaic Meetings"),
+      dataDirectory: workspaceDirectory,
+      internalDataDirectory: path.join(app.getPath("userData"), "data"),
+      recordingsDirectory: path.join(workspaceDirectory, "Notetaker", "Recordings"),
+      apiKeys: decryptApiKeys(settings.encryptedApiKeys),
     };
 
     try {
@@ -59,6 +81,7 @@ if (!app.requestSingleInstanceLock()) {
     setPermissionPolicy();
     registerReminderBridge();
     registerRecordingBridge();
+    registerWorkspaceBridge();
     registerCodexBridge();
     registerUpdateBridge();
     createTray();
@@ -92,6 +115,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on("will-quit", () => {
     if (backupTimer) clearInterval(backupTimer);
     if (updatePollTimer) clearInterval(updatePollTimer);
+    if (workspaceSyncTimer) clearTimeout(workspaceSyncTimer);
+    if (workspaceSyncInterval) clearInterval(workspaceSyncInterval);
+    workspaceWatcher?.close();
     if (tray && !tray.isDestroyed()) tray.destroy();
   });
 }
@@ -104,6 +130,11 @@ function readSettings() {
       startWithWindows: saved.startWithWindows === true,
       closeToTrayNoticeShown: saved.closeToTrayNoticeShown === true,
       mediaPermissionGranted: saved.mediaPermissionGranted === true,
+      workspaceParentDirectory: typeof saved.workspaceParentDirectory === "string" && fs.existsSync(saved.workspaceParentDirectory) && fs.statSync(saved.workspaceParentDirectory).isDirectory()
+        ? path.resolve(saved.workspaceParentDirectory) : null,
+      supabaseUrl: typeof saved.supabaseUrl === "string" ? saved.supabaseUrl : "",
+      encryptedSupabaseKey: typeof saved.encryptedSupabaseKey === "string" ? saved.encryptedSupabaseKey : null,
+      encryptedApiKeys: saved.encryptedApiKeys && typeof saved.encryptedApiKeys === "object" && !Array.isArray(saved.encryptedApiKeys) ? saved.encryptedApiKeys : {},
       codexWorkspaceDirectory: typeof saved.codexWorkspaceDirectory === "string" && fs.existsSync(saved.codexWorkspaceDirectory) && fs.statSync(saved.codexWorkspaceDirectory).isDirectory()
         ? path.resolve(saved.codexWorkspaceDirectory) : null,
       reminder: saved.reminder && saved.reminder.enabled === true && Number.isFinite(Number(saved.reminder.intervalSeconds))
@@ -115,11 +146,184 @@ function readSettings() {
   }
 }
 
+function removeLegacyClickUpRecords() {
+  const legacyDatabase = path.join(app.getPath("userData"), "data", "mosaic.sqlite");
+  if (!fs.existsSync(legacyDatabase)) return;
+  let database;
+  try {
+    database = new DatabaseSync(legacyDatabase);
+    database.exec("PRAGMA busy_timeout = 10000");
+    const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => String(row.name)));
+    if (tables.has("local_records")) {
+      const columns = new Set(database.prepare("PRAGMA table_info(local_records)").all().map((row) => String(row.name)));
+      const conditions = ["clickup_id IS NOT NULL", "clickup_list_id IS NOT NULL"].filter((column) => columns.has(column));
+      if (conditions.length) database.prepare(`DELETE FROM local_records WHERE ${conditions.join(" OR ")}`).run();
+    }
+    if (tables.has("local_settings")) database.prepare("DELETE FROM local_settings WHERE lower(key) LIKE '%clickup%'").run();
+  } catch (error) {
+    console.error("Could not remove legacy ClickUp records:", error);
+  } finally {
+    database?.close();
+  }
+}
+
+function decryptValue(value) {
+  if (!value || !safeStorage.isEncryptionAvailable()) return "";
+  try { return safeStorage.decryptString(Buffer.from(value, "base64")); }
+  catch { return ""; }
+}
+
+function decryptApiKeys(encrypted = settings.encryptedApiKeys) {
+  return Object.fromEntries(Object.entries(encrypted || {}).map(([provider, value]) => [provider, decryptValue(value)]).filter(([, value]) => value));
+}
+
+function publicWorkspaceSettings() {
+  const apiKeys = decryptApiKeys();
+  return {
+    directory: workspaceDirectory(),
+    supabaseConfigured: Boolean(settings.supabaseUrl && decryptValue(settings.encryptedSupabaseKey)),
+    apiKeys: Object.fromEntries(["deepseek", "groq", "openai", "openrouter", "gemini"].map((provider) => [provider, Boolean(apiKeys[provider])])),
+    codexWorkspaceDirectory: settings.codexWorkspaceDirectory,
+    sync: { ...workspaceSyncState },
+  };
+}
+
+function publishWorkspaceSync(nextState) {
+  workspaceSyncState = { ...workspaceSyncState, ...nextState };
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("mosaic:supabase-sync-status", { ...workspaceSyncState });
+}
+
+async function runWorkspaceSync() {
+  if (workspaceSyncInProgress) return { ...workspaceSyncState };
+  const key = decryptValue(settings.encryptedSupabaseKey);
+  if (!settings.supabaseUrl || !key) return publishWorkspaceSync({ status: "not-configured", error: null });
+  workspaceSyncInProgress = true;
+  publishWorkspaceSync({ status: "syncing", error: null });
+  try {
+    const result = await syncWorkspace({ root: workspaceDirectory(), url: settings.supabaseUrl, key });
+    publishWorkspaceSync({ status: "synced", ...result, error: null });
+  } catch (error) {
+    publishWorkspaceSync({ status: "failed", error: error instanceof Error ? error.message : String(error) });
+  } finally {
+    workspaceSyncInProgress = false;
+  }
+  return { ...workspaceSyncState };
+}
+
+function scheduleWorkspaceSync(delay = 2500) {
+  if (workspaceSyncTimer) clearTimeout(workspaceSyncTimer);
+  workspaceSyncTimer = setTimeout(() => { void runWorkspaceSync(); }, delay);
+}
+
+function watchWorkspaceFolder() {
+  workspaceWatcher?.close();
+  try {
+    workspaceWatcher = fs.watch(workspaceDirectory(), { recursive: true }, (_eventType, filename) => {
+      const name = String(filename || "").replace(/\\/g, "/");
+      if (!name || name.startsWith(".sync/") || name.startsWith("Notetaker/Recordings/")) return;
+      if (!workspaceSyncInProgress) scheduleWorkspaceSync();
+    });
+  } catch (error) {
+    console.error("Could not watch Mosaic workspace files:", error);
+  }
+  if (workspaceSyncInterval) clearInterval(workspaceSyncInterval);
+  workspaceSyncInterval = setInterval(() => { void runWorkspaceSync(); }, 120_000);
+  scheduleWorkspaceSync(4_000);
+}
+
 function saveSettings() {
   const settingsPath = path.join(app.getPath("userData"), "settings.json");
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
   const saved = { ...settings, reminder: settings.reminder ? { enabled: true, intervalSeconds: settings.reminder.intervalSeconds, nextAt: settings.reminder.nextAt, taskNames: [] } : null };
   fs.writeFileSync(settingsPath, `${JSON.stringify(saved, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+}
+
+function workspaceDirectory() {
+  if (!settings.workspaceParentDirectory) throw new Error("Choose a folder for Mosaic data first.");
+  return path.join(settings.workspaceParentDirectory, "Mosaic");
+}
+
+function trustedAppSender(event) {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents && isAppOrigin(event.senderFrame?.url || ""));
+}
+
+function registerWorkspaceBridge() {
+  ipcMain.handle("mosaic:workspace-settings", (event) => {
+    if (!trustedAppSender(event)) throw new Error("Workspace settings are only available inside Mosaic.");
+    return publicWorkspaceSettings();
+  });
+
+  ipcMain.handle("mosaic:workspace-choose-folder", async (event) => {
+    if (!trustedAppSender(event)) throw new Error("Workspace settings are only available inside Mosaic.");
+    const result = await dialog.showOpenDialog(mainWindow, { title: "Choose the parent folder for Mosaic", properties: ["openDirectory", "createDirectory"] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const nextParent = path.resolve(result.filePaths[0]);
+    const currentRoot = workspaceDirectory();
+    const nextRoot = path.join(nextParent, "Mosaic");
+    if (path.resolve(currentRoot).toLowerCase() === path.resolve(nextRoot).toLowerCase()) return { directory: currentRoot, unchanged: true };
+    if (fs.existsSync(nextRoot)) throw new Error("That location already contains a Mosaic folder. Choose an empty parent folder to avoid overwriting data.");
+    fs.cpSync(currentRoot, nextRoot, { recursive: true, errorOnExist: true, force: false });
+    settings.workspaceParentDirectory = nextParent;
+    saveSettings();
+    localAppOptions.dataDirectory = nextRoot;
+    localAppOptions.recordingsDirectory = path.join(nextRoot, "Notetaker", "Recordings");
+    if (!localAppServer) throw new Error("Mosaic's local server is not ready.");
+    await localAppServer.stop();
+    localAppServer = await startLocalAppServer(localAppOptions);
+    APP_ORIGIN = new URL(localAppServer.url).origin;
+    await mainWindow.loadURL(localAppServer.url);
+    watchWorkspaceFolder();
+    return { directory: nextRoot };
+  });
+
+  ipcMain.handle("mosaic:open-workspace-folder", (event) => {
+    if (!trustedAppSender(event)) throw new Error("Workspace settings are only available inside Mosaic.");
+    return shell.openPath(workspaceDirectory());
+  });
+
+  ipcMain.handle("mosaic:open-credential-manager", (event) => {
+    if (!trustedAppSender(event)) throw new Error("Settings are only available inside Mosaic.");
+    const { spawn } = require("node:child_process");
+    const child = spawn("control.exe", ["/name", "Microsoft.CredentialManager"], { windowsHide: true, stdio: "ignore" });
+    child.once("error", (error) => console.error("Could not open Credential Manager:", error));
+    return true;
+  });
+
+  ipcMain.handle("mosaic:supabase-config", (event, config) => {
+    if (!trustedAppSender(event)) throw new Error("Supabase settings are only available inside Mosaic.");
+    if (!config || typeof config.url !== "string" || !/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(config.url.trim())) throw new Error("Enter a valid Supabase project URL.");
+    if (typeof config.secretKey !== "string" || !config.secretKey.trim().startsWith("sb_secret_")) throw new Error("Enter the project's Supabase secret key.");
+    if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows secure storage is unavailable on this device.");
+    settings.supabaseUrl = config.url.trim().replace(/\/$/, "");
+    settings.encryptedSupabaseKey = safeStorage.encryptString(config.secretKey.trim()).toString("base64");
+    saveSettings();
+    scheduleWorkspaceSync(0);
+    return { configured: true };
+  });
+
+  ipcMain.handle("mosaic:api-key-save", async (event, provider, key) => {
+    if (!trustedAppSender(event)) throw new Error("AI settings are only available inside Mosaic.");
+    const allowed = new Set(["deepseek", "groq", "openai", "openrouter", "gemini"]);
+    if (!allowed.has(provider) || typeof key !== "string" || key.trim().length > 500) throw new Error("Enter a valid AI provider key.");
+    if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows secure storage is unavailable on this device.");
+    settings.encryptedApiKeys ||= {};
+    if (key.trim()) settings.encryptedApiKeys[provider] = safeStorage.encryptString(key.trim()).toString("base64");
+    else delete settings.encryptedApiKeys[provider];
+    saveSettings();
+    localAppOptions.apiKeys = decryptApiKeys();
+    await localAppServer?.stop();
+    localAppServer = await startLocalAppServer(localAppOptions);
+    APP_ORIGIN = new URL(localAppServer.url).origin;
+    await mainWindow.loadURL(localAppServer.url);
+    return publicWorkspaceSettings();
+  });
+
+  ipcMain.handle("mosaic:supabase-sync-now", async (event) => {
+    if (!trustedAppSender(event)) throw new Error("Sync is only available inside Mosaic.");
+    return runWorkspaceSync();
+  });
+
+  watchWorkspaceFolder();
 }
 
 function isAppOrigin(value) {
@@ -341,29 +545,16 @@ function dataDirectory() {
 }
 
 function createDataBackup(destination) {
-  const source = dataDirectory();
-  const sourceDatabase = path.join(source, "mosaic.sqlite");
   const target = path.join(destination, "data");
   fs.mkdirSync(target, { recursive: true });
-  if (!fs.existsSync(sourceDatabase)) throw new Error("There is no local Mosaic data to back up yet.");
-  const targetDatabase = path.join(target, "mosaic.sqlite").replace(/'/g, "''");
-  const database = new DatabaseSync(sourceDatabase);
-  try {
-    database.exec("PRAGMA busy_timeout = 10000");
-    database.exec(`VACUUM INTO '${targetDatabase}'`);
-  } finally {
-    database.close();
-  }
-  for (const name of ["recordings"]) {
-    const folder = path.join(source, name);
-    if (fs.existsSync(folder)) fs.cpSync(folder, path.join(target, name), { recursive: true });
-  }
+  const source = workspaceDirectory();
+  if (!fs.existsSync(source)) throw new Error("There is no local Mosaic workspace to back up yet.");
+  fs.cpSync(source, path.join(target, "Mosaic"), { recursive: true });
   fs.writeFileSync(path.join(destination, "manifest.json"), JSON.stringify({ app: "mosaic-desktop", formatVersion: 1, createdAt: new Date().toISOString() }, null, 2), { encoding: "utf8", mode: 0o600 });
 }
 
 function tryDailyBackup() {
-  const sourceDatabase = path.join(dataDirectory(), "mosaic.sqlite");
-  if (!fs.existsSync(sourceDatabase)) return;
+  if (!fs.existsSync(workspaceDirectory())) return;
   const backupRoot = path.join(app.getPath("userData"), "backups", "daily");
   const date = new Date().toISOString().slice(0, 10);
   const target = path.join(backupRoot, date);
@@ -400,7 +591,7 @@ async function restoreLocalBackup() {
   const backupData = path.join(backup, "data");
   try {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    if (manifest.app !== "mosaic-desktop" || manifest.formatVersion !== 1 || !fs.existsSync(path.join(backupData, "mosaic.sqlite"))) throw new Error("This folder is not a valid Mosaic backup.");
+    if (manifest.app !== "mosaic-desktop" || manifest.formatVersion !== 1 || !fs.existsSync(path.join(backupData, "Mosaic"))) throw new Error("This folder is not a valid Mosaic backup.");
   } catch (error) {
     dialog.showErrorBox("Backup could not be restored", error instanceof Error ? error.message : String(error));
     return;
@@ -408,12 +599,12 @@ async function restoreLocalBackup() {
   const choice = await dialog.showMessageBox(mainWindow, { type: "warning", title: "Restore Mosaic backup?", message: "Restoring replaces this desktop app’s current local data.", detail: `Backup date: ${JSON.parse(fs.readFileSync(manifestPath, "utf8")).createdAt || "unknown"}`, buttons: ["Cancel", "Restore backup"], defaultId: 0, cancelId: 0, noLink: true });
   if (choice.response !== 1) return;
   try {
-    const target = dataDirectory();
-    if (!localAppServer || path.resolve(target) !== path.resolve(app.getPath("userData"), "data")) throw new Error("The local app is not ready to restore data.");
+    const target = workspaceDirectory();
+    if (!localAppServer || !settings.workspaceParentDirectory) throw new Error("The local app is not ready to restore data.");
     await localAppServer.stop();
     localAppServer = null;
     fs.rmSync(target, { recursive: true, force: true });
-    fs.cpSync(backupData, target, { recursive: true });
+    fs.cpSync(path.join(backupData, "Mosaic"), target, { recursive: true });
     localAppServer = await startLocalAppServer(localAppOptions);
     APP_ORIGIN = new URL(localAppServer.url).origin;
     await mainWindow.loadURL(localAppServer.url);

@@ -6,6 +6,7 @@ import { getStoredClickUpListId, getStoredClickUpToken } from "@/lib/api";
 import { requestCentralClickUpSync, trackClickUpLiveRefresh } from "@/lib/clickupSyncClient";
 import { AutoResizeTextarea } from "@/components/AutoResizeTextarea";
 import type { NotebookActivityHistory } from "@/features/notebook/pages/NotebookView";
+import { useEchoAI } from "@/features/ask-echo/components/EchoAI";
 
 type DayTask = {
   id: string; name: string; description: string; status: string; completed: boolean;
@@ -120,6 +121,7 @@ function requestHeaders(personalList?: { id: string; name: string } | null) {
 }
 
 export default function MyDayView({ userId, currentUserName, showDailyActivity = true, activityOnly = false, initialDate, onDateChange, activityHistory }: Props) {
+  const { runStructured } = useEchoAI();
   const [date, setDate] = useState(() => initialDate || todayIso());
   const [payload, setPayload] = useState<DayPayload | null>(null);
   const [optimisticTasks, setOptimisticTasks] = useState<DayTask[]>([]);
@@ -425,7 +427,10 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
     setSummaryState("loading");
     setSummaryError("");
     try {
-      const result = await send({ action: "summary" });
+      const result = await runStructured<{ summary: string }>(
+        'Summarize the user\'s My Day tasks as a short factual bullet list. Distinguish completed work from pending work. Do not invent progress or due dates. Return JSON with a summary string.',
+        JSON.stringify(tasks.map(({ id, name, description, status, completed, dueDate }) => ({ id, name, description, status, completed, dueDate }))),
+      );
       const summary = String(result.summary || "").trim();
       setTaskSummary(summary);
       if (summary) {
@@ -436,7 +441,7 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
       setSummaryState("error");
       setSummaryError(error instanceof Error ? error.message : "A task summary could not be generated.");
     }
-  }, [send, tasks]);
+  }, [runStructured, tasks]);
 
   useEffect(() => {
     if (!notesReady.current || personalListLoading || noteDraft === (payload?.notes || "")) return;

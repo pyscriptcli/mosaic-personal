@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setAuthCookies, ClickUpUserProfile, cleanEnv } from "@/lib/auth";
 import { clickUpFetch as fetch } from "@/lib/clickupCalendarApi";
+import { rejectDesktopLoginRoute } from "@/lib/desktopBoundary";
 
 export async function POST(req: NextRequest) {
+  const disabled = rejectDesktopLoginRoute();
+  if (disabled) return disabled;
   try {
     const body = await req.json();
     const token = cleanEnv(body.token);

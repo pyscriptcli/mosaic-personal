@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeBARequest, getBAStorage } from "@/features/it-projects/lib/business-analysis-server";
 import { normalizeBAState } from "@/features/it-projects/lib/business-analysis";
-import { getLocalSetting, setLocalSetting } from "@/lib/localFirstDatabase";
+import { deleteLocalRecord, getLocalRecord, listLocalRecords, saveLocalRecord } from "@/lib/localFirstDatabase";
 
 export const dynamic = "force-dynamic";
 const TABLE = "mosaic_ba_workspaces";
@@ -10,7 +10,9 @@ const LOCAL_KEY = "it-projects.workspace";
 export async function GET(req: NextRequest) {
   if (process.env.MOSAIC_DESKTOP === "1") {
     try {
-      return NextResponse.json({ state: normalizeBAState(getLocalSetting(LOCAL_KEY, null)) }, { headers: { "Cache-Control": "no-store" } });
+      const records = listLocalRecords<Record<string, unknown>>("it-projects");
+      const config = records.find((record) => record.id === LOCAL_KEY);
+      return NextResponse.json({ state: normalizeBAState({ projects: records.filter((record) => record.id !== LOCAL_KEY).map((record) => record.data), tableColumnWidths: config?.data.tableColumnWidths }) }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
       console.error("[IT Projects] Local load failed:", error);
       return NextResponse.json({ error: "IT Projects could not load from this device." }, { status: 500 });
@@ -34,7 +36,12 @@ export async function PUT(req: NextRequest) {
       const raw = await req.text();
       if (raw.length > 1_000_000) return NextResponse.json({ error: "This workspace is too large to save." }, { status: 413 });
       const body = JSON.parse(raw) as { state?: unknown };
-      setLocalSetting(LOCAL_KEY, normalizeBAState(body.state));
+      const state = normalizeBAState(body.state);
+      const current = listLocalRecords("it-projects").filter((record) => record.id !== LOCAL_KEY);
+      const nextIds = new Set(state.projects.map((project) => project.id));
+      for (const record of current) if (!nextIds.has(record.id)) deleteLocalRecord("it-projects", record.id);
+      for (const project of state.projects) saveLocalRecord("it-projects", { id: project.id, title: project.name || "IT Project", data: project as unknown as Record<string, unknown> });
+      saveLocalRecord("it-projects", { id: LOCAL_KEY, title: "Workspace Settings", data: { tableColumnWidths: state.tableColumnWidths } });
       return NextResponse.json({ saved: true, source: "local" });
     } catch (error) {
       console.error("[IT Projects] Local save failed:", error);
@@ -67,12 +74,14 @@ export async function DELETE(req: NextRequest) {
       const body = await req.json() as { projectId?: unknown };
       const projectId = typeof body.projectId === "string" ? body.projectId.trim().slice(0, 120) : "";
       if (!projectId) return NextResponse.json({ error: "Choose a project to delete." }, { status: 400 });
-      const currentState = normalizeBAState(getLocalSetting(LOCAL_KEY, null));
-      if (!currentState.projects.some((project) => project.id === projectId)) {
+      const current = getLocalRecord("it-projects", projectId);
+      if (!current) {
         return NextResponse.json({ error: "This project is no longer in your workspace. Reload and try again." }, { status: 404 });
       }
-      const state = { ...currentState, projects: currentState.projects.filter((project) => project.id !== projectId) };
-      setLocalSetting(LOCAL_KEY, state);
+      if (!deleteLocalRecord("it-projects", projectId)) return NextResponse.json({ error: "This project could not be removed." }, { status: 500 });
+      const records = listLocalRecords<Record<string, unknown>>("it-projects");
+      const config = records.find((record) => record.id === LOCAL_KEY);
+      const state = normalizeBAState({ projects: records.filter((record) => record.id !== LOCAL_KEY).map((record) => record.data), tableColumnWidths: config?.data.tableColumnWidths });
       return NextResponse.json({ state, source: "local" });
     } catch (error) {
       console.error("[IT Projects] Local delete failed:", error);

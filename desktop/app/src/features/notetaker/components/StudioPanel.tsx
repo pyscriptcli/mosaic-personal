@@ -31,8 +31,7 @@ import type { UseStudioRecorderReturn } from "@/hooks/useStudioRecorder";
 import { useLiveTranscription } from "@/hooks/useLiveTranscription";
 import { useAudioVisualizer } from "@/hooks/useAudioVisualizer";
 import { clearSession } from "@/features/notetaker/lib/studioStorage";
-import { askEcho } from "@/lib/api";
-import type { AskEchoResponse } from "@/features/ask-echo/lib/schema";
+import { EchoAI, useEchoAI } from "@/features/ask-echo/components/EchoAI";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -56,13 +55,6 @@ interface StudioPanelProps {
   recorder: UseStudioRecorderReturn;
 }
 
-interface EchoMessage {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-  response?: AskEchoResponse;
-}
-
 type DisplayCaptureSource = { id: string; name: string; thumbnail: string; appIcon: string | null };
 type DisplayCaptureRequest = { requestId: string; sources: DisplayCaptureSource[] };
 type MosaicDesktopBridge = {
@@ -71,8 +63,6 @@ type MosaicDesktopBridge = {
   openRecordingLocation: (fileName: string) => Promise<boolean>;
 };
 
-const ECHO_STORAGE_KEY = "echo_ask_conversation";
-const ECHO_STARTER: EchoMessage = { role: "assistant", content: "Hi — I’m Echo. What would you like to get done today?", timestamp: "Just now" };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -143,18 +133,8 @@ export function StudioPanel({
   const [mobilePanel, setMobilePanel] = useState<"capture" | "notes" | "assistant">("notes");
   const canAskEcho = askEchoEnabled && (!allowedFeatures || allowedFeatures.includes("ask-echo"));
   const canRecord = !allowedFeatures || allowedFeatures.includes("notetaker-record");
+  const { startThread } = useEchoAI();
   React.useEffect(() => { if (!canAskEcho && workspaceTab === "echo") setWorkspaceTab("transcript"); }, [canAskEcho, workspaceTab]);
-  const [echoInput, setEchoInput] = useState("");
-  const [echoMessages, setEchoMessages] = useState<EchoMessage[]>(() => {
-    try {
-      const stored = typeof window !== "undefined" ? sessionStorage.getItem(ECHO_STORAGE_KEY) : null;
-      return stored ? JSON.parse(stored) : [ECHO_STARTER];
-    } catch {
-      return [ECHO_STARTER];
-    }
-  });
-  const [openEchoSources, setOpenEchoSources] = useState<Record<number, boolean>>({});
-  const [isEchoThinking, setIsEchoThinking] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [displayCaptureRequest, setDisplayCaptureRequest] = useState<DisplayCaptureRequest | null>(null);
   const [selectedDisplaySourceId, setSelectedDisplaySourceId] = useState<string | null>(null);
@@ -162,7 +142,6 @@ export function StudioPanel({
   const [isOpeningRecordingLocation, setIsOpeningRecordingLocation] = useState(false);
   const [recordingLocationError, setRecordingLocationError] = useState("");
   const notesEndRef = useRef<HTMLDivElement>(null);
-  const echoEndRef = useRef<HTMLDivElement>(null);
   const isVideoRecording = recorder.recordedFile?.type.startsWith("video/") || recorder.mediaType === "video";
 
   React.useEffect(() => {
@@ -218,13 +197,6 @@ export function StudioPanel({
     }
     prevRecorderStatusRef.current = recorder.status;
   }, [recorder.status, onRecordingStart, onRecordingStop]);
-
-  const resetEchoConversation = useCallback(() => {
-    setEchoMessages([ECHO_STARTER]);
-    setEchoInput("");
-    setOpenEchoSources({});
-    try { sessionStorage.removeItem(ECHO_STORAGE_KEY); } catch {}
-  }, []);
 
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
@@ -397,64 +369,16 @@ export function StudioPanel({
     return () => { cancelled = true; window.clearInterval(interval); };
   }, [botId]);
 
-  const askFromStudio = async (prompt?: string) => {
-    const question = (prompt || echoInput).trim();
-    if (!question || isEchoThinking) return;
-    setEchoInput("");
-    setIsEchoThinking(true);
-    const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const nextMessages = [...echoMessages, { role: "user" as const, content: question, timestamp }];
-    setEchoMessages(nextMessages);
-    try {
-      const conversation = nextMessages.slice(1, -1).map(({ role, content }) => ({ role, content }));
-      const response = await askEcho(question, conversation, undefined, {
-        elapsedSeconds: recorder.elapsedSeconds,
-        segments: liveTranscript.segments,
-        notes: notes.map(({ timestamp, text }) => ({ timestamp, text })),
-      });
-      setEchoMessages((current) => [...current, { role: "assistant", content: response.answer, response, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }]);
-    } catch {
-      setEchoMessages((current) => [...current, { role: "assistant", content: "I couldn’t answer that just now. Your meeting is still being captured — try again in a moment.", timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }]);
-    } finally {
-      setIsEchoThinking(false);
-    }
-  };
-
-  React.useEffect(() => {
-    if (!isOpen) return;
-    try {
-      const stored = sessionStorage.getItem(ECHO_STORAGE_KEY);
-      if (stored) setEchoMessages(JSON.parse(stored));
-    } catch {}
-  }, [isOpen]);
-
-  React.useEffect(() => {
-    try {
-      sessionStorage.setItem(ECHO_STORAGE_KEY, JSON.stringify(echoMessages));
-      window.dispatchEvent(new CustomEvent("echo-conversation-updated", { detail: echoMessages }));
-    } catch {}
-    echoEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
-  }, [echoMessages, isEchoThinking]);
-
-  const renderEchoInline = (message: EchoMessage, text: string, lineKey: string, messageIndex: number) => text.split(/(\[\d+\])/g).map((part, index) => {
-    const match = part.match(/^\[(\d+)\]$/);
-    if (!match) return <React.Fragment key={index}>{part}</React.Fragment>;
-    const number = Number(match[1]);
-    const citation = message.response?.citations?.find((item) => item.marker === `[${number}]`) || message.response?.citations?.[number - 1];
-    const source = citation ? message.response?.sources.find((item) => item.sourceId === citation.sourceId) : message.response?.sources[number - 1];
-    return <button key={`${lineKey}-${index}`} type="button" disabled={!source} onClick={() => { if (source?.sourceId.startsWith("current-meeting:")) setOpenEchoSources((current) => ({ ...current, [messageIndex]: true })); else if (source) onOpenSource?.(source.page || "meetings", source.meetingId, source.url); }} className="align-super mx-0.5 text-[10px] font-semibold text-[#003366] underline decoration-[#C9A84C] underline-offset-2 disabled:cursor-default">[{number}]</button>;
-  });
-
-  const renderEchoAnswer = (message: EchoMessage, messageIndex: number) => message.content.split("\n").map((line, index) => {
-    const cleaned = line.replace(/\*\*/g, "").trim();
-    if (!cleaned) return <div key={index} className="h-2" />;
-    const bullet = /^[-•]\s/.test(cleaned);
-    const content = bullet ? cleaned.replace(/^[-•]\s*/, "") : cleaned;
-    return <div key={index} className={bullet ? "flex gap-2 pl-1" : ""}>{bullet && <span className="text-[#C9A84C]">•</span>}<span>{renderEchoInline(message, content, String(index), messageIndex)}</span></div>;
-  });
-
   const isRecordingActive = recorder.status === "recording" || recorder.status === "paused";
   const isStopped = recorder.status === "stopped" && recorder.recordedFile !== null;
+  const echoMeetingContext = React.useMemo(() => [
+    liveTranscript.segments.length > 0
+      ? `Timestamped transcript:\n${liveTranscript.segments.slice(-100).map((segment) => `[${formatTime(segment.startedAtSeconds)}] ${segment.text}`).join("\n")}`
+      : "",
+    notes.length > 0
+      ? `Meeting notes:\n${notes.map((note) => `${note.timestamp} ${note.text}`).join("\n")}`
+      : "",
+  ].filter(Boolean).join("\n\n"), [liveTranscript.segments, notes]);
 
   React.useEffect(() => {
     window.dispatchEvent(new CustomEvent("echo-recording-state", { detail: { active: isRecordingActive, paused: recorder.status === "paused", elapsedSeconds: recorder.elapsedSeconds } }));
@@ -482,7 +406,7 @@ export function StudioPanel({
 
       <section aria-label="Recording Studio" className={panelClasses}>
         {/* ── Content ─────────────────────────────────────────────────── */}
-        <div className={`flex-1 min-h-0 overflow-hidden flex flex-col ${isFullscreen ? "lg:grid lg:grid-cols-[minmax(250px,0.88fr)_minmax(0,1.38fr)_minmax(280px,0.94fr)]" : ""} bg-[#F3F6FA]`}>
+        <div className={`flex-1 min-h-0 overflow-hidden flex flex-col ${isFullscreen ? "lg:grid lg:grid-cols-[minmax(250px,0.84fr)_minmax(0,1.5fr)_minmax(280px,0.9fr)]" : ""} bg-[#F3F6FA]`}>
 
           {isFullscreen && (
             <div className="grid shrink-0 grid-cols-3 border-b border-slate-200 bg-white lg:hidden" role="group" aria-label="Meeting workspace panels">
@@ -496,7 +420,7 @@ export function StudioPanel({
                   type="button"
                   aria-pressed={mobilePanel === panel}
                   onClick={() => setMobilePanel(panel)}
-                  className={`border-b-2 px-2 py-2.5 text-xs font-semibold transition-colors ${mobilePanel === panel ? "border-[#C9A84C] text-[#003366]" : "border-transparent text-slate-500 hover:text-[#003366]"}`}
+                  className={`border-b-2 px-2 py-2.5 text-xs font-semibold transition-colors ${mobilePanel === panel ? "border-[#0078D4] text-[#003366]" : "border-transparent text-slate-500 hover:text-[#003366]"}`}
                 >
                   {label}
                 </button>
@@ -507,10 +431,9 @@ export function StudioPanel({
           {/* ── Left / Top: Recording Controls ────────────────────────── */}
           <div id="meeting-capture-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Capture" : undefined} className={`${isFullscreen ? "w-full min-w-0 lg:border-r border-[#D9E1EA]" : "w-full border-b border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "capture" ? "hidden lg:flex" : "flex"} ${isFullscreen ? "min-h-0 flex-1 lg:h-full lg:flex-none" : "h-full min-h-0"} flex-col bg-[#F3F6FA]`}>
             {/* Header with live status badge matching Col 2 & 3 */}
-            <div className="px-5 py-3.5 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-[68px]">
+            <div className="px-3 py-2 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-10">
               <div>
-                <h3 className="text-lg font-semibold tracking-tight text-[#003366]">Mosaic Meeting</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Recording controls & details.</p>
+                <h3 className="text-xs font-medium text-[#003366]">Recording</h3>
               </div>
               <div>
                 {isRecordingActive ? (
@@ -535,7 +458,7 @@ export function StudioPanel({
 
             {/* Idle state: Compact Capture & Recording Controls */}
             {recorder.status === "idle" && (
-              <div className="border border-[#D9E1EA] border-t-2 border-t-[#C9A84C] bg-white p-2.5 shadow-2xs space-y-2">
+              <div className="border border-[#D9E1EA] bg-white p-2 space-y-2">
                 {/* Segmented Mode Switch: Audio Recording vs Video Recording */}
                 <div className="grid grid-cols-2 gap-1 bg-slate-100 p-0.5 border border-slate-200">
                   <button
@@ -543,12 +466,12 @@ export function StudioPanel({
                     onClick={() => recorder.setMediaType("audio")}
                     className={`py-1 px-2 text-[10px] font-bold uppercase tracking-wider text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                       recorder.mediaType === "audio"
-                        ? "bg-[#003366] text-white shadow-2xs"
+                        ? "bg-[#003366] text-white"
                         : "text-slate-600 hover:text-[#003366]"
                     }`}
                   >
-                    <Mic size={11} className={recorder.mediaType === "audio" ? "text-[#C9A84C]" : ""} />
-                    <span>Audio Recording</span>
+                    <Mic size={11} className={recorder.mediaType === "audio" ? "text-[#0078D4]" : ""} />
+                    <span>Audio</span>
                   </button>
                   <button
                     type="button"
@@ -559,8 +482,8 @@ export function StudioPanel({
                         : "text-slate-600 hover:text-[#003366]"
                     }`}
                   >
-                    <Video size={11} className={recorder.mediaType === "video" ? "text-[#C9A84C]" : ""} />
-                    <span>Video Recording</span>
+                    <Video size={11} className={recorder.mediaType === "video" ? "text-[#0078D4]" : ""} />
+                    <span>Video</span>
                   </button>
                 </div>
 
@@ -580,7 +503,7 @@ export function StudioPanel({
                       <select
                         value={recorder.selectedDeviceId || ""}
                         onChange={(e) => recorder.selectDevice(e.target.value)}
-                        className="w-full border border-slate-200 bg-[#FFFCFB] text-xs text-slate-800 px-2.5 py-1.5 pr-7 appearance-none outline-none focus:border-[#C9A84C]"
+                        className="w-full border border-slate-200 bg-[#FFFCFB] text-xs text-slate-800 px-2.5 py-1.5 pr-7 appearance-none outline-none focus:border-[#0078D4]"
                       >
                         <option value="">System Default</option>
                         {recorder.availableDevices.map((device) => (
@@ -597,12 +520,12 @@ export function StudioPanel({
                     type="button"
                     disabled={!canRecord}
                     onClick={() => void recorder.start()}
-                    className="w-full py-2.5 px-3 bg-[#003366] text-white hover:bg-[#002244] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-[#C9A84C] transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs cursor-pointer"
+                    className="w-full h-8 px-3 bg-[#003366] text-white hover:bg-[#002244] font-medium text-xs flex items-center justify-center gap-2 border border-[#003366] transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                   >
                     {recorder.mediaType === "video" ? (
-                      <Video size={15} className="text-[#C9A84C]" />
+                      <Video size={15} className="text-[#0078D4]" />
                     ) : (
-                      <Mic size={15} className="text-[#C9A84C]" />
+                      <Mic size={15} className="text-[#0078D4]" />
                     )}
                     <span>
                       {canRecord
@@ -618,7 +541,7 @@ export function StudioPanel({
 
             {/* Active Recording Controls */}
             {isRecordingActive && (
-              <div className="border border-slate-200 border-t-2 border-t-[#C9A84C] bg-white p-2.5 shadow-2xs space-y-2">
+              <div className="border border-slate-200 border-t-2 border-t-[#0078D4] bg-white p-2.5 shadow-2xs space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className={`text-xl font-mono font-bold tabular-nums ${recorder.status === "paused" ? "text-amber-600" : "text-red-600"}`}>
@@ -661,12 +584,12 @@ export function StudioPanel({
 
                 {/* Active Screen & Audio Status Details */}
                 {recorder.screenInfo && (
-                  <div className="bg-[#001E3C] text-white p-2 border-l-2 border-[#C9A84C] text-[11px] space-y-0.5">
+                  <div className="bg-[#001E3C] text-white p-2 border-l-2 border-[#0078D4] text-[11px] space-y-0.5">
                     <div className="flex items-center gap-1.5 font-bold">
-                      <Monitor size={12} className="text-[#C9A84C] shrink-0" />
+                      <Monitor size={12} className="text-[#0078D4] shrink-0" />
                       <span className="truncate">Recording: {recorder.screenInfo.screenName}</span>
                     </div>
-                    <div className="text-[10px] text-[#C9A84C] font-medium flex items-center justify-between">
+                    <div className="text-[10px] text-[#0078D4] font-medium flex items-center justify-between">
                       <span>{recorder.screenInfo.audioStatusLabel}</span>
                       <span className="text-[9px] text-slate-300">Auto-saving to Documents/Mosaic Meetings</span>
                     </div>
@@ -734,7 +657,7 @@ export function StudioPanel({
                     type="button"
                     onClick={handleSendToNotetaker}
                     disabled={isFinalizing}
-                    className="w-full h-8 flex items-center justify-center gap-1.5 bg-[#003366] text-white hover:bg-[#002244] font-bold text-xs uppercase tracking-wider border border-[#C9A84C] transition-colors disabled:opacity-40 cursor-pointer"
+                    className="w-full h-8 flex items-center justify-center gap-1.5 bg-[#003366] text-white hover:bg-[#002244] font-bold text-xs uppercase tracking-wider border border-[#0078D4] transition-colors disabled:opacity-40 cursor-pointer"
                   >
                     <Send size={12} />
                     {isFinalizing ? "Finishing…" : "Send to Notetaker"}
@@ -772,8 +695,8 @@ export function StudioPanel({
             )}
 
             {meetingDetails && (
-              <details className="group border border-[#D9E1EA] border-t-2 border-t-[#C9A84C] bg-white shadow-2xs">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[#003366] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#C9A84C] [&::-webkit-details-marker]:hidden">
+              <details className="group border border-[#D9E1EA] border-t-2 border-t-[#0078D4] bg-white shadow-2xs">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[#003366] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078D4] [&::-webkit-details-marker]:hidden">
                   <span className="text-[10px] font-bold uppercase tracking-[0.14em]">Meeting details</span>
                   <span className="flex items-center gap-2 text-[9px] text-slate-500">
                     Context for minutes <ChevronDown size={13} aria-hidden="true" className="transition-transform group-open:rotate-180" />
@@ -799,7 +722,7 @@ export function StudioPanel({
 
             {/* Screen Share Ended Alert */}
             {recorder.captureIssue === "screen_share_ended" && (
-              <div role="alert" className="border border-amber-300 border-l-4 border-l-[#C9A84C] bg-amber-50 p-3 text-xs text-slate-700 shadow-2xs space-y-2">
+              <div role="alert" className="border border-amber-300 border-l-4 border-l-[#0078D4] bg-amber-50 p-3 text-xs text-slate-700 shadow-2xs space-y-2">
                 <div className="flex items-center gap-1.5 font-bold text-[#003366]">
                   <AlertCircle size={14} className="text-amber-600 shrink-0" />
                   <span>Screen sharing was stopped</span>
@@ -828,7 +751,7 @@ export function StudioPanel({
 
             {/* Missing Shared Audio or Cancelled Alert */}
             {recorder.captureIssue && recorder.captureIssue !== "screen_share_ended" && (
-              <div role="alert" className="border border-amber-300 border-l-4 border-l-[#C9A84C] bg-amber-50 px-4 py-3 text-sm text-slate-700">
+              <div role="alert" className="border border-amber-300 border-l-4 border-l-[#0078D4] bg-amber-50 px-4 py-3 text-sm text-slate-700">
                 <p className="font-semibold text-[#003366]">{recorder.captureIssue === "missing_shared_audio" ? "Meeting audio wasn’t shared" : "Nothing was shared"}</p>
                 <p className="mt-1 text-xs leading-relaxed">Select the meeting tab/window and make sure to check “Share audio” in the browser prompt. Recording has not started.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -842,10 +765,9 @@ export function StudioPanel({
 
           {isFullscreen && (
             <div id="meeting-notes-panel" role="region" aria-label="Notes" className={`w-full min-w-0 min-h-0 lg:h-full lg:flex-none lg:border-r border-[#D9E1EA] bg-[#FFFCFB] ${mobilePanel === "notes" ? "flex" : "hidden lg:flex"} flex-1 flex-col`}>
-              <div className="px-5 py-3.5 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-[68px]">
+              <div className="px-3 py-2 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-10">
                 <div>
-                  <h3 className="text-lg font-semibold tracking-tight text-[#003366]">User notes</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Decisions, follow-ups, questions, and key moments.</p>
+                  <h3 className="text-xs font-medium text-[#003366]">Notes</h3>
                 </div>
                 <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2.5 py-1">
                   {notes.length} {notes.length === 1 ? "note" : "notes"}
@@ -938,7 +860,7 @@ export function StudioPanel({
                     event.preventDefault();
                     addNote();
                   }}
-                  className="flex flex-col gap-1.5 border border-slate-300 bg-white p-2 focus-within:border-[#C9A84C] shadow-2xs"
+                  className="flex flex-col gap-1.5 border border-slate-300 bg-white p-2 focus-within:border-[#0078D4] shadow-2xs"
                 >
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="font-mono text-[#003366] font-semibold">
@@ -988,19 +910,19 @@ export function StudioPanel({
 
           {/* ── Right / Bottom: Ask Echo ───────────────────────── */}
           <div id="meeting-assistant-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Assistant" : undefined} className={`${canAskEcho && workspaceTab === "echo" ? "codex-chat" : ""} ${isFullscreen ? "w-full min-w-0 min-h-0 lg:h-full lg:flex-none" : "flex-1 border-t border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "assistant" ? "hidden lg:flex" : "flex"} flex-1 flex-col bg-[#FFFCFB]`}>
-            <div className="px-5 py-3.5 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between min-h-[68px]">
+            <div className="px-3 py-2 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between min-h-10">
               <div className="flex items-center gap-3">
                 <div>
                   {canAskEcho ? (
                     <div className="flex items-center gap-2.5">
-                      <h3 className="text-lg font-semibold tracking-tight text-[#003366]">Ask Echo</h3>
+                      <h3 className="text-xs font-medium text-[#003366]">Echo AI</h3>
                       {(isFullscreen || workspaceTab === "echo") && (
                         <button
                           type="button"
-                          onClick={resetEchoConversation}
+                          onClick={() => void startThread()}
                           title="Reset conversation"
                           aria-label="Reset conversation"
-                          className="inline-flex items-center gap-1 border border-[#003366]/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#003366] hover:border-[#C9A84C] cursor-pointer"
+                          className="inline-flex items-center gap-1 border border-[#003366]/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#003366] hover:border-[#0078D4] cursor-pointer"
                         >
                           <RotateCcw size={11} /> Reset
                         </button>
@@ -1018,14 +940,14 @@ export function StudioPanel({
               </div>
               {canAskEcho && !isFullscreen && (
                 <div className="flex gap-1" role="tablist" aria-label="Meeting workspace">
-                  <button type="button" role="tab" aria-selected={workspaceTab === "notes"} onClick={() => setWorkspaceTab("notes")} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 ${workspaceTab === "notes" ? "border-[#C9A84C] text-[#003366]" : "border-transparent text-slate-400 hover:text-[#003366]"}`}><Plus size={13} /> Notes</button>
-                  <button type="button" role="tab" aria-selected={workspaceTab === "echo"} onClick={() => setWorkspaceTab("echo")} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 ${workspaceTab === "echo" ? "border-[#C9A84C] text-[#003366]" : "border-transparent text-slate-400 hover:text-[#003366]"}`}><Sparkles size={13} /> Ask Echo</button>
+                  <button type="button" role="tab" aria-selected={workspaceTab === "notes"} onClick={() => setWorkspaceTab("notes")} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 ${workspaceTab === "notes" ? "border-[#0078D4] text-[#003366]" : "border-transparent text-slate-400 hover:text-[#003366]"}`}><Plus size={13} /> Notes</button>
+                  <button type="button" role="tab" aria-selected={workspaceTab === "echo"} onClick={() => setWorkspaceTab("echo")} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 ${workspaceTab === "echo" ? "border-[#0078D4] text-[#003366]" : "border-transparent text-slate-400 hover:text-[#003366]"}`}><Sparkles size={13} /> Ask Echo</button>
                 </div>
               )}
               {isFullscreen && canAskEcho && (
                 <div className="flex gap-1 shrink-0" role="tablist" aria-label="Ask Echo workspace">
-                  <button type="button" role="tab" aria-selected={workspaceTab === "echo"} onClick={() => setWorkspaceTab("echo")} className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${workspaceTab === "echo" ? "border-[#C9A84C] text-[#003366]" : "border-transparent text-slate-400 hover:text-[#003366]"}`}>Ask Echo</button>
-                  <button type="button" role="tab" aria-selected={workspaceTab === "transcript"} onClick={() => setWorkspaceTab("transcript")} className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${workspaceTab === "transcript" ? "border-[#C9A84C] text-[#003366]" : "border-transparent text-slate-400 hover:text-[#003366]"}`}>Transcript</button>
+                  <button type="button" role="tab" aria-selected={workspaceTab === "echo"} onClick={() => setWorkspaceTab("echo")} className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${workspaceTab === "echo" ? "border-[#0078D4] text-[#003366]" : "border-transparent text-slate-400 hover:text-[#003366]"}`}>Ask Echo</button>
+                  <button type="button" role="tab" aria-selected={workspaceTab === "transcript"} onClick={() => setWorkspaceTab("transcript")} className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-colors cursor-pointer ${workspaceTab === "transcript" ? "border-[#0078D4] text-[#003366]" : "border-transparent text-slate-400 hover:text-[#003366]"}`}>Transcript</button>
                 </div>
               )}
             </div>
@@ -1049,7 +971,7 @@ export function StudioPanel({
                 <div ref={notesEndRef} />
               </div>
               <div className="px-5 py-3 border-t border-gray-200 bg-white shrink-0">
-                <form onSubmit={(e) => { e.preventDefault(); addNote(); }} className="flex items-center gap-2 border border-slate-200 bg-white px-2 py-1 focus-within:border-[#C9A84C] shadow-sm">
+                <form onSubmit={(e) => { e.preventDefault(); addNote(); }} className="flex items-center gap-2 border border-slate-200 bg-white px-2 py-1 focus-within:border-[#0078D4] shadow-sm">
                   <span className="text-[11px] font-mono text-[#003366] font-semibold shrink-0 bg-[#003366]/[0.06] px-2 py-1">
                     {(recorder.status === "recording" || recorder.status === "paused")
                       ? `[${formatTime(recorder.elapsedSeconds)}]`
@@ -1059,81 +981,17 @@ export function StudioPanel({
                   <button type="submit" disabled={!noteInput.trim()} className="w-8 h-8 bg-[#003366] text-white disabled:opacity-30 flex items-center justify-center" title="Add note"><Plus size={15} /></button>
                 </form>
               </div>
-            </> : <div className="flex-1 min-h-0 flex flex-col bg-[#FFFCFB]">
-              <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-5 space-y-4">
-                {echoMessages.map((message, messageIndex) => <div key={`${messageIndex}-${message.timestamp}`} className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}>
-                  <div className={`h-7 w-7 shrink-0 flex items-center justify-center ${message.role === "assistant" ? "bg-[#003366] text-[#C9A84C]" : "border border-[#003366] text-[#003366]"}`}>{message.role === "assistant" ? <Sparkles size={13} /> : <User size={13} />}</div>
-                  <div className={`max-w-[86%] p-3 text-sm leading-relaxed ${message.role === "assistant" ? "border border-[#003366]/15 text-[#181D1E]" : "bg-[#003366] text-white"}`}>
-                    <div className="space-y-1">{message.role === "assistant" ? renderEchoAnswer(message, messageIndex) : message.content}</div>
-                    {!!message.response?.sources?.length && <div className="mt-4 border-t border-[#C9A84C]/40 pt-3">
-                      <button type="button" onClick={() => setOpenEchoSources((current) => ({ ...current, [messageIndex]: !current[messageIndex] }))} className="flex w-full items-center justify-between text-left text-[10px] font-medium uppercase tracking-[0.18em] text-[#003366]" aria-expanded={!!openEchoSources[messageIndex]}><span>Sources · {message.response.sources.length}</span><span className="normal-case tracking-normal">{openEchoSources[messageIndex] ? "Hide" : "Show"}</span></button>
-                      {openEchoSources[messageIndex] && <div className="mt-3 space-y-2">{message.response.sources.map((source, sourceIndex) => { const currentMeeting = source.sourceId.startsWith("current-meeting:"); return <button key={source.sourceId} type="button" disabled={currentMeeting} onClick={() => onOpenSource?.(source.page || "meetings", source.meetingId, source.url)} className="block w-full border-l-2 border-[#C9A84C] py-2 pl-3 text-left enabled:hover:bg-[#003366]/5 disabled:cursor-default"><span className="flex items-center justify-between gap-2 text-xs font-medium text-[#003366]"><span><span className="mr-2 text-[10px] text-[#C9A84C]">[{sourceIndex + 1}]</span>{source.meetingTitle}</span>{!currentMeeting && <ExternalLink size={11} />}</span><span className="mt-1 block text-[10px] uppercase tracking-wide text-[#003366]/55">{source.topic || (currentMeeting ? "Processed audio" : "Workspace")}</span><span className="mt-1 block text-xs text-[#181D1E]/75">{source.excerpt}</span></button>; })}</div>}
-                    </div>}
-                    {!!message.response?.followUps?.length && <div className="mt-3 flex flex-wrap gap-2">{message.response.followUps.map((followUp) => <button key={followUp} type="button" onClick={() => void askFromStudio(followUp)} className="border border-[#003366]/25 px-2 py-1 text-[11px] text-[#003366] hover:border-[#C9A84C]">{followUp}</button>)}</div>}
-                    <div className={`mt-2 flex items-center gap-1 text-[9px] ${message.role === "user" ? "justify-end text-white/60" : "text-[#181D1E]/45"}`}><Clock size={10} />{message.timestamp}</div>
-                  </div>
-                </div>)}
-                {isEchoThinking && <div className="flex gap-3"><div className="h-7 w-7 bg-[#003366] text-[#C9A84C] flex items-center justify-center"><Sparkles size={13} /></div><div className="border border-[#003366]/15 p-3 text-sm text-[#181D1E]/60">Looking through your meetings…</div></div>}
-                <div ref={echoEndRef} />
-              </div>
-              <div className="shrink-0 bg-[#FFFCFB] border-t border-slate-200/80 p-2.5 pt-2">
-                {echoMessages.length <= 1 && (
-                  <div className="grid grid-cols-1 gap-1.5 pb-2 sm:grid-cols-3">
-                    {["Recap my last meeting", "What decisions were made?", "What should I follow up?"].map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        onClick={() => void askFromStudio(prompt)}
-                        disabled={isEchoThinking}
-                        className="border border-[#003366]/20 bg-white p-2 text-left text-[11px] text-[#003366] hover:border-[#C9A84C] transition-colors"
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void askFromStudio();
-                  }}
-                  className="flex items-end border border-[#003366]/35 bg-white focus-within:border-[#003366] shadow-2xs"
-                >
-                  <textarea
-                    aria-label="Ask Echo from Meeting Studio"
-                    rows={1}
-                    value={echoInput}
-                    onChange={(event) => setEchoInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void askFromStudio();
-                      }
-                    }}
-                    placeholder="Ask about your meetings, decisions, or follow-ups…"
-                    className="min-h-10 max-h-24 min-w-0 flex-1 resize-y bg-transparent px-3 py-2.5 text-xs outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!echoInput.trim() || isEchoThinking}
-                    className="m-1 p-2 text-[#003366] hover:bg-slate-100 disabled:opacity-30 transition-colors"
-                    aria-label="Ask Echo"
-                  >
-                    <Send size={15} />
-                  </button>
-                </form>
-              </div>
-            </div>}
+            </> : <EchoAI visible={canAskEcho} compact context={echoMeetingContext} prompts={["Summarize this meeting so far", "What decisions are emerging?", "List open follow-ups"]} />}
           </div>
         </div>
       </section>
 
       {displayCaptureRequest && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#001A33]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="display-capture-title">
-          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col border border-[#C9A84C] bg-[#FFFCFB] shadow-2xl">
+          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col border border-[#0078D4] bg-[#FFFCFB] shadow-2xl">
             <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#C9A84C]">Meeting recording</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#0078D4]">Meeting recording</p>
                 <h2 id="display-capture-title" className="mt-1 font-serif text-xl font-bold italic text-[#003366]">Choose a screen or window</h2>
                 <p className="mt-1 text-sm text-slate-600">System audio is included automatically.</p>
               </div>
@@ -1153,7 +1011,7 @@ export function StudioPanel({
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => setSelectedDisplaySourceId(source.id)}
-                      className={`overflow-hidden border text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#C9A84C] ${isSelected ? "border-[#C9A84C] ring-2 ring-[#C9A84C]/40" : "border-slate-200 hover:border-[#31577D]"}`}
+                      className={`overflow-hidden border text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078D4] ${isSelected ? "border-[#0078D4] ring-2 ring-[#0078D4]/40" : "border-slate-200 hover:border-[#31577D]"}`}
                     >
                       <div className="relative aspect-video bg-slate-100">
                         <img src={source.thumbnail} alt="" className="h-full w-full object-contain" />
@@ -1172,7 +1030,7 @@ export function StudioPanel({
 
             <footer className="flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3">
               <button type="button" onClick={() => void respondToDisplayCapture(null)} className="border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:border-[#003366]">Cancel</button>
-              <button type="button" onClick={() => void respondToDisplayCapture(selectedDisplaySourceId)} disabled={!selectedDisplaySourceId} className="border border-[#C9A84C] bg-[#003366] px-5 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-[#002244] disabled:opacity-40">
+              <button type="button" onClick={() => void respondToDisplayCapture(selectedDisplaySourceId)} disabled={!selectedDisplaySourceId} className="border border-[#0078D4] bg-[#003366] px-5 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-[#002244] disabled:opacity-40">
                 Share {selectedDisplaySourceId?.startsWith("screen:") ? "screen" : "window"}
               </button>
             </footer>
@@ -1182,7 +1040,7 @@ export function StudioPanel({
 
       {showCloseConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#001E3C]/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="close-recording-title">
-          <div className="w-full max-w-sm border border-[#C9A84C] bg-[#FFFCFB] p-5 shadow-2xl">
+          <div className="w-full max-w-sm border border-[#0078D4] bg-[#FFFCFB] p-5 shadow-2xl">
             <h3 id="close-recording-title" className="text-lg font-semibold text-[#003366]">Recording is still active</h3>
             <p className="mt-2 text-sm leading-relaxed text-slate-600">Stop the recording before closing Studio so your audio stays safe.</p>
             <div className="mt-5 flex justify-end gap-2">

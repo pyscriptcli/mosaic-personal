@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { StudioRecorderProvider } from "@/features/notetaker/components/StudioRecorderProvider";
 import { ClickUpLoadingProvider } from "@/components/ClickUpLoadingProvider";
+import { EchoAIProvider } from "@/features/ask-echo/components/EchoAI";
 
 export const metadata: Metadata = {
   title: {
@@ -26,7 +27,7 @@ export default function RootLayout({
       className="h-full w-full"
     >
       <body className="h-full w-full bg-bg-primary font-sans antialiased text-[#181D1E] overflow-hidden">
-        <ClickUpLoadingProvider><StudioRecorderProvider>{children}</StudioRecorderProvider></ClickUpLoadingProvider>
+        <EchoAIProvider><ClickUpLoadingProvider><StudioRecorderProvider>{children}</StudioRecorderProvider></ClickUpLoadingProvider></EchoAIProvider>
       </body>
     </html>
   );

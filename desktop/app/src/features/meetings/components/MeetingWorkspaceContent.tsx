@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Bold, List } from "lucide-react";
 import { SearchableMemberMultiSelect, type ClickUpMember } from "@/components/SearchableMemberSelect";
-import { refineMeetingSummary } from "@/lib/api";
+import { useEchoAI } from "@/features/ask-echo/components/EchoAI";
 
 const desktopMode = process.env.NEXT_PUBLIC_MOSAIC_DESKTOP === "1";
 
@@ -293,12 +293,16 @@ export function MeetingSummaryEditor({
   const [refining, setRefining] = useState(false);
   const [error, setError] = useState("");
   const [refinementStyle, setRefinementStyle] = useState<"balanced" | "concise" | "decision-focused" | "detail-preserving">("balanced");
+  const { runStructured } = useEchoAI();
 
   const handleRefine = async () => {
     setRefining(true);
     setError("");
     try {
-      const refined = await refineMeetingSummary({ summary, bottom_line: bottomLine, notes, transcript, refinement_style: refinementStyle });
+      const refined = await runStructured<{ summary: string; bottom_line: string }>(
+        `Refine this meeting summary using the ${refinementStyle} style. Meeting notes are the primary source of truth; use the transcript only to add supported detail. Do not invent facts, decisions, dates, or owners. Return an object with concise string fields "summary" and "bottom_line".`,
+        `Current summary:\n${summary}\n\nCurrent bottom line:\n${bottomLine}\n\nMeeting notes:\n${notes}\n\nTranscript:\n${transcript}`,
+      );
       onChange(String(refined.summary || ""), String(refined.bottom_line || ""));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not refine the meeting summary.");

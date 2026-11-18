@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { getTokenFromRequest, getUserFromRequest } from "@/lib/auth";
 import { clickUpCalendarFetch } from "@/lib/clickupCalendarApi";
+import { rejectDesktopClickUpRoute } from "@/lib/desktopBoundary";
 import { clickUpScope, decryptClickUpToken, forgetClickUpWebhookEvent, isClickUpSyncStorageReady, loadClickUpWebhook, persistClickUpConnection, queueClickUpWebhookJob, registerClickUpWebhook, recordClickUpWebhookEvent } from "@/lib/clickupReadStore";
 
 export async function POST(request: NextRequest) {
+  const disabled = rejectDesktopClickUpRoute();
+  if (disabled) return disabled;
   const bodyText = await request.text();
   let event: Record<string, unknown>;
   try { event = JSON.parse(bodyText) as Record<string, unknown>; } catch { return NextResponse.json({ error: "Invalid webhook payload." }, { status: 400 }); }
@@ -37,6 +40,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const disabled = rejectDesktopClickUpRoute();
+  if (disabled) return disabled;
   const token = getTokenFromRequest(request);
   const user = getUserFromRequest(request);
   if (!token || !user?.id) return NextResponse.json({ error: "Connect ClickUp to enable update notifications." }, { status: 401 });

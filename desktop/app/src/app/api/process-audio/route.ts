@@ -9,55 +9,6 @@ import { getUserFromRequest } from "@/lib/auth";
 import { recordTelemetry } from "@/lib/telemetry";
 import { requireFeature } from "@/lib/access-control-server";
 
-async function extractMetadataWithAI(text: string, apiKey: string) {
-  if (!apiKey) return {};
-  try {
-    const res = await fetch("https://api.deepseek.com/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert executive meeting assistant.
-Extract meeting metadata in strict valid JSON matching this schema:
-{
-  "client_name": "Company or Client Name (or Internal if internal)",
-  "meeting_type": "Internal" | "External" | "Team",
-  "location": "Venue or meeting room mentioned",
-  "attendees": ["List of attendee names mentioned"]
-}`
-          },
-          {
-            role: "user",
-            content: `Extract metadata from this meeting content:\n${text.substring(0, 15000)}`
-          }
-        ],
-        response_format: { type: "json_object" }
-      })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const content = data.choices?.[0]?.message?.content || "";
-      let cleaned = content.trim();
-      if (cleaned.includes("```json")) {
-        cleaned = cleaned.split("```json")[1].split("```")[0].trim();
-      } else if (cleaned.includes("```")) {
-        cleaned = cleaned.split("```")[1].split("```")[0].trim();
-      }
-      return JSON.parse(cleaned);
-    }
-  } catch (e) {
-    console.warn("Metadata extraction fallback error:", e);
-  }
-  return {};
-}
-
 /** Formats a seconds value (e.g. 63.5) into [MM:SS] display. */
 function formatTimestamp(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -307,8 +258,6 @@ export async function POST(req: NextRequest) {
   let tempFilePath: string | null = null;
   const requestStarted = Date.now();
   try {
-    const headerKey = req.headers.get("x-api-key") || req.headers.get("x-deepseek-api-key");
-    const aiKey = headerKey || process.env.DEEPSEEK_API_KEY || "";
     const openrouterKey = req.headers.get("x-openrouter-api-key") || process.env.OPENROUTER_API_KEY || "";
     const geminiKey = req.headers.get("x-gemini-api-key") || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
     const groqKeys = getGroqApiKeys();
@@ -321,7 +270,7 @@ export async function POST(req: NextRequest) {
     const denied = await requireFeature(req, action === "transcribe_chunk" ? "notetaker-record" : "notetaker-upload");
     if (denied) return denied;
 
-    // CASE 0: Parallel Audio Chunk Transcription (bypasses metadata extraction for intermediate segments)
+    // CASE 0: Transcribe one chunk; meeting metadata is handled by Echo AI after assembly.
     if (action === "transcribe_chunk" && file) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -397,13 +346,11 @@ export async function POST(req: NextRequest) {
     }
 
     let transcript = "";
-    let metadata: any = {};
 
     // CASE 1: Direct Pasted Text (or combined transcript from client chunking)
     if (!file && directText) {
       transcript = directText;
-      metadata = await extractMetadataWithAI(transcript, aiKey);
-      return NextResponse.json({ transcript, metadata });
+      return NextResponse.json({ transcript });
     }
 
     if (!file) {
@@ -419,15 +366,13 @@ export async function POST(req: NextRequest) {
     if (fileName.endsWith(".docx") || mimeType.includes("wordprocessingml")) {
       const { value: extractedText } = await mammoth.extractRawText({ buffer });
       transcript = extractedText;
-      metadata = await extractMetadataWithAI(transcript, aiKey);
-      return NextResponse.json({ transcript, metadata });
+      return NextResponse.json({ transcript });
     }
 
     // CASE 3: Text file (.txt, .srt, .vtt)
     if (fileName.endsWith(".txt") || fileName.endsWith(".srt") || fileName.endsWith(".vtt") || mimeType.startsWith("text/")) {
       transcript = buffer.toString("utf-8");
-      metadata = await extractMetadataWithAI(transcript, aiKey);
-      return NextResponse.json({ transcript, metadata });
+      return NextResponse.json({ transcript });
     }
 
     // CASE 4: PDF Document (.pdf)
@@ -460,8 +405,7 @@ export async function POST(req: NextRequest) {
         // Fallback: extract plain text from buffer
         transcript = buffer.toString("utf-8").replace(/[^\x20-\x7E\n\r\t]/g, " ");
       }
-      metadata = await extractMetadataWithAI(transcript, aiKey);
-      return NextResponse.json({ transcript, metadata });
+      return NextResponse.json({ transcript });
     }
 
     // CASE 5: Audio / Video recording (Groq Whisper -> OpenRouter Whisper)
@@ -483,7 +427,6 @@ export async function POST(req: NextRequest) {
     }
 
     transcript = text;
-    metadata = await extractMetadataWithAI(transcript, aiKey);
     void recordTelemetry({
       userId: String(requestUser?.id || ""),
       userEmail: requestUser?.email,
@@ -516,7 +459,7 @@ export async function POST(req: NextRequest) {
         } : {}),
       },
     });
-    return NextResponse.json({ transcript, metadata });
+    return NextResponse.json({ transcript });
   } catch (error: any) {
     console.error("Error processing source file:", error);
     const msg = error?.message || String(error);

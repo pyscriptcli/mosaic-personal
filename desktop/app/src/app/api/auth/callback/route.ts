@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setAuthCookies, ClickUpUserProfile, getOAuthCredentials, isAllowedClickUpSignIn } from "@/lib/auth";
 import { clickUpFetch as fetch } from "@/lib/clickupCalendarApi";
+import { rejectDesktopLoginRoute } from "@/lib/desktopBoundary";
 
 export async function GET(req: NextRequest) {
+  const disabled = rejectDesktopLoginRoute();
+  if (disabled) return disabled;
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");

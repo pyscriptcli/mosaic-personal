@@ -472,8 +472,6 @@ export async function POST(req: NextRequest) {
           transcript: String(meeting.transcript || meeting.transcript_md || ""),
           items: Array.isArray(meeting.items) ? meeting.items : Array.isArray(meeting.table_items) ? meeting.table_items : [],
         },
-        clickUpId: typeof meeting.clickup_id === "string" ? meeting.clickup_id : null,
-        clickUpListId: typeof meeting.clickup_list_id === "string" ? meeting.clickup_list_id : null,
       });
       return NextResponse.json({ status: "success", meeting: { ...record.data, id: record.id }, source: "local" });
     }

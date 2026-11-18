@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { transcribeRecordingBatch } from "@/lib/api";
+import { useEchoAI } from "@/features/ask-echo/components/EchoAI";
 
 type LiveTranscriptStatus = "idle" | "recording" | "processing" | "ready" | "waiting";
 
@@ -14,6 +14,7 @@ export interface MeetingTranscriptSegment {
 const BATCH_MS = 45_000;
 
 export function useLiveTranscription(audioStream: MediaStream | null) {
+  const { transcribeRecordingBatch } = useEchoAI();
   const [status, setStatus] = useState<LiveTranscriptStatus>("idle");
   const [completedBatches, setCompletedBatches] = useState(0);
   const [segments, setSegments] = useState<MeetingTranscriptSegment[]>([]);
@@ -47,7 +48,7 @@ export function useLiveTranscription(audioStream: MediaStream | null) {
         }
       }
     });
-  }, []);
+  }, [transcribeRecordingBatch]);
 
   const startSegment = useCallback((stream: MediaStream) => {
     if (!shouldContinueRef.current || stream.getAudioTracks().every((track) => track.readyState === "ended")) return;

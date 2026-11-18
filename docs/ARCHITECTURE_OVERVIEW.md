@@ -8,7 +8,7 @@ Mosaic is maintained in one repository with a Next.js web app, a Windows desktop
 
 ## Desktop app
 
-`desktop/` is an Electron Windows app with a standalone Next.js source tree under `desktop/app/`. It starts that app on loopback and packages its production build. The desktop runtime uses a local no-login profile and stores user data in local SQLite and linked files; the hosted web app keeps its existing data flow. Optional ClickUp publishing is a separate desktop integration. See [desktop/README.md](../desktop/README.md).
+`desktop/` is an Electron Windows app with a standalone Next.js source tree under `desktop/app/`. It starts that app on loopback and packages its production build. The desktop runtime uses a local no-login profile and stores page records as JSON under a user-selected `Mosaic` folder. Optional Supabase sync uploads JSON records; recordings remain local. Electron holds the Supabase secret key and performs sync outside the renderer. See [desktop/README.md](../desktop/README.md).
 
 ## Database and external services
 

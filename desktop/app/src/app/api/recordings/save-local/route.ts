@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { saveLocalRecord } from "@/lib/localFirstDatabase";
 
 /**
  * Returns the resolved path to the user's "Documents/Mosaic Meetings" directory.
@@ -119,6 +120,22 @@ export async function POST(req: NextRequest) {
 
     const targetPath = path.join(directory, finalFileName);
     fs.writeFileSync(targetPath, buffer);
+
+    if (process.env.MOSAIC_DESKTOP === "1" && status === "completed") {
+      const title = path.parse(finalFileName).name.replace(/[_-]+/g, " ").trim() || "Meeting Recording";
+      saveLocalRecord("notetaker", {
+        id: sessionId,
+        title,
+        data: {
+          date: new Date().toLocaleDateString("en-CA"),
+          fileName: finalFileName,
+          relativePath: `Recordings/${finalFileName}`,
+          mediaType: mediaType === "video" || file.type.startsWith("video/") ? "video" : "audio",
+          sizeBytes: buffer.length,
+          savedAt: new Date().toISOString(),
+        },
+      });
+    }
 
     console.log(`[Local Save API] Saved recording (${status}): ${targetPath} [${buffer.length} bytes]`);
 

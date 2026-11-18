@@ -41,7 +41,8 @@ import { MeetingActionItemsTable, MeetingDiscussionCard, MeetingSummaryEditor, u
 import { createActionFromDiscussion } from "@/features/meetings/lib/meetingArchive";
 import type { StudioSession } from "@/features/notetaker/types/studio";
 import { getInterruptedSessions, downloadSession, clearSession, exportSessionAsFile } from "@/features/notetaker/lib/studioStorage";
-import { exportWord, exportPdf, askEcho, discoverClickUpLists, getStoredApiKey } from "@/lib/api";
+import { exportWord, exportPdf, discoverClickUpLists } from "@/lib/api";
+import { useEchoAI } from "@/features/ask-echo/components/EchoAI";
 import { QuickAddTaskModal } from "@/components/QuickAddTaskModal";
 import { EmailMeetingModal } from "@/features/meetings/components/EmailMeetingModal";
 import { MoveMeetingModal } from "@/features/meetings/components/MoveMeetingModal";
@@ -160,6 +161,7 @@ function DatePickerInput({
 }
 
 const TOTAL_AI_PHP_PER_HOUR = 2.53;
+const desktopMode = process.env.NEXT_PUBLIC_MOSAIC_DESKTOP === "1";
 
 function getMeetingDurationMinutes(m: ArchivedMeeting): number {
   if (typeof m.duration_minutes === "number" && m.duration_minutes > 0) return m.duration_minutes;
@@ -223,6 +225,7 @@ export function MeetingsView({
   userEmail,
   canExport = true
 }: MeetingsViewProps) {
+  const { runStructured } = useEchoAI();
   // Search & Filter state
   const [searchFilter, setSearchFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState<"All" | "Internal" | "External" | "Archives">("All");
@@ -239,6 +242,7 @@ export function MeetingsView({
   const [isProcessingInterrupted, setIsProcessingInterrupted] = useState<string | null>(null);
 
   useEffect(() => {
+    if (desktopMode) return;
     const storedPId = typeof window !== "undefined" ? localStorage.getItem("project_echo_personal_list_id") || "" : "";
     if (storedPId) {
       setPersonalListId(storedPId);
@@ -557,7 +561,7 @@ export function MeetingsView({
     const matchesType = typeFilter === "All" || m.meeting_type === typeFilter;
     const matchesFrom = !fromDate || m.date >= fromDate;
     const matchesTo = !toDate || m.date <= toDate;
-    const matchesSpace =
+    const matchesSpace = desktopMode ||
       selectedMeetingSpace === "__all__" || !selectedMeetingSpace
         ? true
         : selectedMeetingSpace === "__personal__"
@@ -749,21 +753,10 @@ export function MeetingsView({
     setIsDiscoveringTopics(true);
     const activeQuery = queryOverride !== undefined ? queryOverride : topicQuery;
     try {
-      const response = await fetch("/api/discover-topics", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": getStoredApiKey() || "",
-        },
-        body: JSON.stringify({
-          transcript: activeMeeting.transcript,
-          notes: activeMeeting.meeting_notes || "",
-          query: activeQuery,
-          existingTopics: (activeMeeting.items || []).map((item) => item.topic),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to discover topics.");
+      const data = await runStructured<{ topics: DiscoveredTopicItem[] }>(
+        `Find material discussion points missing from the current minutes. ${activeQuery?.trim() ? `Focus the review on: ${activeQuery.trim()}.` : "Review the whole transcript."} Exclude topics already covered. Return JSON {"topics":[...]}; each item must have topic_title, discussion_point, evidence_quote, action_plan, indicative_delivery_date, person_in_charge, confidence (High, Medium, or Low). Only include source-supported decisions, actions, risks, open questions, or important context. Existing topics: ${(activeMeeting.items || []).map((item) => item.topic).join("; ") || "none"}.`,
+        `<meeting_notes>\n${activeMeeting.meeting_notes || ""}\n</meeting_notes>\n\n<transcript>\n${activeMeeting.transcript}\n</transcript>`,
+      );
       const incomingList: DiscoveredTopicItem[] = data.topics || [];
       if (activeQuery?.trim() && missedTopics.length > 0) {
         const existingSet = new Set(missedTopics.map((t) => t.topic_title.toLowerCase().trim()));
@@ -907,6 +900,8 @@ export function MeetingsView({
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
+          {/* Workspace filters are only available in the hosted app. */}
+          {!desktopMode && <>
           {/* Space Filter */}
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Space</span>
@@ -928,6 +923,7 @@ export function MeetingsView({
               ))}
             </select>
           </div>
+          </>}
 
           {/* Date Range Filter */}
           <div className="flex items-center gap-1.5">
@@ -1095,7 +1091,9 @@ export function MeetingsView({
                         {m.title}
                       </h4>
                       <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                        {m.is_confidential ? (
+                        {desktopMode ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 uppercase tracking-wider">Local</span>
+                        ) : m.is_confidential ? (
                           <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider">
                             <Lock size={10} className="text-amber-800" /> Private
                           </span>
@@ -1115,7 +1113,7 @@ export function MeetingsView({
                         <Calendar size={11} className="text-[#C9AB4C]" />
                         <span>{formatEchoDate(m.date)}</span>
                       </div>
-                      {m.clickup_space_name && (
+                      {!desktopMode && m.clickup_space_name && (
                         <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-[#003366] font-medium border border-slate-200 truncate max-w-[130px]">
                           {m.clickup_space_name}
                         </span>
@@ -1132,7 +1130,7 @@ export function MeetingsView({
                       <span>{m.items.length} Topics</span>
                       <div className="flex items-center gap-2">
                         <span className="text-[#C9AB4C] font-semibold">{isSelected ? "Editing" : "View"}</span>
-                        <a
+                        {!desktopMode && <a
                           href={m.clickup_task_url || `https://app.clickup.com/t/${m.meeting_id || m.id}`}
                           target="_blank"
                           rel="noreferrer"
@@ -1142,7 +1140,7 @@ export function MeetingsView({
                         >
                           <ExternalLink size={10} />
                           ClickUp
-                        </a>
+                        </a>}
                       </div>
                     </div>
                   </div>
@@ -1365,7 +1363,7 @@ export function MeetingsView({
                       </button>
                     )}
 
-                    <button
+                    {!desktopMode && <button
                       type="button"
                       onClick={() => setShowMoveModal(true)}
                       className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1.5 text-[#003366] rounded-none cursor-pointer"
@@ -1373,7 +1371,7 @@ export function MeetingsView({
                     >
                       <FolderInput size={13} className="text-[#C9AB4C]" />
                       <span>Move</span>
-                    </button>
+                    </button>}
 
                     <button
                       type="button"
@@ -1717,6 +1715,7 @@ export function MeetingsView({
                       const item = (activeMeeting.action_items || [])[index];
                       if (!item) return null;
                       const source = activeMeeting.items.find((discussion) => String(discussion.id) === String(item.discussion_point_id));
+                      if (desktopMode) return null;
                       return item.clickUpTaskId ? (
                         <button type="button" onClick={() => onNavigateToTasks && onNavigateToTasks(item.clickUpTaskId!)} className="mt-2 flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100" title="Already added to ClickUp. Click to view in Tasks portal">
                           <CheckCircle size={13} className="text-emerald-600" /><span>Added to Tasks</span>
@@ -1836,9 +1835,9 @@ export function MeetingsView({
               <button type="button" onClick={() => setShowArchiveDetails(false)} aria-label="Close archive details" className="text-slate-400 hover:text-[#003366]"><X size={16} /></button>
             </div>
             <dl className="mt-4 space-y-3 text-xs">
-              <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Space</dt><dd className="mt-1 text-[#003366]">{activeMeeting.clickup_space_name || "Not recorded"}</dd></div>
-              <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">List</dt><dd className="mt-1 text-[#003366]">{activeMeeting.clickup_list_name || "Not recorded"}</dd></div>
-              <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</dt><dd className="mt-1 text-[#003366]">{activeMeeting.archive_status || "Completed On Time"}</dd></div>
+              {!desktopMode && <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Space</dt><dd className="mt-1 text-[#003366]">{activeMeeting.clickup_space_name || "Not recorded"}</dd></div>}
+              {!desktopMode && <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">List</dt><dd className="mt-1 text-[#003366]">{activeMeeting.clickup_list_name || "Not recorded"}</dd></div>}
+              <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</dt><dd className="mt-1 text-[#003366]">{desktopMode ? "Saved locally" : activeMeeting.archive_status || "Completed On Time"}</dd></div>
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
                 <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Start Time</dt><dd className="mt-1 text-[#003366] font-medium">{formatDisplayTime(activeMeeting.start_time)}</dd></div>
                 <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">End Time</dt><dd className="mt-1 text-[#003366] font-medium">{formatDisplayTime(activeMeeting.end_time)}</dd></div>
@@ -1909,7 +1908,7 @@ export function MeetingsView({
                 <div className="text-[11px] text-slate-400 mt-0.5">{formatEchoDate(activeMeeting.date)} • {activeMeeting.items.length} discussion topics</div>
               </div>
               <p className="text-[11px] text-slate-500">
-                This will remove the meeting record from ClickUp and the archive database. This action cannot be undone.
+                {desktopMode ? "This will permanently delete the local meeting record. This action cannot be undone." : "This will remove the meeting record from ClickUp and the archive database. This action cannot be undone."}
               </p>
             </div>
 
@@ -1937,7 +1936,7 @@ export function MeetingsView({
       )}
 
       {/* Move Meeting Archive Modal */}
-      {activeMeeting && (
+        {!desktopMode && activeMeeting && (
         <MoveMeetingModal
           isOpen={showMoveModal}
           onClose={() => setShowMoveModal(false)}
@@ -1955,7 +1954,7 @@ export function MeetingsView({
       )}
 
       {/* Quick Add Task to ClickUp Modal */}
-      <QuickAddTaskModal
+      {!desktopMode && <QuickAddTaskModal
         isOpen={quickAddTaskData.isOpen}
         onClose={() => setQuickAddTaskData({ isOpen: false, data: {} })}
         initialData={quickAddTaskData.data}
@@ -1978,7 +1977,7 @@ export function MeetingsView({
         onOpenInTasks={(taskId) => {
           if (onNavigateToTasks) onNavigateToTasks(taskId);
         }}
-      />
+      />}
 
       {/* Discover & Search Topics Modal */}
       {activeMeeting && (

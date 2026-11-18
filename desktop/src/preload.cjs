@@ -8,6 +8,18 @@ contextBridge.exposeInMainWorld("mosaicDesktop", Object.freeze({
   },
   selectDisplayCaptureSource: (requestId, sourceId) => ipcRenderer.invoke("mosaic:display-capture-select", requestId, sourceId),
   openRecordingLocation: (fileName) => ipcRenderer.invoke("mosaic:open-recording-location", fileName),
+  getWorkspaceSettings: () => ipcRenderer.invoke("mosaic:workspace-settings"),
+  chooseWorkspaceFolder: () => ipcRenderer.invoke("mosaic:workspace-choose-folder"),
+  openWorkspaceFolder: () => ipcRenderer.invoke("mosaic:open-workspace-folder"),
+  openCredentialManager: () => ipcRenderer.invoke("mosaic:open-credential-manager"),
+  saveSupabaseConfig: (config) => ipcRenderer.invoke("mosaic:supabase-config", config),
+  saveApiKey: (provider, key) => ipcRenderer.invoke("mosaic:api-key-save", provider, key),
+  syncWorkspaceNow: () => ipcRenderer.invoke("mosaic:supabase-sync-now"),
+  onSyncStatus: (listener) => {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on("mosaic:supabase-sync-status", handler);
+    return () => ipcRenderer.removeListener("mosaic:supabase-sync-status", handler);
+  },
   scheduleReminder: (input) => ipcRenderer.send("mosaic:reminder-schedule", input),
   respondToReminder: (action) => {
     if (action === "dismiss" || action === "snooze") ipcRenderer.send("mosaic:reminder-response", action);

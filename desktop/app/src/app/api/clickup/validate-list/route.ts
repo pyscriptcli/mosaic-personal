@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTokenFromRequest } from "@/lib/auth";
 import { clickUpFetch as fetch } from "@/lib/clickupCalendarApi";
 import { extractClickUpListId } from "@/lib/clickupList";
+import { rejectDesktopClickUpRoute } from "@/lib/desktopBoundary";
 
 export async function POST(req: NextRequest) {
+  const disabled = rejectDesktopClickUpRoute();
+  if (disabled) return disabled;
   try {
     const token = getTokenFromRequest(req);
     if (!token) {

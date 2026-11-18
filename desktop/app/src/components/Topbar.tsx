@@ -1,41 +1,37 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { 
+import {
   Search, 
-  Sparkles, 
   X, 
   Calendar, 
   CalendarPlus,
   FileText, 
   ArrowRight, 
   Mic, 
-  CheckSquare,
   LayoutDashboard,
   FolderKanban,
-  ExternalLink,
   NotebookTabs,
   RefreshCw,
+  Blocks,
+  CloudDownload,
+  ArrowLeft,
+  MessageSquarePlus,
 } from "lucide-react";
 import { ArchivedMeeting } from "@/features/meetings/types/meeting";
-import { ClickUpTask } from "@/features/tasks/components/TasksView";
 import { formatEchoDate } from "@/lib/dateUtils";
-import { flushClickUpMutationQueue, getPendingClickUpMutationCount } from "@/lib/clickUpMutationQueue";
-import { requestCentralClickUpSync } from "@/lib/clickupSyncClient";
 
 interface TopbarProps {
   meetings: ArchivedMeeting[];
-  tasks?: ClickUpTask[];
-  userId?: string;
   onOpenUniversalEcho: () => void;
   onOpenSearch?: () => void;
+  onOpenUpdates?: () => void;
   onSelectMeeting: (meetingId: string) => void;
-  onSelectTask?: (taskId: string) => void;
   onOpenStudio: () => void;
   onGoToNotetaker: () => void;
   showNewMeeting?: boolean;
-  onNavigateToPage?: (page: "dashboard" | "project" | "meetings" | "tasks" | "notebook" | "minutes") => void;
-  allowedPages?: Array<"dashboard" | "project" | "meetings" | "tasks" | "notebook" | "minutes">;
+  onNavigateToPage?: (page: "dashboard" | "project" | "business-analysis" | "meetings" | "notebook" | "minutes" | "settings") => void;
+  allowedPages?: Array<"dashboard" | "project" | "business-analysis" | "meetings" | "notebook" | "minutes" | "settings">;
   isAdmin?: boolean;
   askEchoEnabled?: boolean;
   allowedFeatures?: string[];
@@ -48,14 +44,14 @@ interface TopbarProps {
   };
 }
 
+type TopbarMenuAction = { label: string; shortcut?: string; disabled?: boolean; action?: () => void };
+
 export function Topbar({
   meetings,
-  tasks = [],
-  userId,
   onOpenUniversalEcho,
   onOpenSearch,
+  onOpenUpdates,
   onSelectMeeting,
-  onSelectTask,
   onOpenStudio,
   onGoToNotetaker,
   showNewMeeting = false,
@@ -74,131 +70,85 @@ export function Topbar({
   };
   const [searchQuery, setSearchQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const [syncState, setSyncState] = useState<"checking" | "synced" | "syncing" | "error">("checking");
-  const [syncPendingCount, setSyncPendingCount] = useState(0);
-  const [syncError, setSyncError] = useState("");
-  const [clientSyncFailed, setClientSyncFailed] = useState(false);
-  const [clientSyncError, setClientSyncError] = useState("");
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{ status: string; uploaded?: number; downloaded?: number; deleted?: number; syncedAt?: string | null; error?: string | null }>({ status: "idle" });
   const [manualSyncing, setManualSyncing] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
   const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
-  const [syncItems, setSyncItems] = useState<Array<{ id?: string; label: string; state: "syncing" | "synced" | "error" }>>([]);
+  const [hasDesktopSync, setHasDesktopSync] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const refreshSyncStatus = React.useCallback(async () => {
-    if (!userId) return;
-    const pending = getPendingClickUpMutationCount(userId);
-    setSyncPendingCount(pending);
-    if (!clientSyncFailed && !syncError) setSyncState(pending ? "syncing" : "synced");
-  }, [clientSyncFailed, syncError, userId]);
-
-  useEffect(() => {
-    if (!userId) return;
-    let active = true;
-    let timer: number | undefined;
-    const poll = async () => {
-      await refreshSyncStatus();
-      if (active) timer = window.setTimeout(poll, syncState === "syncing" || manualSyncing ? 2500 : 15000);
-    };
-    const onQueueChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ userId?: string; pending?: number; failed?: boolean; error?: string }>).detail;
-      if (detail?.userId !== userId) return;
-      setSyncPendingCount(Number(detail.pending || 0));
-      setClientSyncFailed(Boolean(detail.failed));
-      setClientSyncError(detail.failed ? detail.error || "A saved change could not sync." : "");
-      if (detail.failed) setSyncState("error");
-      else if (detail.pending) setSyncState("syncing");
-      if (timer) window.clearTimeout(timer);
-      void poll();
-    };
-    const onCentralSyncRequested = () => {
-      setSyncError("");
-      setSyncState("syncing");
-      setSyncDetailsOpen(true);
-    };
-    const onLiveRefreshStarted = (event: Event) => {
-      const detail = (event as CustomEvent<{ targets?: string[] }>).detail;
-      setSyncDetailsOpen(true);
-      setSyncItems((items) => [
-        ...items.filter((item) => !detail?.targets?.includes(item.label)),
-        ...(detail?.targets || []).map((label) => ({ label, state: "syncing" as const })),
-      ]);
-    };
-    const onLiveRefreshComplete = (event: Event) => {
-      const detail = (event as CustomEvent<{ state?: string; error?: string; failedTargets?: string[] }>).detail;
-      setSyncDetailsOpen(true);
-      const pending = getPendingClickUpMutationCount(userId);
-      const synced = detail?.state === "synced";
-      setSyncState(synced ? pending ? "syncing" : "synced" : "error");
-      if (!synced && detail?.error) setSyncError(detail.error);
-      const failedTargets = new Set(detail?.failedTargets || []);
-      if (!synced && !failedTargets.size) setSyncItems([{ label: "ClickUp refresh", state: "error" }]);
-      else setSyncItems((items) => items.map((item) => ({ ...item, state: synced || !failedTargets.has(item.label) ? "synced" : "error" })));
-    };
-    void poll();
-    void flushClickUpMutationQueue(userId, setSyncPendingCount);
-    window.addEventListener("mosaic-clickup-sync", onQueueChange);
-    window.addEventListener("mosaic-clickup-sync-requested", onCentralSyncRequested);
-    window.addEventListener("mosaic-clickup-live-refresh-started", onLiveRefreshStarted);
-    window.addEventListener("mosaic-clickup-live-refresh-complete", onLiveRefreshComplete);
-    return () => { active = false; if (timer) window.clearTimeout(timer); window.removeEventListener("mosaic-clickup-sync", onQueueChange); window.removeEventListener("mosaic-clickup-sync-requested", onCentralSyncRequested); window.removeEventListener("mosaic-clickup-live-refresh-started", onLiveRefreshStarted); window.removeEventListener("mosaic-clickup-live-refresh-complete", onLiveRefreshComplete); };
-  }, [manualSyncing, refreshSyncStatus, syncState, userId]);
+  const menus: Array<{ label: string; actions: TopbarMenuAction[] }> = [
+    { label: "File", actions: [
+      { label: "New meeting", shortcut: "Ctrl+N", action: onGoToNotetaker },
+      { label: "Sync workspace", action: () => void runManualSync() },
+      { label: "Check for updatesâ€¦", action: onOpenUpdates },
+    ] },
+    { label: "Edit", actions: [
+      { label: "Undo", shortcut: "Ctrl+Z", disabled: true },
+      { label: "Redo", shortcut: "Ctrl+Y", disabled: true },
+      { label: "Find", shortcut: "Ctrl+F", action: () => inputRef.current?.focus() },
+    ] },
+    { label: "Selection", actions: [{ label: "Select All", shortcut: "Ctrl+A", disabled: true }] },
+    { label: "View", actions: [
+      { label: "Dashboard", action: () => onNavigateToPage?.("dashboard") },
+      { label: "IT Projects", action: () => onNavigateToPage?.("business-analysis") },
+      { label: "Meetings", action: () => onNavigateToPage?.("meetings") },
+      { label: "Notebook", action: () => onNavigateToPage?.("notebook") },
+      { label: "Notetaker", action: () => onNavigateToPage?.("minutes") },
+      { label: "Settings", action: () => onNavigateToPage?.("settings") },
+    ] },
+    { label: "Go", actions: [
+      { label: "Go to Dashboard", action: () => onNavigateToPage?.("dashboard") },
+      { label: "Go to Meetings", action: () => onNavigateToPage?.("meetings") },
+      { label: "Search Workspaceâ€¦", shortcut: "Ctrl+P", action: () => { setIsOpen(true); requestAnimationFrame(() => inputRef.current?.focus()); } },
+    ] },
+    { label: "Run", actions: [{ label: "No run configurations", disabled: true }] },
+    { label: "Terminal", actions: [{ label: "Use your system terminal", disabled: true }] },
+    { label: "Help", actions: [
+      { label: "Check for updatesâ€¦", action: onOpenUpdates },
+      { label: "About Mosaic", disabled: true },
+    ] },
+  ];
 
   useEffect(() => {
-    const updateOnlineState = () => {
-      setIsOnline(navigator.onLine);
-      if (navigator.onLine && userId) void flushClickUpMutationQueue(userId, setSyncPendingCount);
+    if (!openMenu) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest("[data-app-menu]")) setOpenMenu(null);
     };
-    updateOnlineState();
-    window.addEventListener("online", updateOnlineState);
-    window.addEventListener("offline", updateOnlineState);
-    return () => { window.removeEventListener("online", updateOnlineState); window.removeEventListener("offline", updateOnlineState); };
-  }, [userId]);
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpenMenu(null); };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openMenu]);
+
+  useEffect(() => {
+    const desktop = (window as Window & { mosaicDesktop?: { getWorkspaceSettings?: () => Promise<{ sync: typeof syncStatus }>; onSyncStatus?: (callback: (value: typeof syncStatus) => void) => () => void } }).mosaicDesktop;
+    if (!desktop?.getWorkspaceSettings) return;
+    setHasDesktopSync(true);
+    void desktop.getWorkspaceSettings().then((settings) => setSyncStatus(settings.sync)).catch(() => {});
+    return desktop.onSyncStatus?.(setSyncStatus);
+  }, []);
 
   const runManualSync = async () => {
-    if (!userId || manualSyncing) return;
+    const desktop = (window as Window & { mosaicDesktop?: { syncWorkspaceNow?: () => Promise<typeof syncStatus> } }).mosaicDesktop;
+    if (!desktop?.syncWorkspaceNow || manualSyncing) return;
     setManualSyncing(true);
-    setSyncState("syncing");
-    setSyncError("");
-    setClientSyncFailed(false);
-    setClientSyncError("");
+    setSyncStatus((current) => ({ ...current, status: "syncing", error: null }));
     setSyncDetailsOpen(true);
-    const pending = getPendingClickUpMutationCount(userId);
-    setSyncPendingCount(pending);
-    setSyncItems([
-      { label: "ClickUp connection", state: "syncing" },
-      ...(pending > 0 ? [{ label: `${pending} saved task change${pending === 1 ? "" : "s"}`, state: "syncing" as const }] : []),
-    ]);
     try {
-      await flushClickUpMutationQueue(userId, setSyncPendingCount);
-      const remainingLocalChanges = getPendingClickUpMutationCount(userId);
-      if (remainingLocalChanges > 0) setClientSyncError(clientSyncError || `${remainingLocalChanges} saved change${remainingLocalChanges === 1 ? "" : "s"} still need to sync.`);
-      const taskListId = localStorage.getItem("project_echo_clickup_list_id");
-      const personalListId = localStorage.getItem("project_echo_personal_list_id");
-      const listIds = [taskListId, personalListId].filter((value): value is string => Boolean(value));
-      const listLabels: Record<string, string> = {};
-      if (taskListId) listLabels[taskListId] = "Tasks";
-      if (personalListId) listLabels[personalListId] = "Personal notes";
-      const data = await requestCentralClickUpSync(listIds, listLabels);
-      setSyncItems([
-        { label: "ClickUp connection", state: "synced" },
-        ...(data.refreshed || []).map((label) => ({ label, state: "synced" as const })),
-        ...(remainingLocalChanges > 0 ? [{ label: `${remainingLocalChanges} saved task change${remainingLocalChanges === 1 ? "" : "s"}`, state: "syncing" as const }] : []),
-      ]);
-      await refreshSyncStatus();
-      if (!remainingLocalChanges) setSyncState("synced");
+      setSyncStatus(await desktop.syncWorkspaceNow());
     } catch (error) {
-      setSyncState("error");
-      setSyncError(error instanceof Error ? error.message : "Manual sync could not be started.");
-      const failedTargets = error && typeof error === "object" && "failedTargets" in error && Array.isArray(error.failedTargets) ? new Set(error.failedTargets as string[]) : null;
-      setSyncItems((items) => items.map((item) => ({ ...item, state: failedTargets ? failedTargets.has(item.label) ? "error" : "synced" : "error" })));
+      setSyncStatus((current) => ({ ...current, status: "failed", error: error instanceof Error ? error.message : "Sync failed." }));
     } finally {
       setManualSyncing(false);
     }
   };
 
   // Keyboard shortcut Ctrl+K / Cmd+K to focus search
-  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const openFromActivityBar = () => {
       setIsOpen(true);
@@ -211,7 +161,7 @@ export function Topbar({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "p")) {
         e.preventDefault();
         inputRef.current?.focus();
         setIsOpen(true);
@@ -243,18 +193,18 @@ export function Topbar({
   const query = searchQuery.trim().toLowerCase();
 
   // 1. Navigation Pages
-  const APP_PAGES: Array<{ id: "dashboard" | "project" | "meetings" | "tasks" | "notebook" | "minutes"; name: string; description: string; icon: any }> = [
+  const APP_PAGES: Array<{ id: "dashboard" | "project" | "meetings" | "notebook" | "minutes" | "settings"; name: string; description: string; icon: any }> = [
     { id: "dashboard", name: "Dashboard", description: "Executive overview & meeting metrics", icon: LayoutDashboard },
     { id: "project", name: "Project", description: "Focused project workspace", icon: FolderKanban },
     { id: "meetings", name: "Meetings Archives", description: "Review and edit meeting minutes", icon: Calendar },
-    { id: "tasks", name: "Tasks Portal (ClickUp)", description: "Track & execute meeting action items", icon: CheckSquare },
     { id: "notebook", name: "Notebook", description: "Daily logs & team completeness", icon: NotebookTabs },
     { id: "minutes", name: "Notetaker Studio", description: "Transcribe audio & synthesize notes", icon: Mic },
+    { id: "settings", name: "Settings", description: "Workspace files and AI connections", icon: Blocks },
   ];
 
   const matchedPages = query
     ? APP_PAGES.filter((p) => {
-        if (!isAdmin && allowedPages && allowedPages.length > 0 && !allowedPages.includes(p.id as any) && !(p.id === "project" && allowedPages.includes("tasks"))) return false;
+        if (!isAdmin && allowedPages && allowedPages.length > 0 && !allowedPages.includes(p.id as any) && !(p.id === "project" && allowedPages.includes("business-analysis"))) return false;
         return (
           p.name.toLowerCase().includes(query) ||
           p.description.toLowerCase().includes(query) ||
@@ -263,20 +213,7 @@ export function Topbar({
       })
     : [];
 
-  // 2. ClickUp Tasks
-  const canAccessTasks = isAdmin || !allowedPages || allowedPages.includes("tasks");
-  const matchedTasks = query && canAccessTasks
-    ? tasks.filter(
-        (t) =>
-          t.name.toLowerCase().includes(query) ||
-          t.description.toLowerCase().includes(query) ||
-          (t.meetingTitle || "").toLowerCase().includes(query) ||
-          t.status.toLowerCase().includes(query) ||
-          t.assignees.some((a) => a.username.toLowerCase().includes(query))
-      ).slice(0, 5)
-    : [];
-
-  // 3. Meetings
+  // 2. Meetings
   const canAccessMeetings = isAdmin || !allowedPages || allowedPages.includes("meetings");
   const matchedMeetings = query && canAccessMeetings
     ? meetings.filter(
@@ -287,7 +224,7 @@ export function Topbar({
       ).slice(0, 5)
     : [];
 
-  // 4. Discussion Topics & Action Items
+  // 3. Discussion Topics & Action Items
   const matchedTopics: { meetingId: string; meetingTitle: string; topic: string; action: string }[] = [];
   if (query) {
     meetings.forEach((m) => {
@@ -312,53 +249,34 @@ export function Topbar({
 
   const hasResults =
     matchedPages.length > 0 ||
-    matchedTasks.length > 0 ||
     matchedMeetings.length > 0 ||
     matchedTopics.length > 0;
 
   return (
-    <header className="sticky top-0 z-30 h-14 bg-[#FFFCFB]/95 backdrop-blur-sm border-b border-[#003366]/15 px-4 md:px-8 flex items-center justify-between gap-4 transition-colors">
-      {/* Left controls: sync status and live sync details */}
-      <div className="relative flex w-auto shrink-0 items-center gap-2 xl:w-72">
-        {userId && (() => {
-          const effectiveState = !isOnline || clientSyncFailed ? "error" : manualSyncing || syncState === "syncing" || syncPendingCount > 0 ? "syncing" : syncState;
-          const label = effectiveState === "synced" ? "Synced" : effectiveState === "syncing" || effectiveState === "checking" ? "Syncing" : "Sync issue";
-          const tone = effectiveState === "synced" ? "text-emerald-700 hover:bg-emerald-50" : effectiveState === "error" ? "text-red-700 hover:bg-red-50" : "text-amber-700 hover:bg-amber-50";
-          const dot = effectiveState === "synced" ? "bg-emerald-600" : effectiveState === "error" ? "bg-red-600" : "bg-amber-500";
-          return (
-            <>
-              <button type="button" onClick={() => void runManualSync()} disabled={manualSyncing} aria-busy={manualSyncing || syncState === "syncing"} aria-label={`Sync now. ${label}${syncPendingCount ? `, ${syncPendingCount} pending` : ""}`} title={syncError || `${label}${syncPendingCount ? ` · ${syncPendingCount} pending` : ""}. Click to sync now.`} className={`relative inline-flex min-h-9 items-center gap-1.5 overflow-hidden border border-slate-200 px-2.5 text-[11px] font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${tone}`}>
-                <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
-                <RefreshCw aria-hidden="true" size={13} className={effectiveState === "syncing" || manualSyncing ? "animate-spin motion-reduce:animate-none" : ""} />
-                <span>{label}</span>
-                {(effectiveState === "syncing" || manualSyncing) && <span aria-hidden="true" className="mosaic-sync-progress-track"><span className="mosaic-sync-progress-bar" /></span>}
+    <header className="mosaic-topbar sticky top-0 z-30 h-11 shrink-0 border-b px-2 flex items-center justify-between gap-2 transition-colors">
+      <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <span aria-label="Mosaic" title="Mosaic" className="grid h-8 w-8 shrink-0 place-items-center text-[#0078d4]"><Blocks size={19} /></span>
+        <nav aria-label="Application menu" className="flex h-11 min-w-0 items-center gap-0.5">
+          {menus.map((menu) => (
+            <div key={menu.label} data-app-menu className="relative flex h-full items-center">
+              <button type="button" aria-expanded={openMenu === menu.label} onClick={() => setOpenMenu((current) => current === menu.label ? null : menu.label)} onMouseEnter={() => { if (openMenu) setOpenMenu(menu.label); }} className={`h-8 px-1.5 text-xs text-[#cccccc] hover:bg-[#2b2b2b] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#0078d4] ${openMenu === menu.label ? "bg-[#2b2b2b]" : ""}`}>
+                {menu.label}
               </button>
-              {syncDetailsOpen && (
-                <section role="status" aria-live="polite" className="absolute left-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] border border-[#003366]/20 bg-[#FFFCFB] p-3 text-[#1b1d1e] shadow-lg">
-                  <div className="flex items-center justify-between gap-3 border-b border-[#003366]/10 pb-2">
-                  <h2 className="text-xs font-semibold text-[#003366]">{effectiveState === "error" ? "Sync needs attention" : effectiveState === "synced" ? "Sync complete" : "Syncing in background"}</h2>
-                    <button type="button" onClick={() => setSyncDetailsOpen(false)} aria-label="Close sync details" className="p-1 text-slate-500 hover:text-[#003366]"><X size={14} /></button>
-                  </div>
-                  <p className="py-2 text-[11px] text-slate-600">{effectiveState === "error" ? clientSyncError || syncError || "Some changes could not be synced." : effectiveState === "synced" ? "Open data views and saved changes are up to date." : "Your app stays available while these items sync."}</p>
-                  <ul className="space-y-1.5">
-                    {syncItems.map((item) => (
-                      <li key={`${item.id || item.label}`} className="flex items-center gap-2 text-[11px]">
-                        <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${item.state === "synced" ? "bg-emerald-600" : item.state === "error" ? "bg-red-600" : "bg-amber-500 animate-pulse"}`} />
-                        <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                        <span className={`shrink-0 text-[10px] ${item.state === "synced" ? "text-emerald-700" : item.state === "error" ? "text-red-700" : "text-amber-700"}`}>{item.state === "synced" ? "Done" : item.state === "error" ? "Retry needed" : "Working"}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {(syncState === "syncing" || manualSyncing) && <div aria-hidden="true" className="relative mt-3 h-1 overflow-hidden bg-amber-100"><span className="mosaic-sync-progress-bar" /></div>}
-                </section>
-              )}
-            </>
-          );
-        })()}
+              {openMenu === menu.label && <div className="absolute left-0 top-full z-[80] min-w-56 border border-[#3c3c3c] bg-[#1f1f1f] py-1 shadow-xl">
+                {menu.actions.map((item) => <button key={item.label} type="button" disabled={item.disabled} onClick={() => { item.action?.(); setOpenMenu(null); }} className="flex min-h-7 w-full items-center justify-between gap-8 px-3 text-left text-xs text-[#cccccc] hover:bg-[#04395e] disabled:text-[#858585] disabled:hover:bg-transparent">
+                  <span>{item.label}</span>{item.shortcut && <span className="text-[#9d9d9d]">{item.shortcut}</span>}
+                </button>)}
+              </div>}
+            </div>
+          ))}
+        </nav>
       </div>
 
       {/* Middle: Centered Spotlight Search Container */}
-      <div ref={searchContainerRef} className="relative w-full max-w-md mx-auto">
+      <div className="mx-auto flex min-w-0 flex-1 items-center justify-center gap-2 px-3">
+        <button type="button" aria-label="Back" title="Back" onClick={() => window.history.back()} className="grid h-8 w-7 shrink-0 place-items-center text-[#9d9d9d] hover:bg-[#2b2b2b] hover:text-[#cccccc]"><ArrowLeft size={16} /></button>
+        <button type="button" aria-label="Forward" title="Forward" onClick={() => window.history.forward()} className="grid h-8 w-7 shrink-0 place-items-center text-[#9d9d9d] hover:bg-[#2b2b2b] hover:text-[#cccccc]"><ArrowRight size={16} /></button>
+      <div ref={searchContainerRef} className="relative w-[min(44vw,640px)] min-w-40 shrink">
         <div className="relative flex items-center">
           <Search size={15} className="absolute left-3.5 text-gray-400 pointer-events-none" />
           <input
@@ -370,8 +288,8 @@ export function Topbar({
               setIsOpen(true);
             }}
             onFocus={() => { setIsOpen(true); onOpenSearch?.(); }}
-            placeholder="Search"
-            className="w-full pl-10 pr-9 py-1.5 text-xs bg-[#FFFCFB] border border-[#003366]/25 rounded-none shadow-2xs focus:outline-none focus:border-[#C9A84C] focus:ring-1 focus:ring-[#C9A84C] transition-all text-[#181D1E] placeholder:text-[#53616A]"
+            placeholder="mosaic-personal"
+            className="w-full pl-10 pr-9 py-1.5 text-xs bg-[#252526] border border-[#3c3c3c] rounded-none shadow-2xs focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] transition-all text-[#cccccc] placeholder:text-[#858585]"
           />
           {searchQuery ? (
             <button
@@ -384,9 +302,7 @@ export function Topbar({
               <X size={14} />
             </button>
           ) : (
-            <kbd className="absolute right-2.5 hidden sm:inline-flex items-center px-1.5 py-0.5 text-[9px] font-mono text-gray-400 bg-[#FFFCFB] border border-gray-200 rounded-none">
-              ⌘K
-            </kbd>
+            <kbd className="absolute right-2.5 hidden sm:inline-flex items-center px-1.5 py-0.5 text-[9px] font-mono text-gray-400 bg-[#FFFCFB] border border-gray-200 rounded-none">Ctrl+P</kbd>
           )}
         </div>
 
@@ -408,7 +324,7 @@ export function Topbar({
                           key={p.id}
                           type="button"
                           onClick={() => {
-                            if (onNavigateToPage) onNavigateToPage(p.id);
+                            if (onNavigateToPage) onNavigateToPage(p.id === "project" ? "business-analysis" : p.id);
                             setIsOpen(false);
                           }}
                           className="w-full text-left px-2.5 py-2 rounded-none hover:bg-[#FFFCFB] flex items-center justify-between group transition-colors"
@@ -426,41 +342,6 @@ export function Topbar({
                         </button>
                       );
                     })}
-                  </div>
-                )}
-
-                {/* 2. CLICKUP TASKS */}
-                {matchedTasks.length > 0 && (
-                  <div className="py-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#C9AB4C] px-2 block mb-1">
-                      ClickUp Tasks
-                    </span>
-                    {matchedTasks.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          if (onSelectTask) onSelectTask(t.id);
-                          setIsOpen(false);
-                        }}
-                        className="w-full text-left px-2.5 py-2 rounded-none hover:bg-[#FFFCFB] flex items-center justify-between group transition-colors"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          <CheckSquare size={14} className="text-[#003366] shrink-0" />
-                          <div className="truncate">
-                            <div className="font-semibold text-[#1b1d1e] group-hover:text-[#003366] truncate">
-                              {t.name}
-                            </div>
-                            <div className="text-[10px] text-gray-400 truncate">
-                              Status: <span className="uppercase font-bold text-gray-600">{t.status}</span>
-                              {t.assignees.length > 0 && ` • Assigned to ${t.assignees[0].username}`}
-                              {t.dueDate && ` • Due ${formatEchoDate(t.dueDate)}`}
-                            </div>
-                          </div>
-                        </div>
-                        <ArrowRight size={13} className="text-gray-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
-                      </button>
-                    ))}
                   </div>
                 )}
 
@@ -487,7 +368,7 @@ export function Topbar({
                               {m.title}
                             </div>
                             <div className="text-[10px] text-gray-400 truncate">
-                              {formatEchoDate(m.date)} • {m.location || "Scheduled Venue"}
+                              {formatEchoDate(m.date)} â€¢ {m.location || "Scheduled Venue"}
                             </div>
                           </div>
                         </div>
@@ -520,7 +401,7 @@ export function Topbar({
                               {t.topic}
                             </div>
                             <div className="text-[10px] text-gray-400 truncate max-w-sm">
-                              In {t.meetingTitle} • {t.action || "No action plan"}
+                              In {t.meetingTitle} â€¢ {t.action || "No action plan"}
                             </div>
                           </div>
                         </div>
@@ -532,45 +413,37 @@ export function Topbar({
               </div>
             ) : (
               <div className="p-6 text-center text-gray-400 text-xs">
-                No matching results found across pages, tasks, or meetings for &ldquo;{searchQuery}&rdquo;
+                No matching results found across pages or meetings for &ldquo;{searchQuery}&rdquo;
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Right controls */}
-      <div className="flex items-center gap-2.5 shrink-0">
-        {studioRecording?.active && (
-          <button type="button" onClick={studioRecording.onRestore} className="inline-flex items-center gap-1.5 border border-[#C9AB4C] bg-[#003366] px-3 py-1.5 text-xs font-bold text-white" title="Open current meeting" aria-label={`${studioRecording.isPaused ? "Paused" : "Recording"} ${formatMeetingClock(studioRecording.elapsedSeconds)}`}>
-            <span className={`h-2 w-2 rounded-full ${studioRecording.isPaused ? "bg-amber-400" : "bg-red-500 animate-pulse"}`} />
-            <span>{studioRecording.isPaused ? "Paused" : "Recording"} {formatMeetingClock(studioRecording.elapsedSeconds)}</span>
-          </button>
-        )}
-
-        {/* Ask Echo trigger */}
-        {showNewMeeting && (!allowedPages || allowedPages.includes("minutes")) && (
-          <button
-            type="button"
-            onClick={onGoToNotetaker}
-            className="inline-flex items-center gap-1.5 border border-[#003366] bg-[#FFFCFB] px-3.5 py-1.5 text-xs font-semibold tracking-wide text-[#003366] transition-colors hover:bg-[#EDF3F8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C9A84C]"
-            aria-label="New meeting — open Notetaker"
-          >
-            <CalendarPlus size={14} aria-hidden="true" />
-            <span>New meeting</span>
-          </button>
-        )}
-        {askEchoEnabled && (!allowedFeatures || allowedFeatures.includes("ask-echo")) && (!allowedPages || allowedPages.includes("minutes")) && (
-          <button
-            type="button"
-            onClick={onOpenUniversalEcho}
-            className="flex items-center gap-1.5 bg-[#003366] text-[#FFFCFB] hover:bg-[#174778] border border-[#C9A84C]/60 hover:border-[#C9A84C] px-3.5 py-1.5 rounded-none text-xs font-semibold tracking-wide shadow-2xs transition-all group"
-          >
-            <Sparkles size={13} className="text-[#FFBF00] group-hover:rotate-12 transition-transform" />
-            <span>Ask Echo</span>
-          </button>
-        )}
       </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        {studioRecording?.active && <button type="button" onClick={studioRecording.onRestore} title="Open current meeting" aria-label={`${studioRecording.isPaused ? "Paused" : "Recording"} ${formatMeetingClock(studioRecording.elapsedSeconds)}`} className="flex h-8 items-center gap-2 border-l border-[#2b2b2b] px-2 text-xs text-[#cccccc] hover:bg-[#2b2b2b]"><span className={`h-2 w-2 rounded-full ${studioRecording.isPaused ? "bg-[#d29922]" : "bg-[#f85149] animate-pulse"}`} />{studioRecording.isPaused ? "Paused" : "Recording"} {formatMeetingClock(studioRecording.elapsedSeconds)}</button>}
+        {showNewMeeting && (!allowedPages || allowedPages.includes("minutes")) && <button type="button" onClick={onGoToNotetaker} title="New meeting" aria-label="New meeting" className="grid h-8 w-8 place-items-center text-[#9d9d9d] hover:bg-[#2b2b2b] hover:text-[#cccccc]"><CalendarPlus size={15} /></button>}
+        {hasDesktopSync && (() => {
+          const syncing = manualSyncing || syncStatus.status === "syncing";
+          const failed = syncStatus.status === "failed";
+          const label = failed ? "Sync issue" : syncStatus.status === "synced" ? "Synced" : syncing ? "Syncing" : "Sync";
+          const tone = failed ? "text-[#f85149]" : syncStatus.status === "synced" ? "text-[#3fb950]" : "text-[#9d9d9d]";
+          return <div className="relative">
+            <button type="button" onClick={() => void runManualSync()} disabled={syncing} aria-busy={syncing} aria-label={`${label} Supabase`} title={syncStatus.error || `${label} workspace records with Supabase`} className={`grid h-8 w-8 place-items-center ${tone} hover:bg-[#2b2b2b] disabled:opacity-60`}>
+              <RefreshCw aria-hidden="true" size={14} className={syncing ? "animate-spin" : ""} />
+            </button>
+            {syncDetailsOpen && <section role="status" aria-live="polite" className="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] border border-[#3c3c3c] bg-[#1f1f1f] p-3 text-[#cccccc] shadow-lg">
+              <div className="flex items-center justify-between gap-3 border-b border-[#2b2b2b] pb-2"><h2 className="text-xs font-semibold">{failed ? "Sync needs attention" : syncStatus.status === "synced" ? "Sync complete" : syncing ? "Syncing workspace" : "Supabase sync"}</h2><button type="button" onClick={() => setSyncDetailsOpen(false)} aria-label="Close sync details" className="grid h-7 w-7 place-items-center text-[#9d9d9d] hover:bg-[#2b2b2b]"><X size={14} /></button></div>
+              <p className="py-2 text-[11px] text-[#9d9d9d]">{syncStatus.error || (syncStatus.status === "not-configured" ? "Configure Supabase in Settings to enable sync." : syncStatus.status === "synced" ? `${syncStatus.uploaded || 0} uploaded · ${syncStatus.downloaded || 0} downloaded · ${syncStatus.deleted || 0} deleted.` : "Local records stay available while sync runs.")}</p>
+              {(syncStatus.status === "syncing" || manualSyncing) && <div className="relative mt-3 h-1 overflow-hidden bg-[#2b2b2b]"><span className="mosaic-sync-progress-bar" /></div>}
+            </section>}
+          </div>;
+        })()}        {onOpenUpdates && <button type="button" onClick={onOpenUpdates} aria-label="Check for updates" title="Check for updates" className="grid h-8 w-8 place-items-center text-[#9d9d9d] hover:bg-[#2b2b2b] hover:text-[#cccccc]"><CloudDownload size={15} /></button>}
+        {askEchoEnabled && (!allowedFeatures || allowedFeatures.includes("ask-echo")) && (!allowedPages || allowedPages.includes("minutes")) && <button type="button" onClick={onOpenUniversalEcho} aria-label="Ask Echo" title="Ask Echo" className="grid h-8 w-8 place-items-center text-[#cccccc] hover:bg-[#2b2b2b] hover:text-white"><MessageSquarePlus size={16} /></button>}
+      </div>
+
     </header>
   );
 }

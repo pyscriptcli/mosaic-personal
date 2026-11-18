@@ -6,6 +6,7 @@ import { BA_MIN_COLUMN_WIDTHS, createBAProject, DEFAULT_BA_COLUMN_WIDTHS, EMPTY_
 import type { ArchivedMeeting } from "@/features/meetings/types/meeting";
 import type { BAProject, BARequirement, BARequirementTask, BAWorkspaceState, BADocument, RequirementCategory, MoscowPriority, VerificationStatus } from "@/features/it-projects/types/business-analysis";
 import { ITProjectSections } from "@/features/it-projects/components/ITProjectSections";
+import { useEchoAI } from "@/features/ask-echo/components/EchoAI";
 
 
 const CATEGORIES: RequirementCategory[] = ["Functional", "Non-Functional", "Technical", "Compliance", "Business"];
@@ -328,6 +329,7 @@ function templateContent(kind: string, project: BAProject) {
 }
 
 export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], onLoadMeetings }: { userId?: string; meetings?: ArchivedMeeting[]; onLoadMeetings?: () => Promise<ArchivedMeeting[]> }) {
+  const { runStructured } = useEchoAI();
   const [state, setState] = useState<BAWorkspaceState>(EMPTY_BA_STATE);
   const [activeId, setActiveId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -352,6 +354,7 @@ export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], o
   const [clickUpSaveTarget, setClickUpSaveTarget] = useState<ClickUpSaveTarget | null>(null);
   const [clickUpLists, setClickUpLists] = useState<ClickUpTaskList[]>([]);
   const [clickUpListsLoading, setClickUpListsLoading] = useState(false);
+
   const [clickUpListsLoaded, setClickUpListsLoaded] = useState(false);
   const [clickUpListId, setClickUpListId] = useState("");
   const [clickUpSaveError, setClickUpSaveError] = useState("");
@@ -370,6 +373,8 @@ export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], o
   const projectMenuButtonRef = useRef<HTMLButtonElement>(null);
 
   const project = useMemo(() => state.projects.find((item) => item.id === activeId) || null, [state.projects, activeId]);
+  const requestRequirementAI = <T,>(instruction: string, requirement: BARequirement, extra: Record<string, unknown> = {}) =>
+    runStructured<T>(instruction, JSON.stringify({ project: project ? { name: project.name, description: project.description } : null, requirement, ...extra }));
   const detailRequirement = project?.requirements.find((item) => item.id === detailRequirementId) || null;
   const requirementPendingDelete = project?.requirements.find((item) => item.id === deleteRequirementId) || null;
   const updateProject = useCallback((updater: (current: BAProject) => BAProject) => {
@@ -615,9 +620,10 @@ export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], o
     if (!project) return;
     setGeneratingId(requirement.id);
     try {
-      const response = await fetch("/api/business-analysis/story", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: requirement.id, statement: requirement.statement, context: project.description, customPrompt }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Story generation failed.");
+      const body = await requestRequirementAI<{ userStory: string; acceptanceCriteria: string }>(
+        `Write one short user story sentence and 2 to 3 concise, testable Given/When/Then acceptance criteria as separate Markdown bullets. Avoid unsupported assumptions. ${customPrompt ? `Additional user guidance: ${customPrompt}` : ""} Return JSON with userStory and acceptanceCriteria strings.`,
+        requirement,
+      );
       updateRequirement(requirement.id, { userStory: body.userStory, acceptanceCriteria: body.acceptanceCriteria });
     } catch (error) { window.alert(error instanceof Error ? error.message : "Story generation failed."); }
     finally { setGeneratingId(""); }
@@ -627,14 +633,10 @@ export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], o
     if (!project) return;
     setGeneratingRequirementId(requirement.id);
     try {
-      const response = await fetch("/api/business-analysis/story", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        type: "requirement", id: requirement.id, statement: requirement.statement, context: project.description,
-        category: requirement.category, priority: requirement.priority, userStory: requirement.userStory,
-        acceptanceCriteria: requirement.acceptanceCriteria, testCase: requirement.testCase, verification: requirement.verification,
-        tasks: requirement.tasks.map(({ title, done }) => ({ title, done })), customPrompt,
-      }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Requirement generation failed.");
+      const body = await requestRequirementAI<{ statement: string }>(
+        `Rewrite the business requirement as one clear, concise sentence. Preserve the stated need and use row details only to clarify. Do not add assumptions, acceptance criteria, or implementation design. ${customPrompt ? `Additional user guidance: ${customPrompt}` : ""} Return JSON with a statement string.`,
+        requirement,
+      );
       if (typeof body.statement !== "string" || !body.statement.trim()) throw new Error("The generated requirement was empty.");
       updateRequirement(requirement.id, { statement: body.statement.trim() });
     } catch (error) { window.alert(error instanceof Error ? error.message : "Requirement generation failed."); }
@@ -645,14 +647,10 @@ export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], o
     if (!project) return;
     setGeneratingBusinessImpactId(requirement.id);
     try {
-      const response = await fetch("/api/business-analysis/story", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        type: "business-impact", id: requirement.id, statement: requirement.statement, context: project.description,
-        category: requirement.category, priority: requirement.priority, userStory: requirement.userStory,
-        acceptanceCriteria: requirement.acceptanceCriteria, testCase: requirement.testCase,
-        tasks: requirement.tasks.map(({ title, done }) => ({ title, done })), customPrompt,
-      }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Business impact generation failed.");
+      const body = await requestRequirementAI<{ businessImpact: string }>(
+        `Write one concise sentence describing the expected business value or outcome. Do not invent quantified benefits, urgency, or facts. ${customPrompt ? `Additional user guidance: ${customPrompt}` : ""} Return JSON with a businessImpact string.`,
+        requirement,
+      );
       if (typeof body.businessImpact !== "string" || !body.businessImpact.trim()) throw new Error("The generated business impact was empty.");
       updateRequirement(requirement.id, { businessImpact: body.businessImpact.trim().slice(0, 3000) });
     } catch (error) { window.alert(error instanceof Error ? error.message : "Business impact generation failed."); }
@@ -664,17 +662,16 @@ export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], o
     setClassificationError(null);
     setClassifyingRequirementId(requirement.id);
     try {
-      const response = await fetch("/api/business-analysis/story", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        type: "classify-impact", id: requirement.id, statement: requirement.statement, context: project.description,
-        userStory: requirement.userStory, acceptanceCriteria: requirement.acceptanceCriteria, testCase: requirement.testCase,
-        tasks: requirement.tasks.map(({ title, done }) => ({ title, done })),
-      }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "AI suggestions are unavailable right now.");
-      if (!CATEGORIES.includes(body.category) || !(PRIORITIES as string[]).includes(body.priority) || typeof body.businessImpact !== "string" || !body.businessImpact.trim()) {
+      const body = await requestRequirementAI<{ category: string; priority: string; businessImpact: string }>(
+        `Suggest one requirement category from Functional, Non-Functional, Technical, Compliance, Business; one MoSCoW priority from Must Have, Should Have, Could Have, Won't Have; and one short business impact sentence. Ground priority in stated urgency and consequence; use Could Have when evidence is weak. Never invent quantified savings or urgency. Return JSON with category, priority, businessImpact.`,
+        requirement,
+      );
+      const category = CATEGORIES.find((candidate) => candidate === body.category);
+      const priority = PRIORITIES.find((candidate) => candidate === body.priority);
+      if (!category || !priority || typeof body.businessImpact !== "string" || !body.businessImpact.trim()) {
         throw new Error("The AI response was missing a category, priority, or business impact. Retry, or generate the impact separately.");
       }
-      updateRequirement(requirement.id, { category: body.category, priority: body.priority, businessImpact: body.businessImpact.trim().slice(0, 3000) });
+      updateRequirement(requirement.id, { category, priority, businessImpact: body.businessImpact.trim().slice(0, 3000) });
     } catch (error) { setClassificationError({ requirementId: requirement.id, message: error instanceof Error ? error.message : "AI suggestions are unavailable right now." }); }
     finally { setClassifyingRequirementId(""); }
   };
@@ -683,13 +680,13 @@ export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], o
     if (!project) throw new Error("Open a project before using Grill me.");
     const requirement = project.requirements.find((item) => item.id === requirementId);
     if (!requirement) throw new Error("This requirement is no longer available.");
-    const response = await fetch("/api/business-analysis/story", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-      type, id: requirement.id, statement, context: project.description, category: requirement.category, priority: requirement.priority,
-      userStory: requirement.userStory, acceptanceCriteria: requirement.acceptanceCriteria, testCase: requirement.testCase,
-      verification: requirement.verification, tasks: requirement.tasks.map(({ title, done }) => ({ title, done })), turns,
-    }) });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error || "Grill me is unavailable right now.");
+    const body = await requestRequirementAI<{ question?: string; statement?: string }>(
+      type === "grill-question"
+        ? "Ask exactly one focused plain-language question that fills the most important missing detail. Do not repeat questions already answered. Return JSON with a question string."
+        : "Rewrite the requirement as one clear, concise sentence using only the original requirement, row details, and the user's answers. Preserve intent; add no assumptions or implementation design. Return JSON with a statement string.",
+      { ...requirement, statement },
+      { turns },
+    );
     const output = type === "grill-question" ? body.question : body.statement;
     if (typeof output !== "string" || !output.trim()) throw new Error("Echo returned an empty response. Try again.");
     return output.trim();
@@ -756,13 +753,10 @@ export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], o
   const generateTestCase = async (requirement: BARequirement, customPrompt?: string) => {
     setGeneratingTestCaseId(requirement.id);
     try {
-      const response = await fetch("/api/business-analysis/story", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        type: "test-case", id: requirement.id, statement: requirement.statement, category: requirement.category,
-        priority: requirement.priority, userStory: requirement.userStory, acceptanceCriteria: requirement.acceptanceCriteria,
-        verification: requirement.verification, tasks: requirement.tasks.map(({ title, done }) => ({ title, done })), customPrompt,
-      }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Test case generation failed.");
+      const body = await requestRequirementAI<{ testCase: string }>(
+        `Write one short, executable test case with a bold title and concise numbered steps, including expected results. Use only supported requirement details. ${customPrompt ? `Additional user guidance: ${customPrompt}` : ""} Return JSON with a testCase string.`,
+        requirement,
+      );
       updateRequirement(requirement.id, { testCase: body.testCase });
     } catch (error) { window.alert(error instanceof Error ? error.message : "Test case generation failed."); }
     finally { setGeneratingTestCaseId(""); }
@@ -772,13 +766,10 @@ export function BusinessAnalysisView({ userId, meetings: initialMeetings = [], o
     if (!project) return;
     setGeneratingAcceptanceCriteriaId(requirement.id);
     try {
-      const response = await fetch("/api/business-analysis/story", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        type: "acceptance-criteria", id: requirement.id, statement: requirement.statement, context: project.description,
-        category: requirement.category, priority: requirement.priority, userStory: requirement.userStory,
-        testCase: requirement.testCase, verification: requirement.verification, tasks: requirement.tasks.map(({ title, done }) => ({ title, done })), customPrompt,
-      }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "Acceptance criteria generation failed.");
+      const body = await requestRequirementAI<{ acceptanceCriteria: string }>(
+        `Write 2 to 3 concise, testable Given/When/Then acceptance criteria as separate Markdown bullets. Use only requirement and row details. ${customPrompt ? `Additional user guidance: ${customPrompt}` : ""} Return JSON with an acceptanceCriteria string.`,
+        requirement,
+      );
       updateRequirement(requirement.id, { acceptanceCriteria: body.acceptanceCriteria });
     } catch (error) { window.alert(error instanceof Error ? error.message : "Acceptance criteria generation failed."); }
     finally { setGeneratingAcceptanceCriteriaId(""); }
