@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         saveLocalRecord("notebook", {
           id: date,
           title: `Daily Log ${date}`,
-          data: { date, member, categories: { client: "", admin: "", adhoc: "", meetings: "" }, status: "open", dailyTasks: [] },
+          data: { date, member, status: "open", dailyTasks: [] },
         });
       }
       return NextResponse.json({ createdCount: batch.length, remainingCount: missing.length - batch.length, source: "local" });

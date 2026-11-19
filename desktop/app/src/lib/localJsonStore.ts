@@ -115,6 +115,25 @@ export function getLocalRecord<T = Record<string, unknown>>(feature: LocalFeatur
   return match ? readDocument(path.join(folder, match), feature) as LocalRecord<T> | null : null;
 }
 
+export function removeLocalRecordDataFields(feature: LocalFeature, id: string, fields: string[]) {
+  const current = getLocalRecord(feature, id);
+  if (!current) return false;
+  const filePath = fileFor(feature, id, current.title);
+  const document = JSON.parse(readFileSync(filePath, "utf8")) as { data: Record<string, unknown>; updatedAt?: string };
+  let changed = false;
+  for (const field of fields) {
+    if (!Object.prototype.hasOwnProperty.call(document.data, field)) continue;
+    delete document.data[field];
+    changed = true;
+  }
+  if (!changed) return false;
+  document.updatedAt = new Date().toISOString();
+  const tempPath = `${filePath}.${randomUUID()}.tmp`;
+  writeFileSync(tempPath, `${JSON.stringify(document, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+  renameSync(tempPath, filePath);
+  return true;
+}
+
 export function saveLocalRecord<T extends Record<string, unknown>>(feature: LocalFeature, input: { id?: string; title: string; data: T }): LocalRecord<T> {
   const id = input.id?.trim() || randomUUID();
   const title = input.title.trim().slice(0, 500);

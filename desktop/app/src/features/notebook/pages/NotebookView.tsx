@@ -5,10 +5,8 @@ import { clearBrowserPageCache, getBrowserPageCache, readBrowserPageCache, write
 import { requestCentralClickUpSync, trackClickUpLiveRefresh } from "@/lib/clickupSyncClient";
 
 const desktopMode = process.env.NEXT_PUBLIC_MOSAIC_DESKTOP === "1";
-import { AutoResizeTextarea } from "@/components/AutoResizeTextarea";
 import {
   AlertCircle,
-  BarChart3,
   CalendarDays,
   CalendarPlus,
   CheckCircle2,
@@ -18,8 +16,6 @@ import {
   FileText,
   Loader2,
   RefreshCw,
-  Save,
-  Trash2,
   Users,
 } from "lucide-react";
 
@@ -55,7 +51,7 @@ interface NotebookEntry extends NotebookActivityHistoryEntry {
   status: string;
   member: NotebookMember;
   hasContent: boolean;
-  dailyTasks?: Array<{ id: string; name: string; status: string; completed: boolean; dueDate: string; url: string }>;
+  dailyTasks?: Array<{ id: string; name: string; status: string; completed: boolean; dueDate: string; url: string; description?: string; priority?: string }>;
 }
 
 interface NotebookPayload {
@@ -65,13 +61,6 @@ interface NotebookPayload {
   fetchedAt: string;
   warning?: string;
 }
-
-const CATEGORY_META: Array<{ key: CategoryKey; label: string }> = [
-  { key: "client", label: "Client" },
-  { key: "admin", label: "Admin" },
-  { key: "adhoc", label: "Ad hoc" },
-  { key: "meetings", label: "Meetings" },
-];
 
 function localIso(date: Date) {
   const year = date.getFullYear();
@@ -104,17 +93,6 @@ function startOfWeek(value: string) {
   const offset = date.getDay() === 0 ? -6 : 1 - date.getDay();
   date.setDate(date.getDate() + offset);
   return localIso(date);
-}
-
-function itemsFromText(value: string) {
-  const cleaned = value.replace(/\r/g, "").trim();
-  if (!cleaned) return [];
-  const lines = cleaned.split("\n").map((line) => line.trim()).filter(Boolean);
-  return lines.map((line) => line.replace(/^[•●▪◦*-]\s*/, "").replace(/^\d+[.)]\s*/, "").trim()).filter(Boolean);
-}
-
-function formatTaskList(value: string) {
-  return itemsFromText(value).map((item) => `• ${item}`).join("\n");
 }
 
 function weekdaysInRange(start: string, end: string) {
@@ -174,12 +152,6 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
   const initialRange = presetRange("this-month");
   const [rangeStart, setRangeStart] = useState(initialRange.start);
   const [rangeEnd, setRangeEnd] = useState(initialRange.end);
-  const [draftCategories, setDraftCategories] = useState<Record<CategoryKey, string>>({ client: "", admin: "", adhoc: "", meetings: "" });
-  const [saving, setSaving] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-  const [lastSaved, setLastSaved] = useState<string | null>(null);
-  const [saveWarning, setSaveWarning] = useState("");
-  const [deleting, setDeleting] = useState(false);
   const [payload, setPayload] = useState<NotebookPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -305,19 +277,6 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
   );
   const selectedDayEntry = selectedDayEntries[0];
 
-  useEffect(() => {
-    const source = selectedDayEntry?.categories || { client: "", admin: "", adhoc: "", meetings: "" };
-    setDraftCategories({
-      client: formatTaskList(source.client),
-      admin: formatTaskList(source.admin),
-      adhoc: formatTaskList(source.adhoc),
-      meetings: formatTaskList(source.meetings),
-    });
-    setIsDirty(false);
-    setLastSaved(null);
-    setSaveWarning("");
-  }, [selectedDayEntry?.id, selectedDate, member?.id]);
-
   const workdays = useMemo(() => weekdaysInRange(rangeStart, rangeEnd), [rangeStart, rangeEnd]);
 
   const completenessRows = useMemo(() => (payload?.members || []).map((person) => {
@@ -345,14 +304,6 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
   const emptyDayLogs = filteredRows.reduce((sum, row) => sum + row.emptyDays.length, 0);
   const averageCompleteness = expectedLogs ? Math.round((submittedLogs / expectedLogs) * 100) : 0;
 
-  const monthCategoryTotals = CATEGORY_META.map((category) => ({
-    ...category,
-    count: entries
-      .filter((entry) => entry.date >= rangeStart && entry.date <= rangeEnd && (insightMemberId === "all" || entry.member.id === insightMemberId))
-      .reduce((sum, entry) => sum + itemsFromText(entry.categories[category.key]).length, 0),
-  }));
-  const maxCategoryTotal = Math.max(1, ...monthCategoryTotals.map((category) => category.count));
-
   const previousDay = () => setSelectedDate((value) => shiftDate(value, -1));
   const nextDay = () => setSelectedDate((value) => shiftDate(value, 1));
 
@@ -362,77 +313,6 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
     const range = presetRange(preset);
     setRangeStart(range.start);
     setRangeEnd(range.end);
-  };
-
-  const saveDailyLog = useCallback(async () => {
-    if (!member) return;
-    setSaving(true);
-    setError("");
-    try {
-      const response = await fetch("/api/notebook", {
-        method: selectedDayEntry ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(selectedDayEntry ? { taskId: selectedDayEntry.id, currentStatus: selectedDayEntry.status, categories: draftCategories } : { date: selectedDate, member: { id: member.id, name: member.name }, categories: draftCategories }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Unable to save the daily log.");
-      setSaveWarning(typeof body.warning === "string" ? body.warning : "");
-      setIsDirty(false);
-      setLastSaved(new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
-      await loadNotebook();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save the daily log.");
-    } finally {
-      setSaving(false);
-    }
-  }, [draftCategories, member, selectedDate, selectedDayEntry]);
-
-  useEffect(() => {
-    if (!isDirty || saving || deleting) return;
-    const timer = window.setTimeout(() => { void saveDailyLog(); }, 850);
-    return () => window.clearTimeout(timer);
-  }, [draftCategories, isDirty, saving, deleting, saveDailyLog]);
-
-  const updateCategory = (key: CategoryKey, value: string) => {
-    setDraftCategories((current) => ({ ...current, [key]: value }));
-    setSaveWarning("");
-    setIsDirty(true);
-  };
-
-  const handleTaskListKeyDown = (key: CategoryKey, event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey) return;
-    event.preventDefault();
-    const field = event.currentTarget;
-    const value = draftCategories[key];
-    const start = field.selectionStart;
-    const end = field.selectionEnd;
-    const next = `${value.slice(0, start)}\n• ${value.slice(end)}`;
-    updateCategory(key, next);
-    requestAnimationFrame(() => {
-      const cursor = start + 3;
-      field.setSelectionRange(cursor, cursor);
-    });
-  };
-
-  const normalizeCategory = (key: CategoryKey) => {
-    const normalized = formatTaskList(draftCategories[key]);
-    if (normalized !== draftCategories[key]) updateCategory(key, normalized);
-  };
-
-  const deleteDailyLog = async () => {
-    if (!selectedDayEntry || !confirm(`Delete ${formatDate(selectedDate)} from the Daily Log?`)) return;
-    setDeleting(true);
-    setError("");
-    try {
-      const response = await fetch(`/api/notebook?taskId=${encodeURIComponent(selectedDayEntry.id)}`, { method: "DELETE" });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Unable to delete the daily log.");
-      await loadNotebook();
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete the daily log.");
-    } finally {
-      setDeleting(false);
-    }
   };
 
   const availableMonths = useMemo(() => {
@@ -658,19 +538,6 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
 
       {activeTab === "today" && (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {CATEGORY_META.map((category) => {
-              const count = itemsFromText(draftCategories[category.key]).length;
-              return (
-                <div key={category.key} className="bg-[#FFFCFB] border border-gray-200 p-4">
-                  <div className="text-xs font-bold uppercase tracking-wider text-gray-500">{category.label}</div>
-                  <div className="text-3xl font-serif font-bold text-[#003366] mt-2">{count}</div>
-                  <div className="text-xs text-gray-500 mt-1">recorded item{count === 1 ? "" : "s"}</div>
-                </div>
-              );
-            })}
-          </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             <section className="lg:col-span-8">
               <div className="flex items-end justify-between gap-4 mb-3">
@@ -679,37 +546,10 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
                   <p className="text-sm text-gray-500 mt-1">{member?.name || "Team member"}</p>
                 </div>
                 <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 border ${selectedDayEntries.some((entry) => entry.hasContent) ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-amber-700 bg-amber-50 border-amber-200"}`}>
-                  {selectedDayEntries.some((entry) => entry.hasContent) ? "Log submitted" : "No completed log"}
+                  {selectedDayEntries.some((entry) => entry.hasContent) ? "Tasks recorded" : "No tasks recorded"}
                 </span>
               </div>
 
-              <div className="bg-[#FFFCFB] border border-gray-200 divide-y divide-gray-200">
-                {CATEGORY_META.map((category) => {
-                  return (
-                    <div key={category.key} className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-3 p-4 sm:p-5">
-                      <div className="text-xs font-bold uppercase tracking-wider text-[#003366] pt-0.5">{category.label}</div>
-                      <AutoResizeTextarea
-                        value={draftCategories[category.key]}
-                        onChange={(event) => updateCategory(category.key, event.target.value)}
-                        onKeyDown={(event) => handleTaskListKeyDown(category.key, event)}
-                        onBlur={() => normalizeCategory(category.key)}
-                        placeholder={`• Log ${category.label.toLowerCase()} work`}
-                        rows={3}
-                        minHeight={106}
-                        className="border border-gray-200 bg-[#FFFCFB]/70 px-3 py-2 text-sm text-gray-700 leading-relaxed focus:outline-none focus:border-[#C9AB4C] focus:bg-[#FFFCFB]"
-                      />
-                    </div>
-                  );
-                })}
-                <div className="p-4 sm:p-5 flex items-center justify-between gap-3 bg-[#FFFCFB]/70">
-                  <div><p className="text-xs text-gray-500">Press Enter for another bullet. Changes save automatically after you pause typing.</p>{saveWarning && <p role="status" className="mt-1 text-xs text-amber-700">{saveWarning}</p>}</div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {selectedDayEntry && <button type="button" onClick={deleteDailyLog} disabled={deleting || saving} className="h-10 px-3 border border-red-200 text-red-700 text-sm font-semibold hover:bg-red-50 disabled:opacity-50 inline-flex items-center gap-2"><Trash2 size={15} /> Delete</button>}
-                    <span className={`text-xs font-semibold ${saving || isDirty ? "text-[#003366]" : "text-emerald-700"}`}>{saving ? "Saving…" : isDirty ? "Autosave pending" : lastSaved ? `Saved ${lastSaved}` : "Autosave on"}</span>
-                    <button type="button" onClick={saveDailyLog} disabled={saving || deleting || !isDirty} className="h-10 px-4 bg-[#003366] text-white text-sm font-semibold hover:bg-[#002244] disabled:opacity-50 inline-flex items-center gap-2"><Save size={15} /> Save now</button>
-                  </div>
-                </div>
-              </div>
               <section className="mt-4 border border-gray-200 bg-[#FFFCFB] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-lg font-serif italic text-[#003366]">My Day tasks</h3>
@@ -718,9 +558,14 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
                 <p className="mt-1 text-xs text-gray-500">Tasks created in My Day appear in that day’s daily log.</p>
                 {selectedDayEntry?.dailyTasks?.length ? (
                   <ul className="mt-3 divide-y divide-gray-100 border-t border-gray-100">
-                    {selectedDayEntry.dailyTasks.map((task) => <li key={task.id} className="flex items-center justify-between gap-3 py-2.5">
-                      <span className={`text-xs ${task.completed ? "text-gray-500 line-through" : "text-gray-700"}`}>{task.name}</span>
+                    {selectedDayEntry.dailyTasks.map((task) => <li key={task.id} className="flex items-start justify-between gap-3 py-2.5">
+                      <div className="min-w-0">
+                        <span className={`text-xs ${task.completed ? "text-gray-500 line-through" : "text-gray-700"}`}>{task.name}</span>
+                        {task.description && <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-500">{task.description}</p>}
+                      </div>
                       <div className="flex shrink-0 items-center gap-2 text-[10px] text-gray-500">
+                        <span className={task.completed ? "text-emerald-700" : "text-slate-500"}>{task.completed ? "Completed" : "Open"}</span>
+                        {task.priority && <span className={task.priority === "high" ? "border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800" : "border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-slate-500"}>{task.priority === "high" ? "High priority" : "Normal priority"}</span>}
                         {task.dueDate && <span>Due {new Date(`${task.dueDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
                         {!desktopMode && task.url && <a href={task.url} target="_blank" rel="noreferrer" aria-label={`Open ${task.name} in ClickUp`} className="text-[#31577D] hover:text-[#003366]"><ExternalLink size={12} /></a>}
                       </div>
@@ -733,12 +578,12 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
             <aside className="lg:col-span-4 space-y-4">
               <div className="bg-[#FFFCFB] border border-gray-200 p-5">
                 <h3 className="text-lg flex items-center gap-2"><FileText size={17} className="text-[#C9AB4C]" /> Source record</h3>
-                <p className="text-sm text-gray-500 mt-2 leading-relaxed">{desktopMode ? "Edit daily entries directly. Changes save to this device." : "Edit directly here. Mosaic keeps the same month parent and daily subtask structure your team already uses in ClickUp."}</p>
+                <p className="text-sm text-gray-500 mt-2 leading-relaxed">{desktopMode ? "Daily records stay on this device. My Day tasks are shown here." : "Edit directly here. Mosaic keeps the same month parent and daily subtask structure your team already uses in ClickUp."}</p>
                 {selectedDayEntries[0]?.url ? (
                   <a href={selectedDayEntries[0].url} target="_blank" rel="noreferrer" className="mt-4 btn-outline !px-4 !py-2 inline-flex items-center gap-2">
                     Open daily log <ExternalLink size={14} />
                   </a>
-                ) : <p className="text-xs text-gray-500 mt-4">{desktopMode ? "Save an entry to add this date to your local notebook." : "Save an entry to create this date in ClickUp."}</p>}
+                ) : <p className="text-xs text-gray-500 mt-4">{desktopMode ? "No local daily record exists for this date yet." : "Save an entry to create this date in ClickUp."}</p>}
               </div>
               <div className="bg-[#FFFCFB] border border-gray-200 p-5">
                 <div className="flex items-center justify-between gap-2">
@@ -824,7 +669,7 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
               <div className="bg-[#1b1d1e] border border-[#C9AB4C]/50 p-5 text-white">
                 <div className="text-xs uppercase tracking-widest text-[#C9AB4C] font-bold">Daily completeness</div>
                 <div className="text-3xl font-serif mt-3">{selectedDayEntries.some((entry) => entry.hasContent) ? "Complete" : "Empty"}</div>
-                <p className="text-sm text-gray-300 mt-2">A day is complete when at least one existing work category contains an entry.</p>
+                <p className="text-sm text-gray-300 mt-2">A day has activity when at least one My Day task is linked.</p>
               </div>
             </aside>
           </div>
@@ -834,18 +679,21 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
       {activeTab === "week" && (
         <section className="border border-gray-200 bg-[#FFFCFB]">
           <div className="flex flex-wrap items-end justify-between gap-3 border-b border-gray-200 p-4">
-            <div><h2 className="text-xl">Daily activity</h2><p className="mt-1 text-sm text-gray-500">{formatDate(rangeStart, { month: "long", day: "numeric", year: "numeric" })}–{formatDate(rangeEnd, { month: "long", day: "numeric", year: "numeric" })} · {member?.name || "Team member"}</p></div>
-            <span className="text-xs text-gray-500">{entries.filter((entry) => entry.member.id === member?.id && entry.date >= rangeStart && entry.date <= rangeEnd && entry.hasContent).length} days with activity</span>
+            <div><h2 className="text-xl">Daily tasks</h2><p className="mt-1 text-sm text-gray-500">{formatDate(rangeStart, { month: "long", day: "numeric", year: "numeric" })}–{formatDate(rangeEnd, { month: "long", day: "numeric", year: "numeric" })} · {member?.name || "Team member"}</p></div>
+            <span className="text-xs text-gray-500">{entries.filter((entry) => entry.member.id === member?.id && entry.date >= rangeStart && entry.date <= rangeEnd && entry.hasContent).length} days with tasks</span>
           </div>
           <div className="divide-y divide-gray-100">
             {entries.filter((entry) => entry.member.id === member?.id && entry.date >= rangeStart && entry.date <= rangeEnd && entry.hasContent).sort((a, b) => b.date.localeCompare(a.date)).map((entry) => (
               <article key={entry.id} className="grid gap-3 p-4 md:grid-cols-[180px_1fr]">
                 <div><h3 className="font-semibold text-sm text-[#003366]">{formatDate(entry.date, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</h3><button type="button" onClick={() => { if (hideViewTabs && onOpenDay) onOpenDay(entry.date); else { setSelectedDate(entry.date); setActiveTab("today"); } }} className="mt-2 text-xs font-semibold text-[#31577D] hover:text-[#003366]">Open this day →</button></div>
-                <div className="grid gap-3 sm:grid-cols-2">{CATEGORY_META.map((category) => {
-                  const items = itemsFromText(entry.categories[category.key]);
-                  return items.length ? <div key={category.key}><h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{category.label}</h4><ul className="mt-1 space-y-1 text-sm leading-relaxed text-slate-700">{items.map((item, index) => <li key={`${item}-${index}`} className="flex gap-2"><span aria-hidden="true" className="text-[#31577D]">•</span><span>{item}</span></li>)}</ul></div> : null;
-                })}</div>
-              </article>
+                <div>
+                  {entry.dailyTasks?.length ? <ul className="divide-y divide-gray-100">
+                    {entry.dailyTasks.map((task) => <li key={task.id} className="py-2 text-sm text-gray-700">
+                      <div className={`font-medium ${task.completed ? "line-through text-gray-500" : ""}`}>{task.name}</div>
+                      {task.description && <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-gray-500">{task.description}</p>}
+                    </li>)}
+                  </ul> : <p className="text-sm text-gray-500">No My Day tasks are linked to this date.</p>}
+                </div>              </article>
             ))}
             {!entries.some((entry) => entry.member.id === member?.id && entry.date >= rangeStart && entry.date <= rangeEnd && entry.hasContent) && <p className="p-8 text-center text-sm text-gray-500">No activity recorded in this period.</p>}
           </div>
@@ -913,27 +761,7 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
             </div>
           </section>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <section className="bg-[#FFFCFB] border border-gray-200 p-5">
-              <h3 className="text-lg flex items-center gap-2"><BarChart3 size={18} className="text-[#C9AB4C]" /> Recorded work mix</h3>
-              <p className="text-sm text-gray-500 mt-1">Individual entries detected in each existing ClickUp field.</p>
-              <div className="space-y-4 mt-5">
-                {monthCategoryTotals.map((category) => (
-                  <div key={category.key} className="grid grid-cols-[80px_1fr_40px] gap-3 items-center">
-                    <span className="text-sm text-gray-600">{category.label}</span>
-                    <div className="h-5 bg-[#FFFCFB]"><div className="h-full bg-[#003366]" style={{ width: `${(category.count / maxCategoryTotal) * 100}%` }} /></div>
-                    <strong className="text-sm text-right text-[#003366]">{category.count}</strong>
-                  </div>
-                ))}
-              </div>
-            </section>
-            <section className="bg-[#1b1d1e] border border-[#C9AB4C]/50 p-5 text-white">
-              <div className="text-xs uppercase tracking-widest text-[#C9AB4C] font-bold">Completeness rule</div>
-              <h3 className="text-2xl text-white mt-3">Clear and non-destructive</h3>
-              <p className="text-sm text-gray-300 mt-3 leading-relaxed">A weekday is submitted when at least one of the four existing fields contains content. Empty logs are workdays without any submitted content.</p>
-              <p className="text-sm text-gray-300 mt-3 leading-relaxed">Mosaic writes only the existing four Daily Log fields and creates the matching month parent and date subtask when needed.</p>
-            </section>
-          </div>
+
         </div>
       )}
     </div>

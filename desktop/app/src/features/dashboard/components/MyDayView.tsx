@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Bold, Bell, BellOff, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, Highlighter, Italic, Link2, List, ListOrdered, LoaderCircle, Plus, Quote, Redo2, RefreshCw, Save, Sparkles, Trash2, Underline, Undo2, X } from "lucide-react";
+import { AlertCircle, Bold, Bell, BellOff, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Highlighter, Italic, Link2, List, ListOrdered, LoaderCircle, Plus, Quote, Redo2, RefreshCw, Save, Sparkles, Trash2, Underline, Undo2, X } from "lucide-react";
 import { getStoredClickUpListId, getStoredClickUpToken } from "@/lib/api";
 import { requestCentralClickUpSync, trackClickUpLiveRefresh } from "@/lib/clickupSyncClient";
 import { AutoResizeTextarea } from "@/components/AutoResizeTextarea";
@@ -20,7 +20,7 @@ type DayPayload = {
   isFresh?: boolean;
   dailyLogByDate?: Array<{ date: string; dayTask: { id: string; name: string; url: string }; activity: DailyActivity }>;
 };
-type Props = { userId?: string; currentUserName?: string; showDailyActivity?: boolean; activityOnly?: boolean; initialDate?: string; onDateChange?: (date: string) => void; activityHistory?: NotebookActivityHistory | null };
+type Props = { userId?: string; currentUserName?: string; showDailyActivity?: boolean; activityOnly?: boolean; resizableWorkspace?: boolean; initialDate?: string; onDateChange?: (date: string) => void; activityHistory?: NotebookActivityHistory | null };
 
 const todayIso = () => {
   const date = new Date();
@@ -33,6 +33,20 @@ const moveDate = (value: string, days: number) => {
 };
 const dateLabel = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 const REMINDER_KEY = "project_echo_my_day_reminders";
+const NOTEBOOK_SPLIT_KEY = "mosaic.notebook.pane-split.v1";
+const TASK_PANE_MIN_WIDTH = 520;
+const NOTES_PANE_MIN_WIDTH = 360;
+const SPLITTER_WIDTH = 20;
+const DEFAULT_TASK_PANE_RATIO = 66.7;
+
+function getPaneSplitBounds(width: number) {
+  const usableWidth = width - SPLITTER_WIDTH;
+  if (usableWidth < TASK_PANE_MIN_WIDTH + NOTES_PANE_MIN_WIDTH) return null;
+  return {
+    min: Math.max(50, (TASK_PANE_MIN_WIDTH / usableWidth) * 100),
+    max: Math.min(75, ((usableWidth - NOTES_PANE_MIN_WIDTH) / usableWidth) * 100),
+  };
+}
 const EMPTY_TASKS: DayTask[] = [];
 const ACTIVITY_FIELDS: Array<{ key: keyof DailyActivity; label: string }> = [
   { key: "client", label: "Client" },
@@ -120,7 +134,7 @@ function requestHeaders(personalList?: { id: string; name: string } | null) {
   return headers;
 }
 
-export default function MyDayView({ userId, currentUserName, showDailyActivity = true, activityOnly = false, initialDate, onDateChange, activityHistory }: Props) {
+export default function MyDayView({ userId, currentUserName, showDailyActivity = true, activityOnly = false, resizableWorkspace = false, initialDate, onDateChange, activityHistory }: Props) {
   const { runStructured } = useEchoAI();
   const [date, setDate] = useState(() => initialDate || todayIso());
   const [payload, setPayload] = useState<DayPayload | null>(null);
@@ -141,6 +155,11 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
   const [activityDraft, setActivityDraft] = useState<DailyActivity>(EMPTY_ACTIVITY);
   const [activitySave, setActivitySave] = useState<"saved" | "pending" | "saving" | "error">("saved");
   const [activityError, setActivityError] = useState("");
+  const [taskPaneRatio, setTaskPaneRatio] = useState(DEFAULT_TASK_PANE_RATIO);
+  const [workspaceWidth, setWorkspaceWidth] = useState<number | null>(null);
+  const [narrowPane, setNarrowPane] = useState<"tasks" | "notes">("tasks");
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const taskPaneRatioRef = useRef(DEFAULT_TASK_PANE_RATIO);
   const [remindersEnabled, setRemindersEnabled] = useState(false);
   const [reminderHours, setReminderHours] = useState("00");
   const [reminderMinutes, setReminderMinutes] = useState("30");
@@ -577,6 +596,50 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
 
   const reminderTitle = useMemo(() => tasks.filter((task) => !task.completed).map((task) => task.name), [tasks]);
 
+  const canResizeWorkspace = resizableWorkspace && !activityOnly;
+  const splitBounds = workspaceWidth === null ? null : getPaneSplitBounds(workspaceWidth);
+  const narrowWorkspace = canResizeWorkspace && workspaceWidth !== null && splitBounds === null;
+  const paneBounds = splitBounds || { min: 50, max: 75 };
+  const visibleTaskPaneRatio = Math.max(paneBounds.min, Math.min(paneBounds.max, taskPaneRatio));
+
+  useEffect(() => {
+    if (!canResizeWorkspace) return;
+    try {
+      const stored = Number(window.localStorage.getItem(NOTEBOOK_SPLIT_KEY));
+      if (Number.isFinite(stored) && stored >= 50 && stored <= 75) {
+        taskPaneRatioRef.current = stored;
+        setTaskPaneRatio(stored);
+      }
+    } catch { /* Use the default split when local storage is unavailable. */ }
+  }, [canResizeWorkspace]);
+
+  useEffect(() => {
+    const element = workspaceRef.current;
+    if (!canResizeWorkspace || !element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setWorkspaceWidth(entry.contentRect.width));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [canResizeWorkspace]);
+
+  const setPaneRatio = (value: number, persist: boolean) => {
+    const next = Math.round(Math.max(paneBounds.min, Math.min(paneBounds.max, value)) * 10) / 10;
+    taskPaneRatioRef.current = next;
+    setTaskPaneRatio(next);
+    if (persist) {
+      try { window.localStorage.setItem(NOTEBOOK_SPLIT_KEY, String(next)); }
+      catch { /* The split still works for this session. */ }
+    }
+  };
+
+  const updatePaneRatioFromPointer = (clientX: number) => {
+    const bounds = workspaceRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const usableWidth = bounds.width - SPLITTER_WIDTH;
+    setPaneRatio(((clientX - bounds.left - SPLITTER_WIDTH / 2) / usableWidth) * 100, false);
+  };
+
+  const resetPaneRatio = () => setPaneRatio(DEFAULT_TASK_PANE_RATIO, true);
+
   return (
     <div className="mx-auto max-w-[1440px] space-y-5 pb-8">
       <header className="flex flex-col gap-3 border-b border-slate-200 pb-4 xl:flex-row xl:items-center xl:justify-between">
@@ -619,8 +682,30 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
       {notice && <div role="status" className="flex items-start justify-between gap-3 border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900"><span>{notice}</span><button type="button" onClick={() => setNotice("")} aria-label="Dismiss notification note"><X size={14} /></button></div>}
       {error && <div role="alert" className="flex items-start gap-2 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"><AlertCircle size={16} className="mt-0.5 shrink-0" />{error}</div>}
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        <section className={`space-y-4 ${activityOnly ? "xl:col-span-12" : "xl:col-span-8"}`}>
+      <div
+        ref={canResizeWorkspace ? workspaceRef : undefined}
+        className={canResizeWorkspace ? "grid gap-y-5" : "grid grid-cols-1 gap-5 xl:grid-cols-12"}
+        style={canResizeWorkspace ? {
+          gridTemplateColumns: narrowWorkspace
+            ? "minmax(0, 1fr)"
+            : `minmax(0, ${visibleTaskPaneRatio}fr) ${SPLITTER_WIDTH}px minmax(0, ${100 - visibleTaskPaneRatio}fr)`,
+        } : undefined}
+      >
+        {canResizeWorkspace && <div className="col-span-full flex items-center justify-between gap-3">
+          {narrowWorkspace ? <div role="tablist" aria-label="Notebook pane" className="flex border-b border-slate-200">
+            <button id="my-day-tasks-tab" type="button" role="tab" aria-selected={narrowPane === "tasks"} aria-controls="my-day-task-pane" onClick={() => setNarrowPane("tasks")} className={`border-b-2 px-3 py-2 text-xs font-semibold ${narrowPane === "tasks" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500 hover:text-[#003366]"}`}>Tasks</button>
+            <button id="my-day-notes-tab" type="button" role="tab" aria-selected={narrowPane === "notes"} aria-controls="my-day-notes-pane" onClick={() => setNarrowPane("notes")} className={`border-b-2 px-3 py-2 text-xs font-semibold ${narrowPane === "notes" ? "border-[#003366] text-[#003366]" : "border-transparent text-slate-500 hover:text-[#003366]"}`}>Day notes</button>
+          </div> : <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Tasks / Day notes</span>}
+          <button type="button" onClick={resetPaneRatio} className="shrink-0 border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-[#C9A84C] hover:text-[#003366]">Reset layout</button>
+        </div>}
+
+        <section
+          id="my-day-task-pane"
+          className={`space-y-4 ${canResizeWorkspace ? "min-w-0" : activityOnly ? "xl:col-span-12" : "xl:col-span-8"}`}
+          hidden={narrowWorkspace && narrowPane !== "tasks"}
+          role={narrowWorkspace ? "tabpanel" : undefined}
+          aria-labelledby={narrowWorkspace ? "my-day-tasks-tab" : undefined}
+        >
           {!activityOnly && <>
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div><h2 className="font-serif text-xl italic text-[#003366]">{dateLabel(date)}</h2><p className="mt-1 text-xs text-slate-500">{currentUserName || "Personal schedule"}</p></div>
@@ -727,7 +812,51 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
           </section>}
         </section>
 
-        {!activityOnly && <aside className="space-y-4 xl:col-span-4">
+        {canResizeWorkspace && !narrowWorkspace && <div
+          role="separator"
+          aria-label="Resize task and notes panes"
+          aria-orientation="vertical"
+          aria-controls="my-day-task-pane my-day-notes-pane"
+          aria-valuemin={Math.round(paneBounds.min)}
+          aria-valuemax={Math.round(paneBounds.max)}
+          aria-valuenow={Math.round(visibleTaskPaneRatio)}
+          aria-valuetext={`${Math.round(visibleTaskPaneRatio)}% tasks, ${100 - Math.round(visibleTaskPaneRatio)}% day notes`}
+          tabIndex={0}
+          onKeyDown={(event) => {
+            const step = event.shiftKey ? 5 : 2;
+            if (event.key === "ArrowLeft") setPaneRatio(taskPaneRatioRef.current - step, true);
+            else if (event.key === "ArrowRight") setPaneRatio(taskPaneRatioRef.current + step, true);
+            else if (event.key === "Home") setPaneRatio(paneBounds.min, true);
+            else if (event.key === "End") setPaneRatio(paneBounds.max, true);
+            else return;
+            event.preventDefault();
+          }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            updatePaneRatioFromPointer(event.clientX);
+          }}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) updatePaneRatioFromPointer(event.clientX);
+          }}
+          onPointerUp={(event) => {
+            updatePaneRatioFromPointer(event.clientX);
+            setPaneRatio(taskPaneRatioRef.current, true);
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          }}
+          onPointerCancel={() => setPaneRatio(taskPaneRatioRef.current, true)}
+          className="group flex h-full min-h-32 w-6 touch-none cursor-col-resize select-none items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-[#C9A84C]"
+        >
+          <GripVertical size={17} aria-hidden="true" className="text-slate-400 group-hover:text-[#003366] group-focus-visible:text-[#003366]" />
+        </div>}
+
+        {!activityOnly && <aside
+          id="my-day-notes-pane"
+          className={`space-y-4 ${canResizeWorkspace ? "min-w-0" : "xl:col-span-4"}`}
+          hidden={narrowWorkspace && narrowPane !== "notes"}
+          role={narrowWorkspace ? "tabpanel" : undefined}
+          aria-labelledby={narrowWorkspace ? "my-day-notes-tab" : undefined}
+        >
           <section className="border border-slate-200 bg-[#FFFCFB] p-5">
             <div className="flex items-center justify-between gap-2"><h2 className="font-serif text-lg italic text-[#003366]">Day notes</h2><span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{noteSave === "saved" ? "Saved to Personal List" : noteSave === "saving" ? "Saving…" : noteSave === "pending" ? "Autosave pending" : "Save failed"}</span></div>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">{personalListLoading ? "Loading your saved Personal List…" : personalList?.id ? `Stored as a dated subtask of Notes in ${personalList.name}.` : "Choose where your private day notes should be saved."}</p>

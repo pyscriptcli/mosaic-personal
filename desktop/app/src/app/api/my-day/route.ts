@@ -16,7 +16,7 @@ import { scheduleMosaicWriteSync, stageMosaicWrite } from "@/lib/mosaicWriteStor
 import { readStagedMosaicRecords } from "@/lib/mosaicWriteStore";
 import { clickUpScope } from "@/lib/clickupReadStore";
 import { fetchAllClickUpListTasks } from "@/lib/clickupCalendarApi";
-import { listLocalRecords, saveLocalRecord } from "@/lib/localFirstDatabase";
+import { listLocalRecords, removeLocalNotebookCategories, saveLocalRecord } from "@/lib/localFirstDatabase";
 
 export const maxDuration = 60;
 
@@ -163,6 +163,7 @@ export async function GET(req: NextRequest) {
     const date = req.nextUrl.searchParams.get("date") || "";
     if (!isValidDate(date)) return NextResponse.json({ error: "A valid day is required." }, { status: 400 });
     try {
+      removeLocalNotebookCategories();
       const current = listLocalRecords("my-day").find((record) => record.id === date);
       const data = current?.data as Record<string, unknown> | undefined;
       const tasks = Array.isArray(data?.tasks) ? data.tasks as Array<Record<string, unknown>> : [];

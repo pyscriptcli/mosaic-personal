@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { deleteLocalRecord, getLocalRecord, isLocalFeature, listLocalRecords, saveLocalRecord, type LocalFeature, type LocalRecord } from "@/lib/localJsonStore";
+import { deleteLocalRecord, getLocalRecord, isLocalFeature, listLocalRecords, removeLocalRecordDataFields, saveLocalRecord, type LocalFeature, type LocalRecord } from "@/lib/localJsonStore";
 
 let database: DatabaseSync | undefined;
 
@@ -76,6 +76,15 @@ export function getEchoConversation() {
 
 export function clearEchoConversation() {
   return Number(db().prepare("DELETE FROM echo_messages WHERE conversation_id = ?").run("main").changes) > 0;
+}
+
+export function removeLocalNotebookCategories() {
+  const key = "migration.notebook-categories-removed.v1";
+  if (getLocalSetting(key, false)) return;
+  for (const record of listLocalRecords("notebook")) {
+    removeLocalRecordDataFields("notebook", record.id, ["categories"]);
+  }
+  setLocalSetting(key, true);
 }
 
 export function closeLocalDatabase() {

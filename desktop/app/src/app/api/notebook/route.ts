@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteLocalRecord, getLocalSetting, listLocalRecords, saveLocalRecord } from "@/lib/localFirstDatabase";
+import { deleteLocalRecord, getLocalSetting, listLocalRecords, removeLocalNotebookCategories, saveLocalRecord } from "@/lib/localFirstDatabase";
 import {
   CATEGORY_MATCHERS,
   CategoryKey,
@@ -45,6 +45,7 @@ function ownerMatchesCurrentUser(task: Parameters<typeof taskOwner>[0], byId: Ma
 export async function GET(req: NextRequest) {
   if (process.env.MOSAIC_DESKTOP === "1") {
     try {
+      removeLocalNotebookCategories();
       const start = req.nextUrl.searchParams.get("start") || "0000-01-01";
       const end = req.nextUrl.searchParams.get("end") || "9999-12-31";
       const name = getLocalSetting("profile.name", "Local User");
@@ -53,11 +54,12 @@ export async function GET(req: NextRequest) {
         .filter((record) => String((record.data as Record<string, unknown>).date || "") >= start && String((record.data as Record<string, unknown>).date || "") <= end)
         .map((record) => {
           const data = record.data as Record<string, unknown>;
-          const categories = data.categories && typeof data.categories === "object" ? data.categories as Record<string, string> : { client: "", admin: "", adhoc: "", meetings: "" };
+          const categories = { client: "", admin: "", adhoc: "", meetings: "" };
+          const dailyTasks = Array.isArray(data.dailyTasks) ? data.dailyTasks : [];
           return {
             id: record.id, name: record.title, date: String(data.date || ""), url: "", member,
-            categories, status: String(data.status || "open"), hasContent: Object.values(categories).some(Boolean),
-            dailyTasks: Array.isArray(data.dailyTasks) ? data.dailyTasks : [],
+            categories, status: String(data.status || "open"), hasContent: dailyTasks.length > 0,
+            dailyTasks,
           };
         });
       return NextResponse.json({ listId: "local", entries, members: [member], fetchedAt: new Date().toISOString(), isFresh: true, source: "local" }, { headers: { "Cache-Control": "no-store" } });
@@ -209,10 +211,9 @@ export async function POST(req: NextRequest) {
       if (!isValidDate(body.date)) return NextResponse.json({ error: "A valid work date is required." }, { status: 400 });
       const id = body.date;
       const current = listLocalRecords<Record<string, unknown>>("notebook").find((record) => record.id === id);
-      const categories = categoryPayload(body.categories);
       const record = saveLocalRecord("notebook", {
         id, title: `Daily Log ${body.date}`,
-        data: { ...current?.data, date: body.date, categories, status: "open", dailyTasks: current?.data.dailyTasks || [] },
+        data: { ...current?.data, date: body.date, categories: undefined, status: "open", dailyTasks: current?.data.dailyTasks || [] },
       });
       return NextResponse.json({ success: true, taskId: record.id, url: "", source: "local" });
     } catch (error) {
@@ -248,7 +249,7 @@ export async function PATCH(req: NextRequest) {
       const record = saveLocalRecord("notebook", {
         id: current.id,
         title: current.title,
-        data: { ...(current.data as Record<string, unknown>), categories: categoryPayload(body.categories), status: body.currentStatus || "open" },
+        data: { ...(current.data as Record<string, unknown>), categories: undefined, status: body.currentStatus || "open" },
       });
       return NextResponse.json({ success: true, taskId: record.id, source: "local" });
     } catch (error) {
