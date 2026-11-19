@@ -1,6 +1,6 @@
 {
   "name": "mosaic-desktop",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "Standalone Mosaic desktop application for Windows",
   "author": "Prime Philippines",
   "private": true,
