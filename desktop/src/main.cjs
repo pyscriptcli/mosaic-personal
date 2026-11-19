@@ -27,7 +27,7 @@ let workspaceSyncTimer;
 let workspaceSyncInterval;
 let workspaceSyncInProgress = false;
 let workspaceSyncState = { status: "idle", uploaded: 0, downloaded: 0, deleted: 0, syncedAt: null, error: null };
-const updateState = { status: "idle", currentVersion: app.getVersion(), version: null, percent: 0, error: null };
+const updateState = { status: "idle", currentVersion: app.getVersion(), version: null, percent: 0, releaseNotes: null, error: null };
 let settings = { startWithWindows: false, closeToTrayNoticeShown: false, mediaPermissionGranted: false, codexWorkspaceDirectory: null, workspaceParentDirectory: null, supabaseUrl: "", encryptedSupabaseKey: null, encryptedApiKeys: {} };
 let displayCaptureSequence = 0;
 const pendingDisplayCaptures = new Map();
@@ -841,6 +841,13 @@ function registerUpdateBridge() {
   });
 }
 
+function normalizeReleaseNotes(releaseNotes) {
+  if (typeof releaseNotes === "string") return releaseNotes.trim() || null;
+  if (!Array.isArray(releaseNotes)) return null;
+  const notes = releaseNotes.map((item) => typeof item?.note === "string" ? item.note.trim() : "").filter(Boolean).join("\n\n");
+  return notes || null;
+}
+
 function startUpdateChecks() {
   if (!app.isPackaged || process.platform !== "win32") return;
 
@@ -849,8 +856,8 @@ function startUpdateChecks() {
   autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on("checking-for-update", () => setUpdateState({ status: "checking", error: null }));
-  autoUpdater.on("update-available", (info) => setUpdateState({ status: "available", version: info.version, percent: 0, error: null }));
-  autoUpdater.on("update-not-available", () => setUpdateState({ status: "up-to-date", version: null, percent: 0, error: null }));
+  autoUpdater.on("update-available", (info) => setUpdateState({ status: "available", version: info.version, percent: 0, releaseNotes: normalizeReleaseNotes(info.releaseNotes), error: null }));
+  autoUpdater.on("update-not-available", (info) => setUpdateState({ status: "up-to-date", version: null, percent: 0, releaseNotes: normalizeReleaseNotes(info.releaseNotes), error: null }));
   autoUpdater.on("download-progress", (progress) => setUpdateState({
     status: "downloading",
     percent: Math.max(0, Math.min(100, Math.round(progress.percent || 0))),

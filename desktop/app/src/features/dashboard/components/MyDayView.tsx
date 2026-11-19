@@ -10,8 +10,9 @@ import { useEchoAI } from "@/features/ask-echo/components/EchoAI";
 
 type DayTask = {
   id: string; name: string; description: string; status: string; completed: boolean;
-  priority: "urgent" | "high" | "normal" | "low"; dueDate: string; url: string;
+  priority: "urgent" | "high" | "normal" | "low"; dueDate: string; url: string; listId?: string;
 };
+type NotebookList = { id: string; name: string };
 type DailyActivity = { client: string; admin: string; adhoc: string; meetings: string };
 type DayPayload = {
   date: string; dayTask: { id: string; name: string; url: string } | null; tasks: DayTask[];
@@ -20,7 +21,7 @@ type DayPayload = {
   isFresh?: boolean;
   dailyLogByDate?: Array<{ date: string; dayTask: { id: string; name: string; url: string }; activity: DailyActivity }>;
 };
-type Props = { userId?: string; currentUserName?: string; showDailyActivity?: boolean; activityOnly?: boolean; resizableWorkspace?: boolean; initialDate?: string; onDateChange?: (date: string) => void; activityHistory?: NotebookActivityHistory | null };
+type Props = { userId?: string; currentUserName?: string; showDailyActivity?: boolean; activityOnly?: boolean; resizableWorkspace?: boolean; initialDate?: string; onDateChange?: (date: string) => void; activityHistory?: NotebookActivityHistory | null; enableNotebookLists?: boolean };
 
 const todayIso = () => {
   const date = new Date();
@@ -134,7 +135,7 @@ function requestHeaders(personalList?: { id: string; name: string } | null) {
   return headers;
 }
 
-export default function MyDayView({ userId, currentUserName, showDailyActivity = true, activityOnly = false, resizableWorkspace = false, initialDate, onDateChange, activityHistory }: Props) {
+export default function MyDayView({ userId, currentUserName, showDailyActivity = true, activityOnly = false, resizableWorkspace = false, initialDate, onDateChange, activityHistory, enableNotebookLists = false }: Props) {
   const { runStructured } = useEchoAI();
   const [date, setDate] = useState(() => initialDate || todayIso());
   const [payload, setPayload] = useState<DayPayload | null>(null);
@@ -170,6 +171,8 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
   const [notice, setNotice] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
   const [personalList, setPersonalList] = useState<DayPayload["personalList"]>(null);
+  const [notebookLists, setNotebookLists] = useState<NotebookList[]>([{ id: "my-tasks", name: "My Tasks" }]);
+  const [selectedNotebookList, setSelectedNotebookList] = useState("my-tasks");
   const [personalListLoading, setPersonalListLoading] = useState(true);
   const [personalListInput, setPersonalListInput] = useState("");
   const [personalListError, setPersonalListError] = useState("");
@@ -239,6 +242,21 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
   }, [changeDate, date, initialDate]);
 
   useEffect(() => {
+    if (!enableNotebookLists) return;
+    let active = true;
+    const loadLists = () => {
+      void fetch("/api/my-day?lists=1", { cache: "no-store" }).then((response) => response.json()).then((body) => {
+        if (!active || !Array.isArray(body.lists)) return;
+        setNotebookLists(body.lists);
+        setSelectedNotebookList((current) => body.lists.some((list: NotebookList) => list.id === current) ? current : "my-tasks");
+      }).catch(() => undefined);
+    };
+    loadLists();
+    window.addEventListener("mosaic-notebook-lists-changed", loadLists);
+    return () => { active = false; window.removeEventListener("mosaic-notebook-lists-changed", loadLists); };
+  }, [enableNotebookLists]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
         const stored = JSON.parse(localStorage.getItem(REMINDER_KEY) || "{}");
@@ -256,6 +274,11 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
       });
       lastReminderAt.current = Date.now();
       setSettingsReady(true);
+      if (enableNotebookLists) {
+        setPersonalList({ id: "local", name: "This device" });
+        setPersonalListLoading(false);
+        return;
+      }
       void fetch("/api/user/preferences", { cache: "no-store" }).then((response) => response.json()).then((body) => {
         const prefs = body.preferences;
         if (prefs?.personal_list_id) {
@@ -267,7 +290,7 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
       }).catch(() => undefined).finally(() => setPersonalListLoading(false));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [enableNotebookLists]);
 
   const loadDay = useCallback(async (background = false) => {
     const requestVersion = ++dayRequestVersion.current;
@@ -312,11 +335,12 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
     if (background) setRefreshing(true); else setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/my-day?date=${encodeURIComponent(requestedDate)}&personalListId=${encodeURIComponent(personalList?.id || "")}&personalListName=${encodeURIComponent(personalList?.name || "Personal List")}${activityOnly ? "&includeNotes=0" : ""}${background || activityOnly ? "&liveRefresh=1" : ""}`, { headers: requestHeaders(personalList), cache: "no-store" });
+      const localParams = enableNotebookLists ? "" : `&personalListId=${encodeURIComponent(personalList?.id || "")}&personalListName=${encodeURIComponent(personalList?.name || "Personal List")}`;
+      const response = await fetch(`/api/my-day?date=${encodeURIComponent(requestedDate)}${localParams}${activityOnly ? "&includeNotes=0" : ""}${background || activityOnly ? "&liveRefresh=1" : ""}`, { headers: enableNotebookLists ? undefined : requestHeaders(personalList), cache: "no-store" });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "My Day could not be loaded.");
       if (requestVersion !== dayRequestVersion.current) return;
-      if (body.date !== requestedDate) throw new Error("ClickUp returned a different day than the one requested.");
+      if (body.date !== requestedDate) throw new Error(enableNotebookLists ? "Notebook returned a different day than the one requested." : "ClickUp returned a different day than the one requested.");
       const loaded = body as DayPayload;
       const cachedAt = Date.now();
       dayPayloadCache.current.set(cacheKey, { payload: loaded, cachedAt });
@@ -345,7 +369,7 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
         setRefreshing(false);
       }
     }
-  }, [activityHistory, activityOnly, currentUserName, date, getActivityHistoryDay, personalList?.id, personalList?.name, userId]);
+  }, [activityHistory, activityOnly, currentUserName, date, enableNotebookLists, getActivityHistoryDay, personalList?.id, personalList?.name, userId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { notesReady.current = false; void loadDay(); }, 0);
@@ -552,7 +576,7 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
     setSavingTask(true);
     setError("");
     try {
-      const result = await send({ action: "create", name: name.trim(), description, dueDate, priority, dayTaskId: payload?.dayTask?.id });
+      const result = await send({ action: "create", name: name.trim(), description, dueDate, priority, dayTaskId: payload?.dayTask?.id, ...(enableNotebookLists ? { listId: selectedNotebookList } : {}) });
       if (result.task && typeof result.task === "object") {
         const createdTask = result.task as DayTask;
         setOptimisticTasks((current) => [createdTask, ...current.filter((task) => task.id !== createdTask.id)]);
@@ -673,9 +697,9 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
               </button>
             </div>}
           </div>
-          <button type="button" onClick={() => void requestDayRefresh()} disabled={refreshing} aria-label={activityOnly ? "Refresh daily activity" : "Refresh My Day"} title="Refresh" className="grid h-9 w-9 place-items-center border border-slate-300 bg-[#FFFCFB] text-[#003366] hover:border-[#C9A84C] disabled:opacity-50">
+          {!enableNotebookLists && <button type="button" onClick={() => void requestDayRefresh()} disabled={refreshing} aria-label={activityOnly ? "Refresh daily activity" : "Refresh My Day"} title="Refresh" className="grid h-9 w-9 place-items-center border border-slate-300 bg-[#FFFCFB] text-[#003366] hover:border-[#C9A84C] disabled:opacity-50">
             <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-          </button>
+          </button>}
         </div>
       </header>
 
@@ -709,7 +733,7 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
           {!activityOnly && <>
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div><h2 className="font-serif text-xl italic text-[#003366]">{dateLabel(date)}</h2><p className="mt-1 text-xs text-slate-500">{currentUserName || "Personal schedule"}</p></div>
-            {!loading && <span className="border border-slate-200 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{payload?.dayTask ? "Daily log linked" : "Daily log created when you add a task"}</span>}
+            {!loading && <span className="border border-slate-200 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">{enableNotebookLists ? "Saved on this device" : payload?.dayTask ? "Daily log linked" : "Daily log created when you add a task"}</span>}
           </div>
 
           <form onSubmit={saveTask} className="border border-slate-200 bg-[#FFFCFB] p-4">
@@ -719,8 +743,9 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
                 {savingTask ? <LoaderCircle size={14} className="animate-spin" /> : <Plus size={15} />} Add task
               </button>
             </div>
-            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_160px_145px]">
+            <div className={`mt-2 grid grid-cols-1 gap-2 ${enableNotebookLists ? "sm:grid-cols-[minmax(120px,1fr)_150px_140px_150px]" : "sm:grid-cols-[1fr_160px_145px]"}`}>
               <input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Details (optional)" aria-label="Task details" className="h-9 border border-slate-200 px-3 text-xs outline-none focus:border-[#C9A84C]" />
+              {enableNotebookLists && <select value={selectedNotebookList} onChange={(event) => setSelectedNotebookList(event.target.value)} aria-label="Task list" className="h-9 border border-slate-200 bg-[#FFFCFB] px-2 text-xs text-[#003366] outline-none focus:border-[#C9A84C]">{notebookLists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select>}
               <label className="flex h-9 items-center gap-2 border border-slate-200 px-2 text-[10px] uppercase tracking-wide text-slate-500"><span>Due</span><input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs normal-case tracking-normal text-[#003366] outline-none" /></label>
               <select value={priority} onChange={(event) => setPriority(event.target.value as DayTask["priority"])} aria-label="Task priority" className="h-9 border border-slate-200 bg-[#FFFCFB] px-2 text-xs text-[#003366] outline-none focus:border-[#C9A84C]">
                 <option value="urgent">Urgent priority</option><option value="high">High priority</option><option value="normal">Normal priority</option><option value="low">Low priority</option>
@@ -748,6 +773,7 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
                         <div className="flex flex-wrap gap-2">
                           <input type="date" value={String(editDraft.dueDate || "")} onChange={(event) => setEditDraft((draft) => ({ ...draft, dueDate: event.target.value }))} className="h-8 border border-slate-200 px-2 text-xs" aria-label="Edit task due date" />
                           <select value={String(editDraft.priority || "normal")} onChange={(event) => setEditDraft((draft) => ({ ...draft, priority: event.target.value as DayTask["priority"] }))} className="h-8 border border-slate-200 bg-[#FFFCFB] px-2 text-xs" aria-label="Edit task priority"><option value="urgent">Urgent</option><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select>
+                          {enableNotebookLists && <select value={String(editDraft.listId || "my-tasks")} onChange={(event) => setEditDraft((draft) => ({ ...draft, listId: event.target.value }))} className="h-8 max-w-44 border border-slate-200 bg-[#FFFCFB] px-2 text-xs" aria-label="Edit task list">{notebookLists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select>}
                           <button type="button" onClick={async () => { await updateTask(task.id, editDraft); setEditingId(""); }} className="inline-flex h-8 items-center gap-1 bg-[#003366] px-3 text-xs font-semibold text-white"><Save size={13} />Save</button>
                           <button type="button" onClick={() => setEditingId("")} className="h-8 border border-slate-200 px-3 text-xs text-slate-600">Cancel</button>
                         </div>
@@ -755,13 +781,13 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
                         <div className={`font-semibold text-sm ${task.completed ? "text-slate-500 line-through" : "text-[#003366]"}`}>{task.name}</div>
                         {task.description && <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-500">{task.description}</p>}
                         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-wide text-slate-500">
-                          <span>{task.priority} priority</span>{task.dueDate && <span>Due {new Date(`${task.dueDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
+                          {enableNotebookLists && <span>{notebookLists.find((list) => list.id === (task.listId || "my-tasks"))?.name || "My Tasks"}</span>}<span>{task.priority} priority</span>{task.dueDate && <span>Due {new Date(`${task.dueDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
                           <a href={task.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#31577D] hover:text-[#003366]">Open task <ExternalLink size={11} /></a>
                         </div>
                       </>}
                     </div>
                     <div className="flex shrink-0 items-start gap-1">
-                      {editingId !== task.id && <button type="button" onClick={() => { setEditingId(task.id); setEditDraft({ name: task.name, description: task.description, dueDate: task.dueDate, priority: task.priority }); }} className="h-8 border border-slate-200 px-2 text-[10px] font-semibold text-slate-500 hover:border-[#C9A84C] hover:text-[#003366]">Edit</button>}
+                      {editingId !== task.id && <button type="button" onClick={() => { setEditingId(task.id); setEditDraft({ name: task.name, description: task.description, dueDate: task.dueDate, priority: task.priority, listId: task.listId || "my-tasks" }); }} className="h-8 border border-slate-200 px-2 text-[10px] font-semibold text-slate-500 hover:border-[#C9A84C] hover:text-[#003366]">Edit</button>}
                       <button type="button" onClick={() => void deleteTask(task.id)} aria-label={`Delete ${task.name}`} className="grid h-8 w-8 place-items-center border border-slate-200 text-slate-500 hover:border-red-300 hover:text-red-700"><Trash2 size={14} /></button>
                     </div>
                   </div>)}
@@ -776,7 +802,7 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
               </div>
               <div className="flex items-center gap-3"><span role="status" className="text-[10px] font-semibold text-slate-500">{payload?.date !== date ? "Loading…" : activitySave === "saved" ? "Saved" : activitySave === "saving" ? "Saving…" : activitySave === "pending" ? "Autosave pending" : "Save failed"}</span><button type="button" onClick={() => void generateSummary()} disabled={summaryState === "loading" || tasks.length === 0} title={summaryState === "loading" ? "Generating summary…" : "Generate summary with AI"} aria-label={summaryState === "loading" ? "Generating summary with AI" : "Generate summary with AI"} aria-busy={summaryState === "loading"} className="inline-flex min-h-8 min-w-8 items-center justify-center border border-slate-300 text-[#003366] hover:border-[#003366] disabled:opacity-50"><Sparkles size={14} aria-hidden="true" /></button></div>
             </div>
-            {(payload?.date !== date || payload?.isFresh === false) && <p role="status" className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">{payload?.date === date ? `Refreshing ${dateLabel(date)} from ClickUp…` : `Loading ${dateLabel(date)} from ClickUp…`}</p>}
+            {(payload?.date !== date || payload?.isFresh === false) && <p role="status" className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">{enableNotebookLists ? `Loading ${dateLabel(date)} from this device…` : payload?.date === date ? `Refreshing ${dateLabel(date)} from ClickUp…` : `Loading ${dateLabel(date)} from ClickUp…`}</p>}
             {(summaryState === "loading" || summaryError || taskSummary) && <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-2 text-xs text-slate-600" role={summaryError ? "alert" : "status"}>{summaryState === "loading" ? "Preparing a task summary…" : summaryError || (taskSummary ? "A bullet summary of your My Day tasks is included in Ad hoc activity." : "")}</div>}
             <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2">
               {ACTIVITY_FIELDS.map((field) => (
@@ -858,9 +884,9 @@ export default function MyDayView({ userId, currentUserName, showDailyActivity =
           aria-labelledby={narrowWorkspace ? "my-day-notes-tab" : undefined}
         >
           <section className="border border-slate-200 bg-[#FFFCFB] p-5">
-            <div className="flex items-center justify-between gap-2"><h2 className="font-serif text-lg italic text-[#003366]">Day notes</h2><span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{noteSave === "saved" ? "Saved to Personal List" : noteSave === "saving" ? "Saving…" : noteSave === "pending" ? "Autosave pending" : "Save failed"}</span></div>
-            <p className="mt-2 text-xs leading-relaxed text-slate-500">{personalListLoading ? "Loading your saved Personal List…" : personalList?.id ? `Stored as a dated subtask of Notes in ${personalList.name}.` : "Choose where your private day notes should be saved."}</p>
-            {!personalListLoading && !personalList?.id && <form onSubmit={configurePersonalList} className="mt-3 border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-2"><h2 className="font-serif text-lg italic text-[#003366]">Day notes</h2><span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{noteSave === "saved" ? enableNotebookLists ? "Saved on this device" : "Saved to Personal List" : noteSave === "saving" ? "Saving…" : noteSave === "pending" ? "Autosave pending" : "Save failed"}</span></div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">{enableNotebookLists ? "Stored in this device’s Mosaic workspace." : personalListLoading ? "Loading your saved Personal List…" : personalList?.id ? `Stored as a dated subtask of Notes in ${personalList.name}.` : "Choose where your private day notes should be saved."}</p>
+            {!enableNotebookLists && !personalListLoading && !personalList?.id && <form onSubmit={configurePersonalList} className="mt-3 border border-slate-200 bg-slate-50 p-3">
               <label htmlFor="my-day-personal-list" className="block text-xs font-semibold text-[#003366]">Personal List</label>
               <p className="mt-1 text-[11px] leading-relaxed text-slate-500">Paste a list URL or ID. We’ll verify access and remember your choice for next time.</p>
               <div className="mt-2 flex gap-2"><input id="my-day-personal-list" value={personalListInput} onChange={(event) => setPersonalListInput(event.target.value)} placeholder="List URL or ID" className="h-9 min-w-0 flex-1 border border-slate-300 bg-white px-2.5 text-xs outline-none focus:border-[#003366]" /><button type="submit" disabled={!personalListInput.trim() || validatingPersonalList} className="h-9 shrink-0 bg-[#003366] px-3 text-xs font-semibold text-white disabled:opacity-50">{validatingPersonalList ? "Checking…" : "Use this list"}</button></div>

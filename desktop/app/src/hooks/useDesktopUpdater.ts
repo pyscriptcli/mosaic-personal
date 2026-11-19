@@ -19,6 +19,7 @@ export interface DesktopUpdateState {
   version: string | null;
   percent: number;
   bytesPerSecond?: number;
+  releaseNotes?: string | null;
   error: string | null;
 }
 
@@ -34,6 +35,7 @@ const initialState: DesktopUpdateState = {
   currentVersion: "",
   version: null,
   percent: 0,
+  releaseNotes: null,
   error: null,
 };
 
