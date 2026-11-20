@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mosaic Notetaker · Floating notepad concepts</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif;
+      color: #cccccc;
+      background: #111111;
+      font-synthesis: none;
+      --bg: #1f1f1f;
+      --panel: #181818;
+      --raised: #252526;
+      --hover: #2a2d2e;
+      --border: #383838;
+      --muted: #9d9d9d;
+      --text: #cccccc;
+      --bright: #e7e7e7;
+      --blue: #0078d4;
+      --cyan: #4fc1ff;
+      --green: #89d185;
+    }
+    * { box-sizing: border-box; }
+    body { min-width: 320px; min-height: 100vh; margin: 0; overflow: hidden; background: var(--bg); }
+    button, textarea { color: inherit; font: inherit; }
+    button { border: 1px solid var(--border); border-radius: 2px; background: var(--raised); cursor: pointer; }
+    button:hover { background: var(--hover); color: var(--bright); }
+    .shell { height: 100vh; display: grid; grid-template-rows: 30px 42px 1fr; }
+    .titlebar { display:flex; align-items:center; justify-content:space-between; padding:0 12px; background:#181818; color:#aaa; font-size:12px; }
+    .titlebar-actions { display:flex; gap:18px; }
+    .menubar { display:flex; align-items:center; gap:24px; padding:0 18px; background:#181818; border-bottom:1px solid #303030; color:#c7c7c7; font-size:13px; }
+    .brand { color:var(--cyan); font-size:20px; margin-right:8px; }
+    .workspace { min-height:0; padding:14px; display:grid; grid-template-columns:minmax(220px,.84fr) minmax(280px,1.5fr) minmax(240px,.9fr); gap:10px; }
+    .column { display:flex; min-width:0; flex-direction:column; border:1px solid #303030; background:var(--bg); }
+    .column-head { height:44px; display:flex; align-items:center; justify-content:space-between; padding:0 13px; border-bottom:1px solid #333; color:var(--bright); font-size:14px; font-weight:600; }
+    .column-body { flex:1; min-height:0; padding:14px; }
+    .capture-box { border:1px solid #303030; background:var(--bg); padding:10px; font-size:12px; }
+    .segmented { display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:3px; background:#252526; border:1px solid var(--border); }
+    .segmented span { padding:5px; text-align:center; color:#aaa; font-size:11px; font-weight:700; }
+    .segmented .active { background:var(--blue); color:white; }
+    .hint { margin:10px 0; color:#aaa; line-height:1.5; }
+    .field-label { display:block; margin:10px 0 5px; color:#999; font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+    .select { padding:8px; border:1px solid var(--border); color:#bbb; }
+    .primary { width:100%; margin-top:9px; padding:8px 10px; border-color:var(--blue); background:var(--blue); color:white; font-size:12px; font-weight:600; }
+    .detail { margin-top:12px; padding:10px; border:1px solid var(--border); color:#bbb; font-size:11px; font-weight:700; text-transform:uppercase; }
+    .empty { width:min(100%,430px); margin:auto; padding:28px 18px; border:1px dashed #3a3a3a; text-align:center; color:var(--muted); }
+    .empty strong { display:block; margin:10px 0 4px; color:#bdbdbd; font-weight:500; }
+    .empty svg { color:#bbb; }
+    .assistant-top { display:flex; align-items:center; gap:12px; height:44px; padding:0 12px; border-bottom:1px solid #333; font-size:12px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--green); }
+    .assistant-center { margin:40px 8px; text-align:center; color:#aaa; font-size:12px; line-height:1.7; }
+    .assistant-center strong { display:block; margin-top:10px; color:#ddd; font-size:14px; }
+    .assistant-prompt { display:inline-block; margin:6px 2px 0; padding:6px 8px; border:1px solid var(--border); color:#ccc; }
+
+    .shade { position:fixed; inset:72px 0 0; background:linear-gradient(90deg,transparent 0%,#0001 65%,#0003); pointer-events:none; }
+    .overlay { position:fixed; z-index:5; top:15vh; right:8vw; display:flex; width:min(430px,calc(100vw - 28px)); max-height:min(620px,78vh); flex-direction:column; overflow:hidden; border:1px solid #414141; background:var(--panel); box-shadow:0 18px 55px #0009; }
+    .overlay:focus-within { border-color:#454545; }
+    .overlay-head { display:flex; align-items:center; gap:8px; min-height:44px; padding:5px 7px; border-bottom:1px solid var(--border); background:#202020; }
+    .drag-handle { display:flex; flex:1; align-items:center; gap:8px; min-width:0; padding:5px 7px; border:0; background:transparent; color:var(--bright); text-align:left; cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
+    .drag-handle.dragging { cursor:grabbing; }
+    .grip { display:grid; place-items:center; width:14px; color:#858585; }
+    .window-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:600; }
+    .timer { display:flex; align-items:center; gap:6px; padding:4px 8px; border:1px solid #353535; color:var(--bright); font:12px Consolas,monospace; white-space:nowrap; }
+    .timer-dot { width:7px; height:7px; border-radius:50%; background:#e74856; }
+    .icon-button { display:grid; flex:0 0 28px; place-items:center; width:28px; height:28px; padding:0; background:transparent; color:#aaa; }
+    .icon-button[aria-pressed="true"] { color:var(--cyan); border-color:#3c6a83; }
+    .overlay-content { min-height:0; overflow:auto; padding:12px; }
+    .compose { display:flex; flex-direction:column; gap:8px; }
+    textarea { min-height:112px; width:100%; resize:vertical; padding:10px; border:1px solid #3c3c3c; border-radius:0; outline:none; background:#1f1f1f; color:var(--bright); font-size:13px; line-height:1.55; }
+    textarea::placeholder { color:#858585; }
+    textarea:focus { border-color:var(--blue); }
+    .compose-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; color:#8e8e8e; font-size:11px; }
+    .timestamp { color:#9cdcfe; font:11px Consolas,monospace; }
+    .save { padding:6px 10px; border-color:var(--blue); background:var(--blue); color:white; font-size:11px; font-weight:600; }
+    .saved-notes { display:grid; gap:7px; margin-bottom:10px; }
+    .saved-note { display:grid; grid-template-columns:auto 1fr; align-items:start; gap:9px; padding:9px; border:1px solid #303030; background:#202020; color:#d2d2d2; font-size:12px; line-height:1.5; }
+    .saved-note time { padding-top:1px; color:#9cdcfe; font:10px Consolas,monospace; }
+    .eyebrow { margin:0 0 7px; color:var(--cyan); font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; }
+    .panel-title { margin:0; color:var(--bright); font-size:16px; font-weight:600; }
+    .statusline { display:flex; align-items:center; gap:8px; margin-top:9px; color:#aaa; font-size:11px; }
+    .statusline .dot { width:7px; height:7px; }
+    .statusline time { margin-left:auto; color:#ddd; font:12px Consolas,monospace; }
+    .timeline { display:grid; gap:8px; margin-top:13px; }
+    .mini-actions { display:flex; gap:6px; }
+    .mini-actions button { height:27px; padding:0 8px; color:#bbb; font-size:11px; }
+    .bottom-switcher { position:fixed; z-index:20; left:50%; bottom:14px; display:flex; align-items:center; gap:7px; transform:translateX(-50%); padding:6px; border:1px solid #484848; background:#252526; box-shadow:0 8px 30px #0008; }
+    .bottom-switcher button { min-height:32px; padding:0 10px; color:#bbb; font-size:11px; }
+    .bottom-switcher button[aria-pressed="true"] { border-color:var(--blue); background:#063b60; color:#fff; }
+    .switch-title { min-width:148px; padding:0 7px; color:#ddd; font-size:11px; white-space:nowrap; }
+    .note-label { color:#888; font-size:10px; }
+    .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    @media (max-width:900px) { .workspace { grid-template-columns: minmax(190px,.8fr) minmax(240px,1.3fr); } .assistant { display:none; } .overlay { right:18px; } }
+    @media (max-width:620px) { .menubar { gap:13px; } .workspace { grid-template-columns:1fr; padding:8px; } .capture,.assistant { display:none; } .notes .column-body { display:none; } .overlay { top:auto!important; right:12px; bottom:68px; left:12px!important; width:auto; max-height:68vh; } .bottom-switcher { width:calc(100% - 20px); justify-content:space-between; gap:3px; } .bottom-switcher button { padding:0 7px; } .switch-title { min-width:0; }
+    }
+    @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation-duration:.01ms!important; transition-duration:.01ms!important; } }
+  </style>
+</head>
+<body>
+  <!-- Three draggable overlay perspectives for the existing Notetaker page. -->
+  <div class="shell" aria-hidden="true">
+    <div class="titlebar"><span>Mosaic — Work, Connected</span><span class="titlebar-actions"><span>—</span><span>□</span><span>×</span></span></div>
+    <div class="menubar"><span class="brand">▦</span><span>File</span><span>Edit</span><span>Selection</span><span>View</span><span>Go</span><span>Run</span><span>Terminal</span><span>Help</span></div>
+    <main class="workspace">
+      <section class="column capture"><div class="column-head"><span>Recording</span><span class="note-label">STANDBY</span></div><div class="column-body"><div class="capture-box"><div class="segmented"><span class="active">AUDIO</span><span>▣ VIDEO</span></div><p class="hint">Records meeting tab/system audio and your microphone (audio-only file).</p><label class="field-label">Microphone source</label><div class="select">System Default　⌄</div><button class="primary">Start Audio Recording</button></div><div class="detail">Meeting details　　<span class="note-label">Context for minutes</span></div></div></section>
+      <section class="column notes"><div class="column-head"><span>Notes</span><span class="note-label">3 notes</span></div><div class="column-body" style="display:grid;place-items:center"><div class="empty"><span style="font-size:23px">◯</span><strong>Capture decisions as they happen</strong>Add a note below. Each note keeps its meeting timestamp.</div></div></section>
+      <section class="column assistant"><div class="column-head"><span style="color:var(--cyan)">Meeting assistant</span><span>Ask Echo　 Transcript</span></div><div class="assistant-top"><span style="color:var(--cyan)">✧</span><span class="dot"></span><span>· Codex CLI</span><button style="margin-left:auto;padding:5px 9px">Workspace</button><button style="padding:5px 9px">＋ New chat</button></div><div class="assistant-center"><span style="color:var(--cyan);font-size:24px">✓</span><strong>Echo AI is ready</strong>Ask about your work or send a task to Codex.<div><span class="assistant-prompt">Summarize this meeting so far</span><span class="assistant-prompt">What decisions are emerging?</span><span class="assistant-prompt">List open follow-ups</span></div></div></section>
+    </main>
+  </div>
+  <div class="shade" aria-hidden="true"></div>
+  <section id="floating-panel" class="overlay" role="region" aria-label="Floating meeting notepad">
+    <div class="overlay-head">
+      <button id="drag-handle" class="drag-handle" type="button" aria-label="Move floating notepad. Use arrow keys to move.">
+        <span class="grip" aria-hidden="true">⠿</span><span class="window-name" id="window-name">Quick note</span>
+      </button>
+      <div class="timer" title="Time since recording started"><span class="timer-dot"></span><time id="elapsed">00:12:48</time></div>
+      <button id="timer-toggle" class="icon-button" type="button" aria-label="Pause recording timer" title="Pause or resume timer">Ⅱ</button>
+      <button id="pin" class="icon-button" type="button" aria-label="Pin overlay" aria-pressed="false" title="Keep overlay on top">⌖</button>
+      <button id="close" class="icon-button" type="button" aria-label="Hide overlay" title="Hide overlay">×</button>
+    </div>
+    <div class="overlay-content" id="overlay-content"></div>
+  </section>
+  <button id="restore" class="icon-button" type="button" style="display:none;position:fixed;z-index:10;right:18px;bottom:18px;width:auto;padding:0 12px;background:#252526" aria-label="Show floating notepad">▤ Notepad</button>
+  <nav class="bottom-switcher" aria-label="Mockup layouts">
+    <button id="previous" type="button" aria-label="Previous layout">‹</button>
+    <span class="switch-title" id="switch-title"></span>
+    <button type="button" data-variant="quick" aria-pressed="true">A</button>
+    <button type="button" data-variant="meeting-log" aria-pressed="false">B</button>
+    <button type="button" data-variant="mini-dock" aria-pressed="false">C</button>
+    <button id="next" type="button" aria-label="Next layout">›</button>
+  </nav>
+  <div class="visually-hidden" id="announcer" aria-live="polite"></div>
+  <script>
+    const variants = [
+      { key: "quick", title: "A · Quick note", window: "Quick note" },
+      { key: "meeting-log", title: "B · Meeting log", window: "Meeting log" },
+      { key: "mini-dock", title: "C · Mini dock", window: "Mini notepad" },
+    ];
+    const panel = document.getElementById("floating-panel");
+    const handle = document.getElementById("drag-handle");
+    const content = document.getElementById("overlay-content");
+    const timer = document.getElementById("elapsed");
+    const announcer = document.getElementById("announcer");
+    let elapsedSeconds = 12 * 60 + 48;
+    let timerRunning = true;
+    let notes = [
+      { time: "00:08:14", text: "Confirm final reporting date with the team." },
+      { time: "00:11:32", text: "Follow up on the draft site brief." },
+    ];
+    let dragOffset = { x: 0, y: 0 };
+    let pointerPosition = null;
+    let currentVariant = new URLSearchParams(location.search).get("variant") || "quick";
+    const fmt = (value) => [Math.floor(value / 3600), Math.floor(value / 60) % 60, value % 60].map((part) => String(part).padStart(2,"0")).join(":");
+    const noteMarkup = () => notes.map((note) => `<article class="saved-note"><time>${note.time}</time><span>${note.text.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")}</span></article>`).join("");
+    function draw() {
+      const variant = variants.find((item) => item.key === currentVariant) || variants[0];
+      currentVariant = variant.key;
+      document.getElementById("window-name").textContent = variant.window;
+      document.getElementById("switch-title").textContent = variant.title;
+      document.querySelectorAll("[data-variant]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.variant === currentVariant)));
+      const quick = `<p class="eyebrow">Notetaker · quick capture</p><h1 class="panel-title">New meeting note</h1><div class="statusline"><span class="dot"></span><span>Recording in progress</span><time class="elapsed-inline">${fmt(elapsedSeconds)}</time></div><form class="compose" id="note-form" style="margin-top:14px"><label class="visually-hidden" for="note-text">Meeting note</label><textarea id="note-text" placeholder="Capture a thought, decision, or follow-up…"></textarea><div class="compose-foot"><span><span class="timestamp live-timestamp">[${fmt(elapsedSeconds)}]</span> timestamp will be added</span><button class="save" type="submit">＋ Add note</button></div></form><p class="note-label" style="margin:12px 0 0">⌖ Drag the title bar to move this notepad.</p>`;
+      const log = `<p class="eyebrow">Live meeting capture</p><h1 class="panel-title">Meeting notes</h1><div class="statusline"><span class="dot"></span><span>Recording</span><time class="elapsed-inline">${fmt(elapsedSeconds)}</time><span class="mini-actions"><button type="button" id="pause-log">Ⅱ</button></span></div><div class="timeline">${noteMarkup()}<form class="compose" id="note-form"><label class="visually-hidden" for="note-text">Add a timestamped note</label><textarea id="note-text" placeholder="Write a decision or follow-up…" style="min-height:78px"></textarea><div class="compose-foot"><span>Timestamp <span class="timestamp live-timestamp">${fmt(elapsedSeconds)}</span></span><button class="save" type="submit">Add to log</button></div></form></div>`;
+      const dock = `<div style="display:flex;align-items:center;gap:12px"><div style="display:grid;place-items:center;width:36px;height:36px;border:1px solid #353535;color:var(--cyan);font-size:18px">✎</div><div style="flex:1"><p class="eyebrow" style="margin-bottom:3px">Recording</p><div class="elapsed-inline" style="color:#e7e7e7;font:16px Consolas,monospace">${fmt(elapsedSeconds)}</div></div><span class="dot"></span><button type="button" id="dock-write" class="save">＋ Note</button></div><div id="dock-composer" style="display:none;margin-top:12px"><form class="compose" id="note-form"><label class="visually-hidden" for="note-text">Quick meeting note</label><textarea id="note-text" placeholder="Type a quick note…" style="min-height:76px"></textarea><div class="compose-foot"><span class="timestamp live-timestamp">[${fmt(elapsedSeconds)}]</span><button class="save" type="submit">Save note</button></div></form></div><div class="compose-foot" style="margin-top:12px;padding-top:9px;border-top:1px solid #303030"><span>Notetaker · floating widget</span><button type="button" id="dock-expand">Open notepad</button></div>`;
+      content.innerHTML = currentVariant === "meeting-log" ? log : currentVariant === "mini-dock" ? dock : quick;
+      const form = document.getElementById("note-form");
+      form?.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const field = document.getElementById("note-text");
+        if (!field.value.trim()) return;
+        notes.push({ time: fmt(elapsedSeconds), text: field.value.trim() });
+        draw();
+        document.getElementById("note-text")?.focus();
+      });
+      document.getElementById("pause-log")?.addEventListener("click", toggleTimer);
+      document.getElementById("dock-write")?.addEventListener("click", () => { document.getElementById("dock-composer").style.display = "block"; document.getElementById("note-text").focus(); });
+      document.getElementById("dock-expand")?.addEventListener("click", () => { currentVariant = "quick"; updateUrl(); draw(); });
+    }
+    function updateUrl() {
+      const url = new URL(location.href);
+      url.searchParams.set("variant", currentVariant);
+      history.replaceState({}, "", url);
+    }
+    function toggleTimer() {
+      timerRunning = !timerRunning;
+      document.getElementById("timer-toggle").textContent = timerRunning ? "Ⅱ" : "▶";
+      document.getElementById("timer-toggle").setAttribute("aria-label", timerRunning ? "Pause recording timer" : "Resume recording timer");
+    }
+    setInterval(() => {
+      if (!timerRunning) return;
+      elapsedSeconds += 1;
+      const elapsed = fmt(elapsedSeconds);
+      timer.textContent = elapsed;
+      document.querySelectorAll(".elapsed-inline").forEach((element) => { element.textContent = elapsed; });
+      document.querySelectorAll(".live-timestamp").forEach((element) => { element.textContent = currentVariant === "meeting-log" ? elapsed : `[${elapsed}]`; });
+    }, 1000);
+    document.getElementById("timer-toggle").addEventListener("click", toggleTimer);
+    document.getElementById("pin").addEventListener("click", (event) => { const pressed = event.currentTarget.getAttribute("aria-pressed") !== "true"; event.currentTarget.setAttribute("aria-pressed", String(pressed)); event.currentTarget.title = pressed ? "Pinned in this mockup" : "Keep overlay on top"; });
+    document.getElementById("close").addEventListener("click", () => { panel.style.display = "none"; document.getElementById("restore").style.display = "block"; });
+    document.getElementById("restore").addEventListener("click", () => { panel.style.display = "flex"; document.getElementById("restore").style.display = "none"; });
+    function moveTo(left, top) {
+      const maxLeft = Math.max(0, innerWidth - panel.offsetWidth);
+      const maxTop = Math.max(0, innerHeight - panel.offsetHeight);
+      const x = Math.max(0, Math.min(left, maxLeft));
+      const y = Math.max(0, Math.min(top, maxTop));
+      panel.style.left = `${x}px`; panel.style.top = `${y}px`; panel.style.right = "auto"; panel.style.bottom = "auto";
+      return { x, y };
+    }
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      const rect = panel.getBoundingClientRect();
+      dragOffset = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      pointerPosition = { x: event.clientX, y: event.clientY };
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener("pointermove", (event) => {
+      if (!handle.hasPointerCapture(event.pointerId) || !pointerPosition) return;
+      if (Math.hypot(event.clientX - pointerPosition.x, event.clientY - pointerPosition.y) > 4) handle.classList.add("dragging");
+      const pos = moveTo(event.clientX - dragOffset.x, event.clientY - dragOffset.y);
+      announcer.textContent = `Floating notepad moved ${pos.y < innerHeight / 2 ? "near the top" : "near the bottom"}, ${pos.x < innerWidth / 2 ? "left side" : "right side"}.`;
+    });
+    handle.addEventListener("pointerup", () => { pointerPosition = null; handle.classList.remove("dragging"); });
+    handle.addEventListener("lostpointercapture", () => { pointerPosition = null; handle.classList.remove("dragging"); });
+    handle.addEventListener("keydown", (event) => {
+      const delta = event.shiftKey ? 40 : 16;
+      const rect = panel.getBoundingClientRect();
+      const offsets = { ArrowLeft: [-delta,0], ArrowRight: [delta,0], ArrowUp: [0,-delta], ArrowDown: [0,delta] };
+      if (!(event.key in offsets)) return;
+      event.preventDefault();
+      const [dx,dy] = offsets[event.key];
+      const pos = moveTo(rect.left + dx, rect.top + dy);
+      announcer.textContent = `Floating notepad moved ${event.key.replace("Arrow", "").toLowerCase()}.`;
+    });
+    addEventListener("resize", () => { if (panel.style.left) { const rect = panel.getBoundingClientRect(); moveTo(rect.left, rect.top); } });
+    const setVariant = (key) => { currentVariant = key; updateUrl(); draw(); };
+    document.querySelectorAll("[data-variant]").forEach((button) => button.addEventListener("click", () => setVariant(button.dataset.variant)));
+    const cycle = (delta) => { const index = variants.findIndex((item) => item.key === currentVariant); setVariant(variants[(index + delta + variants.length) % variants.length].key); };
+    document.getElementById("previous").addEventListener("click", () => cycle(-1));
+    document.getElementById("next").addEventListener("click", () => cycle(1));
+    addEventListener("keydown", (event) => {
+      if (event.target.matches("button, input, textarea, select, [contenteditable=true]")) return;
+      if (event.key === "ArrowLeft") cycle(-1);
+      if (event.key === "ArrowRight") cycle(1);
+    });
+    draw();
+  </script>
+</body>
+</html>

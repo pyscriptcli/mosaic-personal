@@ -322,6 +322,35 @@ body :where(h1, h2, h3, h4) {
   border-color: #3c3c3c !important;
 }
 
+.vscode-workbench .mosaic-flat-card {
+  box-shadow: none !important;
+}
+
+.vscode-workbench .mosaic-flat-card:not([data-drop-target="true"]):not([data-state-accent="true"]) {
+  border-color: #303030 !important;
+}
+
+.vscode-workbench .mosaic-flat-card:focus-within {
+  border-color: var(--color-vscode-accent) !important;
+}
+
+.vscode-workbench .mosaic-flat-card[data-completed="false"] {
+  background-color: var(--color-vscode-editor) !important;
+}
+
+.vscode-workbench .mosaic-flat-card[data-completed="true"] {
+  background-color: #252526 !important;
+}
+
+.vscode-workbench .mosaic-flat-card[data-completed="false"]:hover:not([data-drop-target="true"]) {
+  border-color: #454545 !important;
+  background-color: var(--color-vscode-hover) !important;
+}
+
+.vscode-workbench .notetaker-workspace [class*="border-[#D9E1EA]"] {
+  border-color: #3c3c3c !important;
+}
+
 .vscode-workbench [class*="text-[#C9"],
 .vscode-workbench [class*="text-amber-"] {
   color: #4fc1ff !important;

@@ -398,9 +398,9 @@ export function StudioPanel({
         />
       )}
 
-      <section aria-label="Recording Studio" className={panelClasses}>
+      <section aria-label="Recording Studio" className={`${panelClasses} notetaker-workspace`}>
         {/* ── Content ─────────────────────────────────────────────────── */}
-        <div className={`flex-1 min-h-0 overflow-hidden flex flex-col ${isFullscreen ? "lg:grid lg:grid-cols-[minmax(250px,0.84fr)_minmax(0,1.5fr)_minmax(280px,0.9fr)]" : ""} bg-[#F3F6FA]`}>
+        <div className={`flex-1 min-h-0 overflow-hidden flex flex-col ${isFullscreen ? "lg:grid lg:grid-cols-[minmax(250px,0.84fr)_minmax(0,1.5fr)_minmax(280px,0.9fr)] lg:gap-2 lg:p-2" : ""} bg-[#F3F6FA]`}>
 
           {isFullscreen && (
             <div className="grid shrink-0 grid-cols-3 border-b border-slate-200 bg-white lg:hidden" role="group" aria-label="Meeting workspace panels">
@@ -423,7 +423,7 @@ export function StudioPanel({
           )}
 
           {/* ── Left / Top: Recording Controls ────────────────────────── */}
-          <div id="meeting-capture-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Capture" : undefined} className={`${isFullscreen ? "w-full min-w-0 lg:border-r border-[#D9E1EA]" : "w-full border-b border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "capture" ? "hidden lg:flex" : "flex"} ${isFullscreen ? "min-h-0 flex-1 lg:h-full lg:flex-none" : "h-full min-h-0"} flex-col bg-[#F3F6FA]`}>
+          <div id="meeting-capture-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Capture" : undefined} className={`mosaic-flat-card ${isFullscreen ? "w-full min-w-0 lg:border" : "w-full border-b border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "capture" ? "hidden lg:flex" : "flex"} ${isFullscreen ? "min-h-0 flex-1 lg:h-full lg:flex-none" : "h-full min-h-0"} flex-col bg-white`}>
             {/* Header with live status badge matching Col 2 & 3 */}
             <div className="px-3 py-2 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-11">
               <div>
@@ -452,7 +452,7 @@ export function StudioPanel({
 
             {/* Idle state: Compact Capture & Recording Controls */}
             {recorder.status === "idle" && (
-              <div className="border border-[#D9E1EA] bg-white p-2 space-y-2">
+              <div className="mosaic-flat-card border border-slate-200 bg-white p-2 space-y-2">
                 {/* Segmented Mode Switch: Audio Recording vs Video Recording */}
                 <div className="grid grid-cols-2 gap-1 bg-slate-100 p-0.5 border border-slate-200">
                   <button
@@ -535,7 +535,7 @@ export function StudioPanel({
 
             {/* Active Recording Controls */}
             {isRecordingActive && (
-              <div className="border border-slate-200 border-t-2 border-t-[#0078D4] bg-white p-2.5 shadow-2xs space-y-2">
+              <div data-state-accent="true" className="mosaic-flat-card border border-slate-200 border-t-2 border-t-[#0078D4] bg-white p-2.5 space-y-2">
                 <div className="flex items-center justify-between">
                   <div>
                     <span className={`text-xl font-mono font-bold tabular-nums ${recorder.status === "paused" ? "text-amber-600" : "text-red-600"}`}>
@@ -623,7 +623,7 @@ export function StudioPanel({
 
             {/* Stopped Recording Controls */}
             {isStopped && (
-              <div className="border border-slate-200 border-t-2 border-t-emerald-600 bg-white p-2.5 shadow-2xs space-y-2">
+              <div data-state-accent="true" className="mosaic-flat-card border border-slate-200 border-t-2 border-t-emerald-600 bg-white p-2.5 space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1">
                   <span>✓ {recorder.recordedFile?.type.startsWith("video/") || recorder.mediaType === "video" ? "Screen Recording Complete" : "Recording Complete"}</span>
                   <span className="font-mono">{formatTime(recorder.elapsedSeconds)}</span>
@@ -689,7 +689,7 @@ export function StudioPanel({
             )}
 
             {meetingDetails && (
-              <details className="group border border-[#D9E1EA] border-t-2 border-t-[#0078D4] bg-white shadow-2xs">
+              <details data-state-accent="true" className="mosaic-flat-card group border border-slate-200 border-t-2 border-t-[#0078D4] bg-white">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[#003366] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078D4] [&::-webkit-details-marker]:hidden">
                   <span className="text-[10px] font-bold uppercase tracking-[0.14em]">Meeting details</span>
                   <span className="flex items-center gap-2 text-[9px] text-slate-500">
@@ -758,7 +758,7 @@ export function StudioPanel({
           </div>
 
           {isFullscreen && (
-            <div id="meeting-notes-panel" role="region" aria-label="Notes" className={`w-full min-w-0 min-h-0 lg:h-full lg:flex-none lg:border-r border-[#D9E1EA] bg-[#FFFCFB] ${mobilePanel === "notes" ? "flex" : "hidden lg:flex"} flex-1 flex-col`}>
+            <div id="meeting-notes-panel" role="region" aria-label="Notes" className={`mosaic-flat-card w-full min-w-0 min-h-0 lg:h-full lg:flex-none lg:border border-[#D9E1EA] bg-[#FFFCFB] ${mobilePanel === "notes" ? "flex" : "hidden lg:flex"} flex-1 flex-col`}>
               <div className="px-3 py-2 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-11">
                 <div>
                   <h3 className="text-sm font-semibold text-[#003366]">Notes</h3>
@@ -776,7 +776,7 @@ export function StudioPanel({
                   </div>
                 )}
                 {notes.map((note) => (
-                  <div key={note.id} className="group flex items-start gap-2.5 border border-slate-200 bg-white p-3 shadow-xs">
+                  <div key={note.id} className="mosaic-flat-card group flex items-start gap-2.5 border border-slate-200 bg-white p-3">
                     <span className="text-[#003366] font-mono text-[11px] font-semibold shrink-0 border border-[#003366]/15 px-2 py-1 bg-slate-50">
                       {note.timestamp}
                     </span>
@@ -854,7 +854,7 @@ export function StudioPanel({
                     event.preventDefault();
                     addNote();
                   }}
-                  className="flex flex-col gap-1.5 border border-slate-300 bg-white p-2 focus-within:border-[#0078D4] shadow-2xs"
+                  className="mosaic-flat-card flex flex-col gap-1.5 border border-slate-300 bg-white p-2 focus-within:border-[#0078D4]"
                 >
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="font-mono text-[#003366] font-semibold">
@@ -903,7 +903,7 @@ export function StudioPanel({
           )}
 
           {/* ── Right / Bottom: Ask Echo ───────────────────────── */}
-          <div id="meeting-assistant-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Assistant" : undefined} className={`${canAskEcho && workspaceTab === "echo" ? "codex-chat" : ""} ${isFullscreen ? "w-full min-w-0 min-h-0 lg:h-full lg:flex-none" : "flex-1 border-t border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "assistant" ? "hidden lg:flex" : "flex"} flex-1 flex-col bg-[#FFFCFB]`}>
+          <div id="meeting-assistant-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Assistant" : undefined} className={`mosaic-flat-card ${canAskEcho && workspaceTab === "echo" ? "codex-chat" : ""} ${isFullscreen ? "w-full min-w-0 min-h-0 lg:h-full lg:flex-none lg:border" : "flex-1 border-t border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "assistant" ? "hidden lg:flex" : "flex"} flex-1 flex-col bg-[#FFFCFB]`}>
             <div className="px-3 py-2 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between min-h-11">
               <div className="flex items-center gap-3">
                 <div>
@@ -939,7 +939,7 @@ export function StudioPanel({
                   </div>
                 )}
                 {notes.map((note) => (
-                  <div key={note.id} className="group flex items-start gap-3 text-xs border border-slate-200 bg-white px-3.5 py-3 shadow-sm">
+                  <div key={note.id} className="mosaic-flat-card group flex items-start gap-3 text-xs border border-slate-200 bg-white px-3.5 py-3">
                     <span className="text-[#003366] font-mono font-semibold shrink-0 bg-[#003366]/[0.06] px-2 py-1">{note.timestamp}</span>
                     <span className="text-[#181D1E] flex-1 leading-relaxed pt-1">{note.text}</span>
                     <button type="button" onClick={() => removeNote(note.id)} className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-gray-400 hover:text-red-500 shrink-0 transition-opacity" title="Remove note"><X size={12} /></button>
@@ -948,7 +948,7 @@ export function StudioPanel({
                 <div ref={notesEndRef} />
               </div>
               <div className="px-5 py-3 border-t border-gray-200 bg-white shrink-0">
-                <form onSubmit={(e) => { e.preventDefault(); addNote(); }} className="flex items-center gap-2 border border-slate-200 bg-white px-2 py-1 focus-within:border-[#0078D4] shadow-sm">
+                <form onSubmit={(e) => { e.preventDefault(); addNote(); }} className="mosaic-flat-card flex items-center gap-2 border border-slate-200 bg-white px-2 py-1 focus-within:border-[#0078D4]">
                   <span className="text-[11px] font-mono text-[#003366] font-semibold shrink-0 bg-[#003366]/[0.06] px-2 py-1">
                     {(recorder.status === "recording" || recorder.status === "paused")
                       ? `[${formatTime(recorder.elapsedSeconds)}]`
