@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import React from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StudioPanel } from "./StudioPanel";
+import { EchoAIProvider } from "@/features/ask-echo/components/EchoAI";
 import type { UseStudioRecorderReturn } from "@/hooks/useStudioRecorder";
 
 const recorder = {
@@ -33,20 +34,23 @@ const recorder = {
 } as unknown as UseStudioRecorderReturn;
 
 describe("Notetaker workspace", () => {
+  beforeEach(() => { Element.prototype.scrollIntoView = vi.fn(); });
   afterEach(cleanup);
 
   const renderWorkspace = () => render(
-    <StudioPanel
-      isOpen
-      embedded
-      recorder={recorder}
-      askEchoEnabled
-      meetingDetails={<input aria-label="Meeting name" />}
-      mode="fullscreen"
-      onChangeMode={() => {}}
-      onClose={() => {}}
-      onSendToNotetaker={() => {}}
-    />,
+    <EchoAIProvider>
+      <StudioPanel
+        isOpen
+        embedded
+        recorder={recorder}
+        askEchoEnabled
+        meetingDetails={<input aria-label="Meeting name" />}
+        mode="fullscreen"
+        onChangeMode={() => {}}
+        onClose={() => {}}
+        onSendToNotetaker={() => {}}
+      />
+    </EchoAIProvider>,
   );
 
   it("keeps meeting details collapsed until the contributor opens them", () => {
@@ -59,6 +63,15 @@ describe("Notetaker workspace", () => {
     fireEvent.click(summary);
     expect(details?.open).toBe(true);
     expect(screen.getByRole("textbox", { name: "Meeting name" })).toBeTruthy();
+  });
+
+  it("uses clear empty-state copy and avoids a stale assistant description", () => {
+    renderWorkspace();
+
+    expect(screen.getByText("Capture decisions as they happen")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Meeting assistant" })).toBeTruthy();
+    expect(screen.queryByText("Review previous meetings while this one is being captured.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reset conversation" })).toBeNull();
   });
 
   it("lets a small-screen user switch panels without losing an unsent note", () => {
@@ -75,7 +88,7 @@ describe("Notetaker workspace", () => {
     expect(captureTab.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "Start Audio Recording" })).toBeTruthy();
     fireEvent.click(assistantTab);
-    const assistantComposer = screen.getByPlaceholderText("Ask about your meetings, decisions, or follow-ups…");
+    const assistantComposer = screen.getByRole("textbox", { name: "Message Echo AI" });
     fireEvent.change(assistantComposer, { target: { value: "What did we decide?" } });
     fireEvent.click(notesTab);
     expect(notesTab.getAttribute("aria-pressed")).toBe("true");

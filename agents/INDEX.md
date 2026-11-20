@@ -1,17 +1,15 @@
-# Repository file-placement guide
+# Repository file placement
 
-Use [the architecture overview](../docs/ARCHITECTURE_OVERVIEW.md) to identify which product area owns a change, and [Contributing](../CONTRIBUTING.md) for the change and review workflow.
-
-## Common locations
+Use [the architecture overview](../docs/ARCHITECTURE_OVERVIEW.md) for the desktop system boundaries and [Contributing](../CONTRIBUTING.md) for change and review guidance.
 
 | Work area | Location |
-| --- | --- |
-| Main web app | `frontend/src/` |
-| Windows desktop app | `desktop/` |
-| Mosaic database schema | `supabase/` |
-| Shared plans and operating notes | `docs/` |
-| Repository workflows | `.github/` |
+|---|---|
+| Electron runtime and OS integration | `desktop/src/` |
+| Standalone Mosaic app and APIs | `desktop/app/src/` |
+| Desktop scripts and importer | `desktop/scripts/` |
+| Windows packaging | `desktop/electron-builder.yml`, `desktop/package.json` |
+| Supabase SQL setup and migrations | `supabase/` |
+| Desktop plans and operating notes | `docs/` |
+| CI and release workflows | `.github/workflows/` |
 
-For the web app, keep Next.js routes and API handlers under `frontend/src/app/`. Group feature screens, components, and logic under `frontend/src/features/<feature>/`; reserve `frontend/src/components/` for UI reused across features and `frontend/src/lib/` for shared integrations and business logic.
-
-When navigation or setup changes, update the nearest existing README and the root [repository map](../README.md#repository-map). Do not create a second handoff or status log; use [handoff.md](../handoff.md) under its existing workflow.
+Keep desktop UI, route handlers, and feature logic inside `desktop/app/`. Update the nearest setup guide when behavior or placement changes. Do not create a second handoff or status log; follow the existing `handoff.md` process when explicitly requested.

@@ -7,8 +7,9 @@ const APP_VERSION = require("../package.json").version;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 class CodexAppServer {
-  constructor(onEvent) {
+  constructor(onEvent, getAppOrigin = () => null) {
     this.onEvent = onEvent;
+    this.getAppOrigin = getAppOrigin;
     this.child = null;
     this.nextId = 0;
     this.pending = new Map();
@@ -38,14 +39,29 @@ class CodexAppServer {
     return response;
   }
 
+  async listModels() {
+    await this.start();
+    const response = await this.request("model/list", { limit: 100, includeHidden: false });
+    return Array.isArray(response.data) ? response.data : [];
+  }
+
   async startThread(workspacePath) {
     await this.start();
     const cwd = path.resolve(workspacePath);
     if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) throw new Error("Choose an existing workspace folder first.");
+    const mosaicApiUrl = String(this.getAppOrigin() || "unavailable").replace(/\/$/, "");
     const response = await this.request("thread/start", {
       cwd,
       approvalPolicy: "on-request",
       sandbox: "workspace-write",
+      developerInstructions: [
+        "You are working in the user's Mosaic workspace. Treat the selected workspace folder as the complete working area for their Mosaic files and records.",
+        "When the user asks for a report or other saved deliverable, preserve the requested file format; if the format is unspecified, ask which format to use before creating it. Save reports inside `Outputs/` at the workspace root, creating that folder if needed, and confirm the resulting relative path only after verifying the file exists.",
+        `When creating records, the loopback Mosaic API base URL is ${mosaicApiUrl}. For a Notebook task, POST JSON to /api/my-day with {action: "create", date: "YYYY-MM-DD", name, description, dueDate, priority, listId}. For a Notebook list, POST {action: "create-list", name} to that route. For day notes, POST {action: "note", date: "YYYY-MM-DD", notes}. For a meeting, POST {meeting: {title, date, meeting_type, location, summary, items}} to /api/meetings. For an IT project, GET /api/business-analysis, append a project shaped like the existing entries in state.projects, then PUT {state} to that route. Use these endpoints only when asked to create a record; verify the response and report its type and ID. Do not claim success when a request fails.`,
+        "After a direct creation request succeeds, end the final response with one machine-readable line `MOSAIC_CREATED_ACTION: {json}`. Supported kinds are task `{kind, id, date, title}`, list `{kind, id, title}`, note `{kind, date, title, previousNotes, createdNotes}`, meeting `{kind, id, title}`, project `{kind, id, title}`, and report `{kind, path, sha256, title}`. For notes, read and preserve the prior note text before changing it, and report the exact createdNotes. For reports, use a workspace-relative path under Outputs/ and calculate the SHA-256 after writing. Do not emit the marker unless the item was successfully created and verified.",
+        "When the user asks to remove or delete a file or folder inside the workspace, archive it by moving it into `Recycle Bin/<YYYYMMDD-HHmmss>/<original relative path>` at the workspace root. Create the archive directory as needed. Never automatically empty or clean this archive; retain archived items indefinitely. Do not use permanent-delete commands for workspace data.",
+        "Do not claim deletion is fully protected: shell commands and native CLI tools can still permanently delete data. Follow the archive rule yourself and ask before any action that would permanently remove workspace data.",
+      ].join("\n\n"),
     });
     this.threadId = response.thread?.id;
     this.currentCwd = cwd;
@@ -55,10 +71,56 @@ class CodexAppServer {
     return { threadId: this.threadId, cwd };
   }
 
-  async sendMessage(text) {
+  async listThreads(workspacePath) {
+    await this.start();
+    const cwd = path.resolve(workspacePath);
+    if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) throw new Error("Choose an existing workspace folder first.");
+    const response = await this.request("thread/list", {
+      cwd,
+      limit: 50,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+      useStateDbOnly: true,
+    });
+    return (Array.isArray(response.data) ? response.data : []).map((thread) => ({
+      id: thread.id,
+      preview: typeof thread.preview === "string" ? thread.preview : "New conversation",
+      updatedAt: Number(thread.updatedAt || thread.createdAt || 0),
+      cwd: typeof thread.cwd === "string" ? thread.cwd : cwd,
+    }));
+  }
+
+  async resumeThread(threadId, workspacePath) {
+    await this.start();
+    const cwd = path.resolve(workspacePath);
+    if (!fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) throw new Error("Choose an existing workspace folder first.");
+    if (typeof threadId !== "string" || !threadId.trim()) throw new Error("Choose a conversation to resume.");
+    const threads = await this.listThreads(cwd);
+    if (!threads.some((thread) => thread.id === threadId && path.resolve(thread.cwd) === cwd)) {
+      throw new Error("That conversation is not available in the selected workspace.");
+    }
+    const response = await this.request("thread/resume", {
+      threadId,
+      cwd,
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+      runtimeWorkspaceRoots: [cwd],
+      excludeTurns: false,
+    });
+    this.threadId = response.thread?.id;
+    this.currentCwd = cwd;
+    this.turnId = null;
+    if (!this.threadId) throw new Error("Codex resumed a conversation without returning its ID.");
+    this.onEvent({ type: "thread/resumed", threadId: this.threadId, cwd });
+    return { threadId: this.threadId, cwd, turns: response.thread?.turns || [] };
+  }
+
+  async sendMessage(text, model) {
     if (!this.threadId) throw new Error("Choose a workspace before sending a message.");
+    if (typeof model !== "string" || !model.trim()) throw new Error("Choose an available Codex model first.");
     const response = await this.request("turn/start", {
       threadId: this.threadId,
+      model: model.trim(),
       input: [{ type: "text", text, text_elements: [] }],
       approvalPolicy: "on-request",
       sandboxPolicy: {
@@ -119,7 +181,7 @@ class CodexAppServer {
     if (!executable) throw new Error("Codex CLI was not found. Install Codex CLI, then restart Mosaic.");
     const child = spawn(executable, ["app-server", "--stdio"], {
       cwd: os.homedir(),
-      env: codexEnvironment(),
+      env: codexEnvironment(this.getAppOrigin()),
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -222,7 +284,7 @@ class CodexAppServer {
       }
       if (message.method === "turn/started") this.turnId = params.turn?.id || this.turnId;
       if (message.method === "turn/completed") this.turnId = null;
-      if (message.method === "account/updated" || message.method === "turn/completed" || message.method === "item/completed") {
+      if (["account/updated", "turn/started", "turn/completed", "item/started", "item/completed"].includes(message.method)) {
         this.onEvent({ type: message.method, params });
       }
     }
@@ -238,11 +300,15 @@ class CodexAppServer {
   }
 }
 
-function codexEnvironment() {
+function codexEnvironment(appOrigin = null) {
   const env = {};
   for (const name of ["PATH", "SystemRoot", "TEMP", "TMP", "USERPROFILE", "HOME", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "CODEX_HOME"]) {
     if (process.env[name]) env[name] = process.env[name];
   }
+  try {
+    const parsed = new URL(String(appOrigin || ""));
+    if (parsed.protocol === "http:" && ["127.0.0.1", "localhost"].includes(parsed.hostname)) env.MOSAIC_APP_URL = parsed.origin;
+  } catch { /* Codex can work with files when no local app server is configured. */ }
   return env;
 }
 

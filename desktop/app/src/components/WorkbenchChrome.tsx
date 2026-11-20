@@ -211,6 +211,10 @@ export function DesktopUpdateDialog({ open, state, onClose, onCheck, onInstall }
             <div className="min-w-0">
               <p className="text-sm font-medium">Version {state.currentVersion || "—"}</p>
               <p className="mt-1 text-xs leading-5 text-vscode-muted">{updateMessage(state)}</p>
+              {state.releaseNotes && <section className="mt-3 border-t border-vscode-border pt-3">
+                <h3 className="mb-1 text-xs font-medium text-vscode-text">What’s new</h3>
+                <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-vscode-muted">{state.releaseNotes}</p>
+              </section>}
               {state.status === "error" && state.error && <p className="mt-2 break-words text-[11px] text-vscode-muted">{state.error}</p>}
             </div>
           </div>

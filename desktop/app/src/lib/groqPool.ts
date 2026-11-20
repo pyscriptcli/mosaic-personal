@@ -12,9 +12,10 @@ export class GroqRateLimitError extends Error {
  * Supports:
  * - GROQ_API_KEYS (comma-separated list: "key1,key2,key3")
  * - GROQ_API_KEY (primary key)
- * - GROQ_API_KEY_2, GROQ_API_KEY_3, ... GROQ_API_KEY_20
+ * - GROQ_API_KEY_1, GROQ_API_KEY_2, ... GROQ_API_KEY_20
  */
 export function getGroqApiKeys(): string[] {
+  if (process.env.MOSAIC_DESKTOP_TRANSCRIPTION_ONLY === "1") return [];
   const keys: string[] = [];
 
   if (process.env.GROQ_API_KEYS) {
@@ -24,11 +25,12 @@ export function getGroqApiKeys(): string[] {
     keys.push(...list);
   }
 
-  if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.trim()) {
+  // Keep the legacy single-key setting working alongside numbered pool keys.
+  if (process.env.GROQ_API_KEY?.trim()) {
     keys.push(process.env.GROQ_API_KEY.trim());
   }
 
-  for (let i = 2; i <= 20; i++) {
+  for (let i = 1; i <= 20; i++) {
     const indexed = process.env[`GROQ_API_KEY_${i}`];
     if (indexed && indexed.trim()) {
       keys.push(indexed.trim());
@@ -36,6 +38,19 @@ export function getGroqApiKeys(): string[] {
   }
 
   return Array.from(new Set(keys));
+}
+
+/** Desktop Groq credentials are supplied by Electron's encrypted transcription-only store. */
+export function getGroqTranscriptionApiKeys(): string[] {
+  if (process.env.MOSAIC_DESKTOP_TRANSCRIPTION_ONLY !== "1") return getGroqApiKeys();
+  try {
+    const parsed = JSON.parse(process.env.GROQ_TRANSCRIPTION_API_KEYS_JSON || "[]");
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((key): key is string => typeof key === "string" && key.trim().length > 0).map((key) => key.trim()))]
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 // Map of apiKey -> timestamp (ms) until which the key is cooling down

@@ -1,4 +1,4 @@
-name: Repository checks
+name: Desktop repository checks
 
 on:
   pull_request:
@@ -11,31 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: repository-checks-${{ github.event.pull_request.number || github.ref }}
+  group: desktop-checks-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  frontend:
-    name: Frontend lint, tests, types, and build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-      - run: npx tsc --noEmit
-      - run: npm run build
-
   desktop:
-    name: Desktop local runtime tests
+    name: Desktop app build and runtime tests
     runs-on: windows-latest
     defaults:
       run:
@@ -48,15 +29,14 @@ jobs:
           cache: npm
           cache-dependency-path: |
             desktop/package-lock.json
-            frontend/package-lock.json
+            desktop/app/package-lock.json
       - run: npm ci
-      - run: npm ci --prefix ../frontend
-      - run: npm --prefix ../frontend run build
+      - run: npm ci --prefix app
       - run: node --check src/main.cjs
       - run: node --check src/preload.cjs
       - run: node --check src/local-app-server.cjs
       - run: node --check scripts/generate-icons.cjs
       - run: node --check scripts/prepare-local-app.cjs
       - run: node --check scripts/write-checksum.cjs
-      - run: node scripts/prepare-local-app.cjs
+      - run: npm run prepare:local-app
       - run: npm test

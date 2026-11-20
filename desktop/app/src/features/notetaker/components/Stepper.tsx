@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 import { Download, Expand, FileCheck2, Lock, Mic2, Upload, Sparkles } from "lucide-react";
@@ -36,9 +36,9 @@ export function Stepper({
   ];
   
   return (
-    <nav className="sticky top-0 z-20 flex w-full min-h-10 items-center justify-between shrink-0 overflow-x-auto border-b border-slate-200 bg-white px-2 select-none" aria-label="Notetaker views">
+    <nav className="sticky top-0 z-20 flex w-full min-h-10 flex-wrap items-center justify-between gap-y-1 shrink-0 border-b border-slate-200 bg-white px-2 select-none" aria-label="Notetaker views">
       <div className="flex items-stretch">
-      {stages.map((stageItem, idx) => {
+      {stages.map((stageItem) => {
         const isActive = currentStage === stageItem.name;
         const isClickable = stageItem.allowed;
 
@@ -66,7 +66,7 @@ export function Stepper({
         );
       })}
       </div>
-      <div className="flex shrink-0 items-center gap-1 pl-2 py-1">
+      <div className="flex min-w-0 flex-wrap justify-end shrink-0 items-center gap-1 pl-2 py-1">
         {onUpload && canUpload && (
           <button
             type="button"
@@ -110,7 +110,7 @@ export function Stepper({
             type="button"
             disabled={!isReviewAllowed}
             onClick={onSaveExport}
-            className="inline-flex h-7 items-center gap-1.5 bg-[#003366] text-white px-3 text-xs font-medium hover:bg-[#002244] border border-[#003366] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className={`inline-flex h-7 items-center gap-1.5 px-3 text-xs font-medium border transition-colors disabled:cursor-not-allowed ${isReviewAllowed ? "bg-[#003366] text-white hover:bg-[#002244] border-[#003366]" : "bg-slate-100 text-slate-400 border-slate-200"}`}
             title={isReviewAllowed ? "Save to ClickUp or Export Word/PDF" : "Complete recording or synthesize minutes first"}
           >
             <Download size={13} />

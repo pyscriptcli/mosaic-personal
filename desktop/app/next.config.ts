@@ -4,6 +4,10 @@ import { fileURLToPath } from "node:url";
 
 const desktopAppRoot = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig: NextConfig = {
+  distDir: process.env.MOSAIC_NEXT_DIST_DIR || ".next",
+  ...(process.env.MOSAIC_NEXT_TSCONFIG_PATH
+    ? { typescript: { tsconfigPath: process.env.MOSAIC_NEXT_TSCONFIG_PATH } }
+    : {}),
   turbopack: { root: desktopAppRoot },
   outputFileTracingRoot: desktopAppRoot,
   env: { NEXT_PUBLIC_MOSAIC_DESKTOP: "1" },

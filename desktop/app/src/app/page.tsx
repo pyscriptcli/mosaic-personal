@@ -277,10 +277,18 @@ export default function Home() {
     if (document.fullscreenElement === notetakerRef.current) await document.exitFullscreen();
     else await notetakerRef.current.requestFullscreen();
   };
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isUniversalEchoOpen, setIsUniversalEchoOpen] = useState(false);
   const [archivedMeetings, setArchivedMeetings] = useState<ArchivedMeeting[]>([]);
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      try { setIsSidebarCollapsed(window.localStorage.getItem("mosaic.sidebar.collapsed.v1") === "true"); }
+      catch { /* Keep the expanded first-use default when local storage is unavailable. */ }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   // Page Access Governance state
   const [allowedPages, setAllowedPages] = useState<NavView[]>([]);
@@ -1102,14 +1110,18 @@ export default function Home() {
 
 
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
       {/* One persistent Explorer sidebar replaces the icon rail plus flyout panel. */}
       <Sidebar
           currentView={currentView}
           onSelectView={(view) => handleSelectView(view)}
           onPreloadView={(view) => { if (authUser && isPageAllowed(view)) prefetchPageApis(String(authUser.id), view); }}
           isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(true)}
+          onToggleCollapse={() => setIsSidebarCollapsed((collapsed) => {
+            const next = !collapsed;
+            try { window.localStorage.setItem("mosaic.sidebar.collapsed.v1", String(next)); } catch { /* Session state still works. */ }
+            return next;
+          })}
           user={authUser}
           onSignOut={desktopMode ? undefined : handleSignOut}
           allowedPages={allowedPages}

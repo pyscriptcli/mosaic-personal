@@ -57,12 +57,43 @@ body :where(h1, h2, h3, h4) {
 }
 
 .echo-chat-docked {
-  padding-right: min(520px, 34vw);
+  padding-right: clamp(360px, 34vw, 540px);
+}
+
+.echo-chat-panel {
+  container-name: echo-chat-panel;
+  container-type: inline-size;
+}
+
+@container echo-chat-panel (max-width: 430px) {
+  .echo-chat-title-subtitle,
+  .echo-chat-action-label {
+    display: none !important;
+  }
+
+  .echo-chat-header {
+    gap: 0.25rem !important;
+    padding-inline: 0.5rem !important;
+  }
+
+  .echo-chat-header-actions {
+    gap: 0 !important;
+  }
+
+  .echo-chat-action {
+    padding-inline: 0.375rem !important;
+  }
+}
+
+@container echo-chat-panel (max-width: 400px) {
+  .echo-chat-title {
+    font-size: 0.8rem !important;
+  }
 }
 
 @media (max-width: 767px) {
   .echo-chat-docked {
-    padding-right: 0;
+    padding-right: 15vw;
   }
 }
 
@@ -209,6 +240,29 @@ body :where(h1, h2, h3, h4) {
 
 .vscode-workbench :where(button, input, textarea, select) {
   font-family: inherit;
+}
+
+.vscode-workbench select,
+.vscode-workbench select option {
+  color: #e7e7e7 !important;
+  background-color: #252526 !important;
+}
+
+.vscode-workbench .notebook-priority-badge {
+  color: #ffe08a !important;
+  background-color: #3b2f10 !important;
+  border-color: #d6a900 !important;
+}
+
+.vscode-workbench button.notebook-highlight-button {
+  color: #1f1f1f !important;
+  background-color: #ffe08a !important;
+  border-color: #d6a900 !important;
+}
+
+.vscode-workbench button.notebook-highlight-button:hover {
+  color: #1f1f1f !important;
+  background-color: #ffecb3 !important;
 }
 
 .vscode-workbench :where(.font-mono, code, kbd) {

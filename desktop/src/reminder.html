@@ -4,46 +4,167 @@
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mosaic reminder</title>
+  <title>Mosaic — Notebook Reminder</title>
   <style>
     * { box-sizing: border-box }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #001D3D; color: #003366; font: 16px Arial, sans-serif; }
-    main { width: min(650px, calc(100vw - 44px)); max-height: calc(100vh - 44px); overflow: auto; padding: 44px; border: 2px solid #C9A84C; background: #FFFCFB; box-shadow: 0 24px 100px #0008; animation: arrive 720ms cubic-bezier(.16,1,.3,1) both; }
-    @keyframes arrive { from { opacity: 0; transform: translateY(28px) scale(.94) } 65% { transform: translateY(-4px) scale(1.01) } to { opacity: 1; transform: none } }
-    @media (prefers-reduced-motion: reduce) { main { animation: none } }
-    .eyebrow { color: #9A761E; font-size: 12px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase }
-    h1 { margin: 10px 0 8px; font: italic 42px Georgia, serif }
-    p { color: #536273; line-height: 1.5 }
-    ul { display: grid; gap: 8px; padding: 0; margin: 24px 0; list-style: none }
-    li { border-left: 3px solid #C9A84C; padding: 8px 12px; overflow-wrap: anywhere }
-    footer { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #dbe1e7; padding-top: 18px }
-    button { min-height: 44px; padding: 0 18px; border: 1px solid #003366; background: #FFFCFB; color: #003366; font-weight: 700; cursor: pointer }
-    button:last-child { background: #003366; color: white }
-    button:focus-visible { outline: 3px solid #C9A84C; outline-offset: 2px }
+    :root { color-scheme: dark; font: 13px "Segoe UI", Arial, sans-serif; background: #1e1e1e; color: #ccc }
+    body { margin: 0; min-width: 340px; height: 100vh; overflow: hidden; background: #1e1e1e }
+    button, select { font: inherit }
+    .app { height: 100%; display: flex; flex-direction: column; border: 1px solid #454545 }
+    .titlebar { display: flex; align-items: center; flex: 0 0 32px; height: 32px; background: #181818; border-bottom: 1px solid #333; user-select: none }
+    .app-icon { display: grid; place-items: center; width: 38px; height: 100%; color: #75beff }
+    .window-title { margin-left: auto; margin-right: auto; color: #bdbdbd; font-size: 12px; white-space: nowrap; pointer-events: none }
+    .window-actions { display: flex; height: 100%; margin-left: auto }
+    .window-actions button { display: grid; place-items: center; width: 42px; height: 100%; padding: 0; border: 0; background: transparent; color: #aaa; cursor: default }
+    .window-actions button:hover { background: #333; color: #fff }
+    .window-actions .close:hover { background: #c42b1c; color: #fff }
+    button:focus-visible, select:focus-visible { outline: 2px solid #007acc; outline-offset: -2px }
+    .datebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 6px 12px; border-bottom: 1px solid #3c3c3c }
+    #date { color: #e7e7e7; font-size: 18px; font-weight: 600; letter-spacing: .01em }
+    #weekday { margin-left: 8px; color: #9da6af; font-size: 14px; font-weight: 400 }
+    .open-notebook { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; background: transparent; color: #bdbdbd; cursor: pointer }
+    .open-notebook:hover { border-color: #454545; background: #2a2d2e; color: white }
+    .open-notebook svg { width: 16px; height: 16px }
+    .tabs { display: flex; gap: 3px; flex: 0 0 auto; padding: 0 12px; border-bottom: 1px solid #333 }
+    .tab { min-height: 36px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #9da6af; cursor: pointer }
+    .tab[aria-selected="true"] { border-bottom-color: #007acc; color: #e7e7e7 }
+    .count { margin-left: 5px; color: #858585; font-size: 10px }
+    main { min-height: 0; flex: 1; overflow-y: auto; padding: 7px 10px; overscroll-behavior: contain }
+    .task-list { display: grid; gap: 4px; padding: 0; margin: 0; list-style: none }
+    .task { padding: 6px 8px; border: 1px solid #3c3c3c; background: #252526 }
+    .task.drop-target { border-top: 2px solid #007acc }
+    .task.done .task-title { color: #858585; text-decoration: line-through }
+    .task-row { display: flex; align-items: flex-start; gap: 6px }
+    .task-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 3px }
+    .complete { width: 17px; height: 17px; margin: 0; accent-color: #007acc; cursor: pointer }
+    .drag-handle { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; color: #858585; cursor: grab; touch-action: none }
+    .drag-handle:active { cursor: grabbing }
+    .drag-handle:hover, .drag-handle:focus-visible { color: #75beff; outline: 1px solid #007acc }
+    .task-content { min-width: 0; flex: 1 }
+    .task-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px }
+    .task-title { min-width: 0; color: #e0e0e0; font-size: 13px; line-height: 1.35; font-weight: 600; overflow-wrap: anywhere }
+    .badges { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 4px }
+    .badge { padding: 2px 6px; border: 1px solid #555; color: #ccc; font-size: 10px; white-space: nowrap }
+    .badge.high { border-color: #806b42; color: #e2c08d }
+    .badge.overdue { border-color: #8f4b43; color: #f48771 }
+    .badge.due { border-color: #555; color: #aaa }
+    .task-description { margin: 4px 0 0; color: #b5b5b5; font-size: 11px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere }
+    .empty { padding: 28px 10px; color: #858585; text-align: center; font-size: 12px }
+    footer { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; padding: 8px 12px; border-top: 1px solid #3c3c3c }
+    select, .dismiss { min-height: 32px; padding: 0 10px; border: 1px solid #454545; background: #2d2d2d; color: #ccc; font-size: 11px; cursor: pointer }
+    select { min-width: 150px }
+    .dismiss { margin-left: auto; border-color: #454545; background: #2d2d2d; color: #ccc }
+    .dismiss:hover { background: #3c3c3c; color: #fff }
+    @media (max-width: 500px) { .window-actions button { width: 34px } #date { font-size: 15px } #weekday { font-size: 12px } .task-head { flex-direction: column-reverse; gap: 4px } .badges { justify-content: flex-start } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important } }
   </style>
 </head>
 <body>
-  <main role="alertdialog" aria-modal="true" aria-labelledby="title" tabindex="-1">
-    <div class="eyebrow">Mosaic reminder</div>
-    <h1 id="title">Pause and check in</h1>
-    <p id="summary">Review your current tasks.</p>
-    <ul id="tasks"></ul>
-    <footer><button id="snooze" type="button">Snooze</button><button id="dismiss" type="button">Dismiss</button></footer>
-  </main>
+  <div class="app">
+    <div class="titlebar"><span class="app-icon" aria-hidden="true">◈</span><span class="window-title">Mosaic — Notebook Reminder</span><div class="window-actions"><button id="minimize" type="button" aria-label="Minimize">—</button><button id="maximize" type="button" aria-label="Maximize">□</button><button id="close" class="close" type="button" aria-label="Close">×</button></div></div>
+    <header class="datebar"><time id="date"></time><button id="open-notebook" class="open-notebook" type="button" aria-label="Open Notebook" title="Open Notebook"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 2.5h7.5L13 5v8.5H3z" stroke="currentColor" stroke-width="1.2"/><path d="M10.5 2.7V5H13M5.2 7.4h5.5M5.2 9.5h5.5M5.2 11.6h3.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg></button></header>
+    <div class="tabs" role="tablist" aria-label="Reminder tasks"><button class="tab" id="overdue-tab" role="tab" aria-selected="true" aria-controls="task-list" type="button">Overdue <span class="count" id="overdue-count"></span></button><button class="tab" id="todo-tab" role="tab" aria-selected="false" aria-controls="task-list" type="button" tabindex="-1">To do <span class="count" id="todo-count"></span></button></div>
+    <main id="task-groups" role="tabpanel" aria-labelledby="overdue-tab" tabindex="0"></main>
+    <footer><select id="snooze" name="snooze-duration" aria-label="Snooze reminder duration" required><option value="" disabled selected>Snooze</option><option value="1">Snooze 1 hour</option><option value="2">Snooze 2 hours</option><option value="3">Snooze 3 hours</option><option value="4">Snooze 4 hours</option><option value="5">Snooze 5 hours</option></select><button id="dismiss" class="dismiss" type="button">Dismiss</button></footer>
+  </div>
   <script>
     const params = new URLSearchParams(location.search);
-    let taskNames = [];
-    try { taskNames = JSON.parse(params.get("tasks") || "[]"); } catch { taskNames = []; }
-    const list = document.getElementById("tasks");
-    for (const name of taskNames.slice(0, 8)) {
-      const item = document.createElement("li");
-      item.textContent = String(name);
-      list.append(item);
+    const now = new Date();
+    const dateValue = /^\d{4}-\d{2}-\d{2}$/.test(params.get("date") || "") ? params.get("date") : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const dateAtNoon = new Date(`${dateValue}T12:00:00`);
+    const dateNode = document.getElementById("date");
+    dateNode.dateTime = dateValue;
+    dateNode.textContent = dateAtNoon.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const weekday = document.createElement("span"); weekday.id = "weekday"; weekday.textContent = dateAtNoon.toLocaleDateString("en-US", { weekday: "long" }); dateNode.append(weekday);
+    let tasks = [];
+    try { tasks = JSON.parse(params.get("tasks") || "[]"); } catch { tasks = []; }
+    let activeTab = tasks.some((task) => task.overdue === true) ? "overdue" : "todo";
+    let dropTargetId = "";
+    let taskElements = new Map();
+    let activeList = null;
+    const container = document.getElementById("task-groups");
+    const isHigh = (task) => task.priority === "high";
+    const group = () => tasks.filter((task) => activeTab === "overdue" ? task.overdue === true : task.overdue !== true);
+    const announce = (message) => { const status = document.getElementById("status"); if (status) status.textContent = message; };
+    function render() {
+      const overdue = tasks.filter((task) => task.overdue === true);
+      const todo = tasks.filter((task) => task.overdue !== true);
+      document.getElementById("overdue-count").textContent = String(overdue.length);
+      document.getElementById("todo-count").textContent = String(todo.length);
+      const selected = group();
+      container.replaceChildren();
+      taskElements = new Map();
+      container.setAttribute("aria-labelledby", `${activeTab}-tab`);
+      if (!selected.length) { const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = activeTab === "overdue" ? "No overdue tasks." : "No tasks due today."; container.append(empty); return; }
+      const list = document.createElement("ul"); list.className = "task-list"; activeList = list;
+      selected.forEach((task, index) => {
+        const item = document.createElement("li"); item.className = `task${task.completed ? " done" : ""}${dropTargetId === task.id ? " drop-target" : ""}`;
+        item.addEventListener("dragover", (event) => { event.preventDefault(); dropTargetId = task.id; item.classList.add("drop-target"); });
+        item.addEventListener("dragleave", () => { dropTargetId = ""; item.classList.remove("drop-target"); });
+        item.addEventListener("drop", async (event) => { event.preventDefault(); dropTargetId = ""; const id = event.dataTransfer.getData("text/plain"); if (id) await reorder(id, task.id, selected); });
+        const row = document.createElement("div"); row.className = "task-row";
+        const controls = document.createElement("div"); controls.className = "task-controls";
+        const drag = document.createElement("button"); drag.type = "button"; drag.className = "drag-handle"; drag.draggable = true; drag.setAttribute("aria-label", `Drag ${task.name} to reorder; use up or down arrow to move`); drag.title = "Drag to reorder"; drag.textContent = "⋮⋮";
+        drag.addEventListener("dragstart", (event) => { event.dataTransfer.setData("text/plain", task.id); event.dataTransfer.effectAllowed = "move"; });
+        drag.addEventListener("dragend", () => { dropTargetId = ""; });
+        drag.addEventListener("keydown", (event) => { if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return; event.preventDefault(); const adjacent = selected[index + (event.key === "ArrowUp" ? -1 : 1)]; if (adjacent) void reorder(task.id, adjacent.id, selected); });
+        const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.className = "complete"; checkbox.checked = task.completed === true; checkbox.setAttribute("aria-label", `${checkbox.checked ? "Reopen" : "Complete"} ${task.name}`);
+        checkbox.addEventListener("change", async () => {
+          const previousValue = task.completed === true; task.completed = checkbox.checked; item.classList.toggle("done", checkbox.checked); checkbox.setAttribute("aria-label", `${checkbox.checked ? "Reopen" : "Complete"} ${task.name}`);
+          try { await window.mosaicDesktop.updateReminderTask({ taskId: task.id, notebookDate: task.notebookDate, completed: checkbox.checked }); announce(checkbox.checked ? `${task.name} marked done.` : `${task.name} reopened.`); }
+          catch { task.completed = previousValue; item.classList.toggle("done", previousValue); checkbox.checked = previousValue; checkbox.setAttribute("aria-label", `${previousValue ? "Reopen" : "Complete"} ${task.name}`); announce("Task change could not be saved."); }
+        });
+        controls.append(drag, checkbox);
+        const content = document.createElement("div"); content.className = "task-content";
+        const head = document.createElement("div"); head.className = "task-head";
+        const title = document.createElement("div"); title.className = "task-title"; title.textContent = String(task.name || "Untitled task"); head.append(title);
+        const badges = document.createElement("div"); badges.className = "badges";
+        if (isHigh(task)) { const badge = document.createElement("span"); badge.className = "badge high"; badge.textContent = "High"; badges.append(badge); }
+        const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(String(task.dueDate || "")) ? new Date(`${task.dueDate}T12:00:00`) : null;
+        const due = document.createElement("span"); due.className = `badge ${task.overdue ? "overdue" : "due"}`; due.textContent = task.overdue && dueDate ? `Overdue · ${dueDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "Due today"; badges.append(due);
+        head.append(badges); content.append(head);
+        if (task.description) { const description = document.createElement("p"); description.className = "task-description"; description.textContent = String(task.description); content.append(description); }
+        row.append(controls, content); item.append(row); list.append(item); taskElements.set(task.id, item);
+      });
+      container.append(list);
     }
-    document.getElementById("summary").textContent = taskNames.length ? `${taskNames.length} unfinished task${taskNames.length === 1 ? "" : "s"} to review.` : "Review your day and decide what needs attention next.";
-    document.getElementById("snooze").addEventListener("click", () => window.mosaicDesktop.respondToReminder("snooze"));
+    async function reorder(sourceId, targetId, visible) {
+      if (sourceId === targetId) return;
+      const source = visible.find((task) => task.id === sourceId); const target = visible.find((task) => task.id === targetId);
+      if (!source || !target) return;
+      const ordered = [...visible];
+      const sourceIndex = ordered.findIndex((task) => task.id === sourceId); const targetIndex = ordered.findIndex((task) => task.id === targetId);
+      const [moved] = ordered.splice(sourceIndex, 1); ordered.splice(ordered.findIndex((task) => task.id === targetId), 0, moved);
+      const nextGroup = [...ordered];
+      const previousOrder = [...tasks];
+      const ids = new Set(nextGroup.map((task) => task.id)); let index = 0;
+      tasks = tasks.map((task) => ids.has(task.id) ? nextGroup[index++] : task);
+      let visibleIndex = 0;
+      const correctedVisible = visible.map((task) => ids.has(task.id) ? nextGroup[visibleIndex++] : task);
+      const moveBefore = typeof activeList?.moveBefore === "function" ? (node) => activeList.moveBefore(node, null) : (node) => activeList?.append(node);
+      for (const task of correctedVisible) { const node = taskElements.get(task.id); if (node) moveBefore(node); }
+      try { await window.mosaicDesktop.reorderReminderTasks(nextGroup.map((task) => task.id)); announce(`Task moved to position ${targetIndex + 1}.`); }
+      catch {
+        tasks = previousOrder;
+        const originalVisible = group();
+        const append = typeof activeList?.moveBefore === "function" ? (node) => activeList.moveBefore(node, null) : (node) => activeList?.append(node);
+        for (const task of originalVisible) { const node = taskElements.get(task.id); if (node) append(node); }
+        announce("Task order could not be saved.");
+      }
+    }
+    document.getElementById("overdue-tab").addEventListener("click", () => setTab("overdue"));
+    document.getElementById("todo-tab").addEventListener("click", () => setTab("todo"));
+    function setTab(value) { activeTab = value; document.querySelectorAll(".tab").forEach((tab) => { const selected = tab.id === `${value}-tab`; tab.setAttribute("aria-selected", String(selected)); tab.tabIndex = selected ? 0 : -1; }); render(); }
+    document.querySelector(".tabs").addEventListener("keydown", (event) => { if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return; event.preventDefault(); const value = event.key === "Home" || event.key === "ArrowLeft" ? "overdue" : "todo"; setTab(value); document.getElementById(`${value}-tab`).focus(); });
+    document.getElementById("minimize").addEventListener("click", () => window.mosaicDesktop.minimizeReminderWindow());
+    const maximize = document.getElementById("maximize"); maximize.addEventListener("click", () => window.mosaicDesktop.toggleReminderWindowMaximize());
+    window.mosaicDesktop.onReminderWindowState((maximized) => { maximize.textContent = maximized ? "❐" : "□"; maximize.setAttribute("aria-label", maximized ? "Restore" : "Maximize"); });
+    document.getElementById("close").addEventListener("click", () => window.mosaicDesktop.respondToReminder("dismiss"));
+    document.getElementById("open-notebook").addEventListener("click", () => window.mosaicDesktop.openNotebookFromReminder());
     document.getElementById("dismiss").addEventListener("click", () => window.mosaicDesktop.respondToReminder("dismiss"));
-    document.getElementById("snooze").focus();
+    document.getElementById("snooze").addEventListener("change", (event) => { const seconds = Number(event.currentTarget.value) * 3600; if ([3600, 7200, 10800, 14400, 18000].includes(seconds)) window.mosaicDesktop.respondToReminder("snooze", seconds); });
+    const live = document.createElement("p"); live.id = "status"; live.setAttribute("role", "status"); live.className = "sr-only"; document.querySelector(".app").append(live);
+    render(); document.getElementById(`${activeTab}-tab`).focus();
   </script>
 </body>
 </html>

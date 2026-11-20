@@ -1,11 +1,9 @@
 # Dependencies
-frontend/node_modules/
-node_modules/
+**/node_modules/
 
 # Next.js build output
-frontend/.next/
-frontend/out/
 **/.next/
+**/next-env.d.ts
 **/out/
 **/dist/
 **/build/
@@ -18,8 +16,6 @@ supabase/.temp/
 # Environment files
 .env
 .env*.local
-frontend/.env
-frontend/.env*.local
 
 # Gemini / Antigravity metadata
 .gemini/

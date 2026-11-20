@@ -31,7 +31,7 @@ function getAudioFormat(mimeType: string, fileName?: string): string {
 
 import {
   GroqRateLimitError,
-  getGroqApiKeys,
+  getGroqTranscriptionApiKeys,
   groqKeyCooldowns,
 } from "@/lib/groqPool";
 let groqRoundRobinPointer = 0;
@@ -260,7 +260,7 @@ export async function POST(req: NextRequest) {
   try {
     const openrouterKey = req.headers.get("x-openrouter-api-key") || process.env.OPENROUTER_API_KEY || "";
     const geminiKey = req.headers.get("x-gemini-api-key") || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
-    const groqKeys = getGroqApiKeys();
+    const groqKeys = getGroqTranscriptionApiKeys();
     const requestUser = getUserFromRequest(req);
 
     const formData = await req.formData();

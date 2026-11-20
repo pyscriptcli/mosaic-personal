@@ -316,6 +316,12 @@ export async function GET(req: NextRequest) {
         created_at: record.createdAt,
         updated_at: record.updatedAt,
       }));
+      const meetingId = req.nextUrl.searchParams.get("meetingId") || req.nextUrl.searchParams.get("id");
+      if (meetingId) {
+        const meeting = meetings.find((item) => item.id === meetingId);
+        if (!meeting) return NextResponse.json({ error: "Meeting not found." }, { status: 404 });
+        return NextResponse.json({ status: "success", meeting, source: "local" }, { headers: { "Cache-Control": "no-store" } });
+      }
       return NextResponse.json({ status: "success", meetings, count: meetings.length, source: "local" }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
       console.error("Local meetings load failed:", error);

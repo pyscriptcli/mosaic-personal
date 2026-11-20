@@ -1,30 +1,41 @@
 const { spawn } = require("node:child_process");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 
 const HOST = "127.0.0.1";
 const START_TIMEOUT_MS = 90_000;
 
-async function startLocalAppServer({ appPath, runtimePath, dataDirectory, recordingsDirectory, internalDataDirectory, apiKeys }) {
+async function startLocalAppServer({ appPath, runtimePath, dataDirectory, recordingsDirectory, internalDataDirectory, apiKeys, transcriptionKeys = [], development = false }) {
   const nextCli = path.join(appPath, "node_modules", "next", "dist", "bin", "next");
   const port = await getAvailablePort();
   const url = `http://${HOST}:${port}/`;
   const output = [];
+  const devBuildId = development ? `${process.pid}-${crypto.randomUUID()}` : null;
+  const developmentDistDir = devBuildId ? `.next-mosaic-dev-${devBuildId}` : null;
+  const developmentTsconfig = devBuildId ? `.tsconfig-mosaic-dev-${devBuildId}.json` : null;
+  if (developmentTsconfig) {
+    fs.copyFileSync(path.join(appPath, "tsconfig.json"), path.join(appPath, developmentTsconfig), fs.constants.COPYFILE_EXCL);
+  }
   const env = {
     ELECTRON_RUN_AS_NODE: "1",
     HOSTNAME: HOST,
     MOSAIC_DESKTOP: "1",
     MOSAIC_DESKTOP_NO_LOGIN: "1",
+    MOSAIC_DESKTOP_TRANSCRIPTION_ONLY: "1",
     MOSAIC_DATA_DIR: path.resolve(dataDirectory),
     MOSAIC_INTERNAL_DATA_DIR: path.resolve(internalDataDirectory || path.join(dataDirectory, ".internal")),
     MOSAIC_RECORDINGS_DIR: path.resolve(recordingsDirectory || path.join(dataDirectory, "recordings")),
-    NODE_ENV: "production",
+    NODE_ENV: development ? "development" : "production",
     PORT: String(port),
+    GROQ_TRANSCRIPTION_API_KEYS_JSON: JSON.stringify(Array.isArray(transcriptionKeys) ? transcriptionKeys : []),
   };
+  if (developmentDistDir) env.MOSAIC_NEXT_DIST_DIR = developmentDistDir;
+  if (developmentTsconfig) env.MOSAIC_NEXT_TSCONFIG_PATH = developmentTsconfig;
 
   const apiKeyEnvironment = {
     DEEPSEEK_API_KEY: "deepseek",
-    GROQ_API_KEY: "groq",
     OPENAI_API_KEY: "openai",
     OPENROUTER_API_KEY: "openrouter",
     GEMINI_API_KEY: "gemini",
@@ -40,7 +51,8 @@ async function startLocalAppServer({ appPath, runtimePath, dataDirectory, record
   }
 
   // Start Next on loopback. Never expose Mosaic's local API to the network.
-  const child = spawn(runtimePath, [nextCli, "start", "--hostname", HOST, "--port", String(port)], {
+  const nextCommand = development ? "dev" : "start";
+  const child = spawn(runtimePath, [nextCli, nextCommand, "--hostname", HOST, "--port", String(port)], {
     cwd: appPath,
     env,
     windowsHide: true,
@@ -49,8 +61,10 @@ async function startLocalAppServer({ appPath, runtimePath, dataDirectory, record
 
   for (const stream of [child.stdout, child.stderr]) {
     stream?.on("data", (chunk) => {
-      output.push(chunk.toString());
+      const text = chunk.toString();
+      output.push(text);
       if (output.join("").length > 8_000) output.shift();
+      if (development) process.stdout.write(text);
     });
   }
 
@@ -58,6 +72,7 @@ async function startLocalAppServer({ appPath, runtimePath, dataDirectory, record
     await waitUntilReady(child, url, output);
   } catch (error) {
     await stopChild(child);
+    removeDevelopmentArtifacts(appPath, developmentDistDir, developmentTsconfig);
     throw error;
   }
 
@@ -66,10 +81,28 @@ async function startLocalAppServer({ appPath, runtimePath, dataDirectory, record
     url,
     stop() {
       // Reuse one shutdown operation if multiple quit paths run together.
-      stopPromise ||= stopChild(child);
+      stopPromise ||= stopChild(child).then(() => removeDevelopmentArtifacts(appPath, developmentDistDir, developmentTsconfig));
       return stopPromise;
     },
   };
+}
+
+function removeDevelopmentArtifacts(appPath, distDir, tsconfigPath) {
+  const appRoot = path.resolve(appPath);
+  if (distDir) {
+    const target = path.resolve(appRoot, distDir);
+    if (path.dirname(target) !== appRoot || !path.basename(target).startsWith(".next-mosaic-dev-")) {
+      throw new Error("Refusing to remove an unexpected Next.js development build directory.");
+    }
+    fs.rmSync(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+  }
+  if (tsconfigPath) {
+    const target = path.resolve(appRoot, tsconfigPath);
+    if (path.dirname(target) !== appRoot || !path.basename(target).startsWith(".tsconfig-mosaic-dev-")) {
+      throw new Error("Refusing to remove an unexpected Next.js development config.");
+    }
+    fs.rmSync(target, { force: true, maxRetries: 8, retryDelay: 250 });
+  }
 }
 
 function getAvailablePort() {
@@ -106,12 +139,9 @@ async function waitUntilReady(child, url, output) {
 }
 
 async function stopChild(child) {
-  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
-  child.kill();
-  if (await waitForExit(child, 5_000)) return;
-
+  if (!child.pid) return;
   if (process.platform === "win32") {
-    // Stop Next and any worker processes when Windows does not end the child cleanly.
+    // Electron's Node runtime can leave Turbopack workers behind after its parent exits.
     await new Promise((resolve) => {
       const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
         windowsHide: true,
@@ -120,8 +150,10 @@ async function stopChild(child) {
       killer.once("error", resolve);
       killer.once("exit", resolve);
     });
+    if (await waitForExit(child, 5_000)) return;
   }
 
+  if (child.exitCode === null && child.signalCode === null) child.kill();
   if (!await waitForExit(child, 5_000)) throw new Error("Mosaic's local server did not stop.");
 }
 

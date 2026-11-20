@@ -5,7 +5,7 @@ import { requireFeature } from "@/lib/access-control-server";
 import { isAskEchoEnabled } from "@/lib/admin-config/store";
 import { summarizeMyDayTasks } from "@/features/ask-echo/lib/service";
 import {
-  DAILY_LOG_LIST_ID, createTask, dateFromTask, ensureDailyTask, fetchAllTasks,
+  DAILY_LOG_LIST_ID, createTask, dateFromTask, ensureDailyTask,
   fetchDailyLogParents, fetchDailyLogParentTree, flattenClickUpTaskTree,
   fetchClickUp, formatDailyName, isValidDate, monthFromTaskName, taskOwner,
   categoryPayload, categoriesFromTask, writeCategories, completeDailyTaskOnTimeIfPopulated,
@@ -16,9 +16,66 @@ import { scheduleMosaicWriteSync, stageMosaicWrite } from "@/lib/mosaicWriteStor
 import { readStagedMosaicRecords } from "@/lib/mosaicWriteStore";
 import { clickUpScope } from "@/lib/clickupReadStore";
 import { fetchAllClickUpListTasks } from "@/lib/clickupCalendarApi";
-import { listLocalRecords, removeLocalNotebookCategories, saveLocalRecord } from "@/lib/localFirstDatabase";
+import { getLocalRecord, getLocalSetting, listLocalRecords, removeLocalNotebookCategories, saveLocalRecord, setLocalSetting } from "@/lib/localFirstDatabase";
+import { latestNotebookTaskSnapshots, orderNotebookTasks } from "@/features/notebook/lib/notebookTaskOrdering";
 
 export const maxDuration = 60;
+
+type NotebookList = { id: string; name: string };
+const DEFAULT_NOTEBOOK_LIST: NotebookList = { id: "my-tasks", name: "My Tasks" };
+const TASK_ORDER_SETTING = "notebook.task-order.v1";
+
+function notebookTaskOrder() {
+  const value = getLocalSetting<unknown>(TASK_ORDER_SETTING, []);
+  return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+}
+
+function allLocalNotebookTasks(throughDate?: string) {
+  const records = listLocalRecords("my-day");
+  const lists = localNotebookLists();
+  const createdDateById = new Map<string, string>();
+  for (const record of [...records].sort((left, right) => left.id.localeCompare(right.id))) {
+    const data = record.data as { tasks?: Record<string, unknown>[] };
+    for (const task of Array.isArray(data.tasks) ? data.tasks : []) {
+      const id = String(task.id || "");
+      if (id && !createdDateById.has(id)) createdDateById.set(id, record.id);
+    }
+  }
+  const tasks: Array<Record<string, unknown> & { id: string; notebookDate: string }> = [];
+  for (const record of records) {
+    const data = record.data as { tasks?: Record<string, unknown>[] };
+    if (!Array.isArray(data.tasks)) continue;
+    let changed = false;
+    const normalized = data.tasks.map((task) => {
+      const priority = task.priority === "high" ? "high" : null;
+      if (task.priority !== priority) changed = true;
+      const firstSeenDate = createdDateById.get(String(task.id || "")) || record.id;
+      return { ...localTask(task, record.id, lists), createdDate: String(task.createdDate || firstSeenDate), scheduledDate: String(task.scheduledDate || firstSeenDate), priority };
+    });
+    if (changed) saveLocalRecord("my-day", { id: record.id, title: record.title, data: { ...data, tasks: normalized } });
+    tasks.push(...normalized.map((task) => ({ ...task, id: String(task.id), notebookDate: record.id })));
+  }
+  return orderNotebookTasks(latestNotebookTaskSnapshots(tasks, throughDate), notebookTaskOrder());
+}
+
+function localNotebookLists() {
+  const record = getLocalRecord<{ lists?: NotebookList[] }>("tasks", "notebook-lists");
+  const lists = Array.isArray(record?.data.lists)
+    ? record.data.lists.filter((item) => item && typeof item.id === "string" && typeof item.name === "string")
+    : [];
+  return [DEFAULT_NOTEBOOK_LIST, ...lists.filter((item) => item.id !== DEFAULT_NOTEBOOK_LIST.id)];
+}
+
+function saveNotebookLists(lists: NotebookList[]) {
+  saveLocalRecord("tasks", { id: "notebook-lists", title: "Notebook lists", data: { lists } });
+}
+
+function localTask(task: Record<string, unknown>, date: string, lists: NotebookList[]): Record<string, unknown> & { id: string; priority: string | null; completed: boolean; listId: string; notebookDate: string } {
+  const requestedListId = typeof task.listId === "string" ? task.listId : DEFAULT_NOTEBOOK_LIST.id;
+  const listId = lists.some((list) => list.id === requestedListId) ? requestedListId : DEFAULT_NOTEBOOK_LIST.id;
+  const status = String(task.status || "");
+  return { ...task, id: String(task.id || ""), priority: task.priority === "high" ? "high" : null, completed: task.completed === true || /^(complete|completed|closed|done)$/i.test(status), listId, notebookDate: date };
+}
 
 type ClickUpTask = RawClickUpTask & {
   description?: string; description_text?: string; text_content?: string; markdown_description?: string;
@@ -160,20 +217,73 @@ async function getDailyTaskById(token: string, id: string, date: string, req: Ne
 
 export async function GET(req: NextRequest) {
   if (process.env.MOSAIC_DESKTOP === "1") {
+    if (req.nextUrl.searchParams.get("reminders") === "1") {
+      try {
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        const allTasks = allLocalNotebookTasks(today);
+        const order = notebookTaskOrder();
+        const rank = new Map(order.map((id, index) => [id, index]));
+        const tasks = allTasks.flatMap((task) => {
+            const notebookDate = task.notebookDate;
+            const rawDueDate = typeof task.dueDate === "string" && isValidDate(task.dueDate) ? task.dueDate : notebookDate;
+            const status = String(task.status || "");
+            const completed = task.completed === true || /^(complete|completed|closed|done)$/i.test(status);
+            if (completed || !isValidDate(rawDueDate) || rawDueDate > today) return [];
+            return [{
+              ...task,
+              name: String(task.name || "Untitled task"),
+              description: String(task.description || ""),
+              priority: task.priority === "high" ? "high" : null,
+              dueDate: rawDueDate,
+              completed,
+              overdue: rawDueDate < today,
+              url: String(task.url || ""),
+            }];
+        });
+        tasks.sort((left, right) => Number(right.overdue) - Number(left.overdue) || (rank.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rank.get(right.id) ?? Number.MAX_SAFE_INTEGER) || (left.priority === "high" ? -1 : 0) - (right.priority === "high" ? -1 : 0));
+        return NextResponse.json({ date: today, tasks }, { headers: { "Cache-Control": "no-store" } });
+      } catch (error) {
+        console.error("Local reminder tasks could not load:", error);
+        return NextResponse.json({ error: "Reminder tasks could not load from this device." }, { status: 500 });
+      }
+    }
+    if (req.nextUrl.searchParams.get("lists") === "1") {
+      return NextResponse.json({ lists: localNotebookLists() }, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (req.nextUrl.searchParams.get("board") === "1") {
+      try {
+        const lists = localNotebookLists();
+        const tasks = allLocalNotebookTasks();
+        return NextResponse.json({ lists, tasks, taskOrder: notebookTaskOrder() }, { headers: { "Cache-Control": "no-store" } });
+      } catch (error) {
+        console.error("Local Notebook board load failed:", error);
+        return NextResponse.json({ error: "Notebook tasks could not be loaded from this device." }, { status: 500 });
+      }
+    }
     const date = req.nextUrl.searchParams.get("date") || "";
     if (!isValidDate(date)) return NextResponse.json({ error: "A valid day is required." }, { status: 400 });
     try {
       removeLocalNotebookCategories();
       const current = listLocalRecords("my-day").find((record) => record.id === date);
       const data = current?.data as Record<string, unknown> | undefined;
-      const tasks = Array.isArray(data?.tasks) ? data.tasks as Array<Record<string, unknown>> : [];
+      const allTasks = allLocalNotebookTasks();
+      const tasks = orderNotebookTasks(allTasks.flatMap((task) => {
+        const isCompleted = task.completed === true || /^(complete|completed|closed|done)$/i.test(String(task.status || ""));
+        const completedDate = String(task.completedDate || (isCompleted ? task.notebookDate : ""));
+        const scheduledDate = String(task.scheduledDate || task.notebookDate);
+        if (isCompleted && completedDate < date) return [];
+        if (isCompleted && completedDate === date) return [{ ...task, completed: true, carriedForward: false }];
+        if (scheduledDate <= date) return [{ ...task, completed: false, carriedForward: scheduledDate < date }];
+        return [];
+      }), notebookTaskOrder());
       const notes = String(data?.notes || "");
       const activity = data?.activity && typeof data.activity === "object" ? data.activity : { client: "", admin: "", adhoc: "", meetings: "" };
-      const noteTask = notes ? { id: `${date}:notes`, name: "Day notes", description: notes, url: "" } : null;
+      const noteTask = notes ? { id: `${date}:notes`, name: "Notes", description: notes, url: "" } : null;
       return NextResponse.json({
         date, dayTask: { id: date, name: formatDailyName(date), url: "" }, syncState: "local", isFresh: true,
         dailyLogByDate: req.nextUrl.searchParams.get("includeNotes") === "0" ? [] : undefined,
-        tasks, notes, noteTask, activity, completeStatus: "complete", openStatus: "to do",
+        tasks, taskOrder: notebookTaskOrder(), notes, noteTask, activity, completeStatus: "complete", openStatus: "to do",
         personalList: { id: "local", name: "This device" }, notesError: "", source: "local",
       }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
@@ -225,16 +335,94 @@ export async function POST(req: NextRequest) {
   if (process.env.MOSAIC_DESKTOP === "1") {
     try {
       const body = await req.json();
+      if (body.action === "reorder") {
+        if (!Array.isArray(body.taskIds) || body.taskIds.length > 10000 || body.taskIds.some((id: unknown) => typeof id !== "string")) return NextResponse.json({ error: "A valid task order is required." }, { status: 400 });
+        const requested = [...new Set(body.taskIds as string[])];
+        const allTasks = allLocalNotebookTasks();
+        const taskById = new Map(allTasks.map((task) => [task.id, task]));
+        const group = requested.map((id) => taskById.get(id));
+        if (group.some((task) => !task)) return NextResponse.json({ error: "One or more tasks could not be found." }, { status: 400 });
+        const existingOrder = notebookTaskOrder();
+        const discovered = allTasks.map((task) => task.id).filter((id) => !existingOrder.includes(id));
+        const current = [...existingOrder.filter((id) => taskById.has(id)), ...discovered];
+        const requestedSet = new Set(requested);
+        let cursor = 0;
+        const next = current.map((id) => requestedSet.has(id) ? requested[cursor++] : id);
+        if (cursor !== requested.length) next.push(...requested.slice(cursor));
+        setLocalSetting(TASK_ORDER_SETTING, next);
+        return NextResponse.json({ success: true, taskOrder: next });
+      }
+      if (typeof body.action === "string" && body.action.endsWith("-list")) {
+        const lists = localNotebookLists();
+        if (body.action === "create-list") {
+          const name = String(body.name || "").trim().slice(0, 60);
+          if (!name) return NextResponse.json({ error: "Enter a list name." }, { status: 400 });
+          if (lists.some((list) => list.name.toLowerCase() === name.toLowerCase())) return NextResponse.json({ error: "A list with that name already exists." }, { status: 409 });
+          const list = { id: randomUUID(), name };
+          saveNotebookLists([...lists, list]);
+          return NextResponse.json({ lists: [...lists, list], list });
+        }
+        const listId = String(body.listId || "");
+        const target = lists.find((list) => list.id === listId);
+        if (!target || (target.id === DEFAULT_NOTEBOOK_LIST.id && body.action !== "reorder-list")) return NextResponse.json({ error: "That Notebook list cannot be changed." }, { status: 404 });
+        if (body.action === "rename-list") {
+          const name = String(body.name || "").trim().slice(0, 60);
+          if (!name) return NextResponse.json({ error: "Enter a list name." }, { status: 400 });
+          if (lists.some((list) => list.id !== listId && list.name.toLowerCase() === name.toLowerCase())) return NextResponse.json({ error: "A list with that name already exists." }, { status: 409 });
+          const next = lists.map((list) => list.id === listId ? { ...list, name } : list);
+          saveNotebookLists(next);
+          return NextResponse.json({ lists: next });
+        }
+        if (body.action === "reorder-list") {
+          const index = lists.findIndex((list) => list.id === listId);
+          const nextIndex = Math.max(1, Math.min(lists.length - 1, index + (body.direction === "up" ? -1 : 1)));
+          const next = [...lists];
+          [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+          saveNotebookLists(next);
+          return NextResponse.json({ lists: next });
+        }
+        if (body.action === "delete-list") {
+          for (const record of listLocalRecords("my-day")) {
+            const data = record.data as Record<string, unknown>;
+            if (!Array.isArray(data.tasks) || !(data.tasks as Record<string, unknown>[]).some((task) => task.listId === listId)) continue;
+            saveLocalRecord("my-day", { id: record.id, title: record.title, data: { ...data, tasks: (data.tasks as Record<string, unknown>[]).map((task) => task.listId === listId ? { ...task, listId: DEFAULT_NOTEBOOK_LIST.id } : task) } });
+          }
+          const next = lists.filter((list) => list.id !== listId);
+          saveNotebookLists(next);
+          return NextResponse.json({ lists: next });
+        }
+        return NextResponse.json({ error: "Unsupported Notebook list action." }, { status: 400 });
+      }
       if (!isValidDate(body.date)) return NextResponse.json({ error: "A valid day is required." }, { status: 400 });
       const date = String(body.date);
+      if (body.action === "move") {
+        const fromDate = String(body.fromDate || "");
+        const listId = String(body.listId || DEFAULT_NOTEBOOK_LIST.id);
+        if (!isValidDate(fromDate)) return NextResponse.json({ error: "A valid source day is required." }, { status: 400 });
+        if (!localNotebookLists().some((list) => list.id === listId)) return NextResponse.json({ error: "Choose an existing Notebook list." }, { status: 400 });
+        const source = listLocalRecords("my-day").find((record) => record.id === fromDate);
+        const sourceData = source?.data as Record<string, unknown> | undefined;
+        const sourceTasks = Array.isArray(sourceData?.tasks) ? sourceData.tasks as Record<string, unknown>[] : [];
+        const task = sourceTasks.find((item) => item.id === body.taskId);
+        if (!task || !source) return NextResponse.json({ error: "That task could not be found on its Notebook date." }, { status: 404 });
+        if (fromDate === date) {
+            saveLocalRecord("my-day", { id: date, title: source.title, data: { ...sourceData, tasks: sourceTasks.map((item) => item.id === body.taskId ? { ...item, listId, scheduledDate: date } : item) } });
+        } else {
+          const destination = listLocalRecords("my-day").find((record) => record.id === date);
+          const destinationData = destination?.data as Record<string, unknown> | undefined;
+          saveLocalRecord("my-day", { id: fromDate, title: source.title, data: { ...sourceData, tasks: sourceTasks.filter((item) => item.id !== body.taskId) } });
+          saveLocalRecord("my-day", { id: date, title: formatDailyName(date), data: { ...(destinationData || { date }), tasks: [...(Array.isArray(destinationData?.tasks) ? destinationData.tasks as Record<string, unknown>[] : []), { ...task, listId, scheduledDate: date }] } });
+        }
+        return NextResponse.json({ success: true });
+      }
       const current = listLocalRecords("my-day").find((record) => record.id === date);
       const previous = current?.data as Record<string, unknown> | undefined;
-      let data: Record<string, unknown> = { ...(previous || {}), date };
-      let result: Record<string, unknown> = { success: true, source: "local" };
+      const data: Record<string, unknown> = { ...(previous || {}), date };
+      const result: Record<string, unknown> = { success: true, source: "local" };
       if (body.action === "note") {
         const notes = String(body.notes || "");
         data.notes = notes;
-        result.noteTask = notes ? { id: `${date}:notes`, name: "Day notes", description: notes, url: "" } : null;
+        result.noteTask = notes ? { id: `${date}:notes`, name: "Notes", description: notes, url: "" } : null;
       } else if (body.action === "activity") {
         data.activity = categoryPayload(body.categories);
         result.activity = data.activity;
@@ -242,19 +430,44 @@ export async function POST(req: NextRequest) {
       } else if (body.action === "create") {
         const name = String(body.name || "").trim();
         if (!name) return NextResponse.json({ error: "Enter a task name." }, { status: 400 });
-        const task = { id: randomUUID(), name, description: String(body.description || ""), status: "to do", priority: body.priority || "normal", dueDate: body.dueDate || null, completed: false, url: "" };
+        const listId = String(body.listId || DEFAULT_NOTEBOOK_LIST.id);
+        if (!localNotebookLists().some((list) => list.id === listId)) return NextResponse.json({ error: "Choose an existing Notebook list." }, { status: 400 });
+        const task = { id: randomUUID(), name, description: String(body.description || ""), status: "to do", priority: body.priority === "high" ? "high" : null, dueDate: body.dueDate || null, listId, createdDate: date, scheduledDate: date, completed: false, url: "" };
         data.tasks = [...(Array.isArray(previous?.tasks) ? previous.tasks : []), task];
         result.task = task;
         result.dayTask = { id: date, name: formatDailyName(date), url: "" };
       } else if (body.action === "update" || body.action === "delete") {
         const tasks = Array.isArray(previous?.tasks) ? previous.tasks as Array<Record<string, unknown>> : [];
         const taskId = String(body.taskId || "");
-        if (!tasks.some((task) => task.id === taskId)) return NextResponse.json({ error: "That task is not part of the selected day." }, { status: 404 });
+        const existingTask = tasks.find((task) => task.id === taskId);
+        if (!existingTask) return NextResponse.json({ error: "That task is not part of the selected day." }, { status: 404 });
         if (body.action === "delete") {
           data.tasks = tasks.filter((task) => task.id !== taskId);
         } else {
-          data.tasks = tasks.map((task) => task.id === taskId ? { ...task, ...body, id: taskId, dueDate: body.dueDate === undefined ? task.dueDate : body.dueDate } : task);
+          if (body.listId !== undefined && !localNotebookLists().some((list) => list.id === String(body.listId))) return NextResponse.json({ error: "Choose an existing Notebook list." }, { status: 400 });
+          const allowedFields = ["name", "description", "dueDate", "priority", "status", "completed", "completedDate", "listId"];
+          const changes = Object.fromEntries(allowedFields.filter((key) => Object.prototype.hasOwnProperty.call(body, key)).map((key) => [key, key === "priority" && body[key] !== "high" ? null : body[key]]));
+          data.tasks = tasks.map((task) => task.id === taskId ? {
+            ...task, ...changes, id: taskId,
+            completed: body.completed === undefined ? /complete|completed|closed|done/i.test(String(body.status ?? task.status ?? "")) : body.completed === true,
+            completedDate: body.completed === true ? (typeof body.completedDate === "string" && isValidDate(body.completedDate) ? body.completedDate : date) : body.completed === false ? null : task.completedDate || null,
+          } : task);
           result.task = (data.tasks as Array<Record<string, unknown>>).find((task) => task.id === taskId);
+        }
+        if (body.action === "delete" || body.action === "update") {
+          for (const record of listLocalRecords("my-day")) {
+            if (record.id === date) continue;
+            const recordData = record.data as Record<string, unknown>;
+            if (!Array.isArray(recordData.tasks) || !(recordData.tasks as Array<Record<string, unknown>>).some((task) => task.id === taskId)) continue;
+            const recordTasks = recordData.tasks as Array<Record<string, unknown>>;
+            const duplicateChanges = Object.fromEntries(["name", "description", "dueDate", "priority", "status", "completed", "listId"].filter((key) => Object.prototype.hasOwnProperty.call(body, key)).map((key) => [key, key === "priority" && body[key] !== "high" ? null : body[key]]));
+            const nextTasks = body.action === "delete" ? recordTasks.filter((task) => task.id !== taskId) : recordTasks.map((task) => task.id !== taskId ? task : {
+              ...task, ...duplicateChanges,
+              completed: body.completed === undefined ? /^(complete|completed|closed|done)$/i.test(String(body.status ?? task.status ?? "")) : body.completed === true,
+              completedDate: body.completed === true ? (typeof body.completedDate === "string" && isValidDate(body.completedDate) ? body.completedDate : date) : body.completed === false ? null : task.completedDate || null,
+            });
+            saveLocalRecord("my-day", { id: record.id, title: record.title, data: { ...recordData, tasks: nextTasks } });
+          }
         }
       } else if (body.action === "summary") {
         const tasks = Array.isArray(previous?.tasks) ? previous.tasks as Array<Record<string, unknown>> : [];

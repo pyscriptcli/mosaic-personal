@@ -5,9 +5,7 @@ import {
   AlertCircle,
   Check,
   ChevronDown,
-  Clock,
   Download,
-  ExternalLink,
   FolderOpen,
   MessageCircle,
   Mic,
@@ -15,12 +13,10 @@ import {
   Pencil,
   Play,
   Plus,
-  RotateCcw,
   Send,
   Square,
   Sparkles,
   Trash2,
-  User,
   Video,
   X,
   Monitor,
@@ -31,7 +27,7 @@ import type { UseStudioRecorderReturn } from "@/hooks/useStudioRecorder";
 import { useLiveTranscription } from "@/hooks/useLiveTranscription";
 import { useAudioVisualizer } from "@/hooks/useAudioVisualizer";
 import { clearSession } from "@/features/notetaker/lib/studioStorage";
-import { EchoAI, useEchoAI } from "@/features/ask-echo/components/EchoAI";
+import { EchoAI } from "@/features/ask-echo/components/EchoAI";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -133,8 +129,6 @@ export function StudioPanel({
   const [mobilePanel, setMobilePanel] = useState<"capture" | "notes" | "assistant">("notes");
   const canAskEcho = askEchoEnabled && (!allowedFeatures || allowedFeatures.includes("ask-echo"));
   const canRecord = !allowedFeatures || allowedFeatures.includes("notetaker-record");
-  const { startThread } = useEchoAI();
-  React.useEffect(() => { if (!canAskEcho && workspaceTab === "echo") setWorkspaceTab("transcript"); }, [canAskEcho, workspaceTab]);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [displayCaptureRequest, setDisplayCaptureRequest] = useState<DisplayCaptureRequest | null>(null);
   const [selectedDisplaySourceId, setSelectedDisplaySourceId] = useState<string | null>(null);
@@ -431,9 +425,9 @@ export function StudioPanel({
           {/* ── Left / Top: Recording Controls ────────────────────────── */}
           <div id="meeting-capture-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Capture" : undefined} className={`${isFullscreen ? "w-full min-w-0 lg:border-r border-[#D9E1EA]" : "w-full border-b border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "capture" ? "hidden lg:flex" : "flex"} ${isFullscreen ? "min-h-0 flex-1 lg:h-full lg:flex-none" : "h-full min-h-0"} flex-col bg-[#F3F6FA]`}>
             {/* Header with live status badge matching Col 2 & 3 */}
-            <div className="px-3 py-2 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-10">
+            <div className="px-3 py-2 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-11">
               <div>
-                <h3 className="text-xs font-medium text-[#003366]">Recording</h3>
+                <h3 className="text-sm font-semibold text-[#003366]">Recording</h3>
               </div>
               <div>
                 {isRecordingActive ? (
@@ -454,7 +448,7 @@ export function StudioPanel({
             </div>
 
             {/* Scrollable Column 1 Body (scrollbar hidden, scroll enabled) */}
-            <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-2.5 space-y-2">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-3">
 
             {/* Idle state: Compact Capture & Recording Controls */}
             {recorder.status === "idle" && (
@@ -765,20 +759,20 @@ export function StudioPanel({
 
           {isFullscreen && (
             <div id="meeting-notes-panel" role="region" aria-label="Notes" className={`w-full min-w-0 min-h-0 lg:h-full lg:flex-none lg:border-r border-[#D9E1EA] bg-[#FFFCFB] ${mobilePanel === "notes" ? "flex" : "hidden lg:flex"} flex-1 flex-col`}>
-              <div className="px-3 py-2 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-10">
+              <div className="px-3 py-2 border-b border-slate-200 bg-white shrink-0 flex items-center justify-between min-h-11">
                 <div>
-                  <h3 className="text-xs font-medium text-[#003366]">Notes</h3>
+                  <h3 className="text-sm font-semibold text-[#003366]">Notes</h3>
                 </div>
-                <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2.5 py-1">
+                <span className="text-[11px] text-slate-500">
                   {notes.length} {notes.length === 1 ? "note" : "notes"}
                 </span>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2">
+              <div className={`flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-2 ${notes.length === 0 ? "flex flex-col" : ""}`}>
                 {notes.length === 0 && (
-                  <div className="border border-dashed border-slate-300 bg-white/60 p-6 text-center">
-                    <MessageCircle size={20} className="mx-auto text-[#003366]"/>
-                    <p className="mt-3 text-sm font-medium text-slate-600">Capture the moments that matter</p>
-                    <p className="mt-1 text-xs text-slate-400">Notes stay linked to the meeting time.</p>
+                  <div className="m-auto w-full max-w-sm border border-dashed border-slate-300 bg-white/60 px-5 py-7 text-center">
+                    <MessageCircle size={20} aria-hidden="true" className="mx-auto text-[#003366]"/>
+                    <p className="mt-3 text-sm font-semibold text-slate-700">Capture decisions as they happen</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Add a note below. Each note keeps its meeting timestamp.</p>
                   </div>
                 )}
                 {notes.map((note) => (
@@ -879,9 +873,9 @@ export function StudioPanel({
                         addNote();
                       }
                     }}
-                    rows={5}
+                    rows={3}
                     placeholder="Write a decision, follow-up, or note…"
-                    className="min-h-32 w-full resize-y bg-transparent text-sm leading-relaxed text-slate-800 outline-none placeholder:text-slate-400"
+                    className="min-h-24 max-h-48 w-full resize-y bg-transparent text-sm leading-relaxed text-slate-800 outline-none placeholder:text-slate-400"
                   />
                   <div className="flex items-center justify-between pt-1 border-t border-slate-100">
                     {noteInput.trim().length > 0 ? (
@@ -910,32 +904,15 @@ export function StudioPanel({
 
           {/* ── Right / Bottom: Ask Echo ───────────────────────── */}
           <div id="meeting-assistant-panel" role={isFullscreen ? "region" : undefined} aria-label={isFullscreen ? "Assistant" : undefined} className={`${canAskEcho && workspaceTab === "echo" ? "codex-chat" : ""} ${isFullscreen ? "w-full min-w-0 min-h-0 lg:h-full lg:flex-none" : "flex-1 border-t border-[#D9E1EA]"} ${isFullscreen && mobilePanel !== "assistant" ? "hidden lg:flex" : "flex"} flex-1 flex-col bg-[#FFFCFB]`}>
-            <div className="px-3 py-2 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between min-h-10">
+            <div className="px-3 py-2 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between min-h-11">
               <div className="flex items-center gap-3">
                 <div>
                   {canAskEcho ? (
-                    <div className="flex items-center gap-2.5">
-                      <h3 className="text-xs font-medium text-[#003366]">Echo AI</h3>
-                      {(isFullscreen || workspaceTab === "echo") && (
-                        <button
-                          type="button"
-                          onClick={() => void startThread()}
-                          title="Reset conversation"
-                          aria-label="Reset conversation"
-                          className="inline-flex items-center gap-1 border border-[#003366]/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#003366] hover:border-[#0078D4] cursor-pointer"
-                        >
-                          <RotateCcw size={11} /> Reset
-                        </button>
-                      )}
-                    </div>
+                    <h3 className="text-sm font-semibold text-[#003366]">Meeting assistant</h3>
                   ) : (
                     <h3 className="text-lg font-semibold tracking-tight text-[#003366]">Transcript</h3>
                   )}
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {isFullscreen
-                      ? "Review previous meetings while this one is being captured."
-                      : "Capture context now or revisit what happened before."}
-                  </p>
+                  {!isFullscreen && <p className="text-xs text-slate-500 mt-0.5">Ask Echo about the transcript and notes.</p>}
                 </div>
               </div>
               {canAskEcho && !isFullscreen && (

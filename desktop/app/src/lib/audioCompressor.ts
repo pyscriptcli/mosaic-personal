@@ -116,7 +116,7 @@ export function encodeMonoWav(samples: Float32Array, sampleRate = 16000): Blob {
 
 /**
  * Decodes an audio file in the browser, resamples to 16kHz mono,
- * and splits into ~90-second chunks (each ~2.8MB, safely under Vercel's 4.5MB limit).
+ * and splits into ~90-second chunks to keep transcription requests manageable.
  */
 export async function decodeAndChunkAudio(
   file: File,

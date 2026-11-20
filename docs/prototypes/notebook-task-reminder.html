@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mosaic · Task reminder concepts</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Segoe UI", sans-serif;
+      background: #101010;
+      color: #cccccc;
+      font-synthesis: none;
+      --surface: #1e1e1e;
+      --surface-raised: #252526;
+      --border: #3c3c3c;
+      --muted: #9d9d9d;
+      --blue: #007acc;
+      --gold: #cca700;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 28px; }
+    .prototype-tag { position: fixed; top: 14px; left: 16px; color: var(--gold); font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+    .switcher { position: fixed; top: 10px; right: 14px; display: flex; gap: 6px; align-items: center; }
+    .switcher button { min-width: 36px; height: 34px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); background: var(--surface); cursor: pointer; }
+    .switcher button[aria-pressed="true"] { color: #07131d; border-color: var(--blue); background: var(--blue); font-weight: 700; }
+    .switcher .arrow { font-size: 17px; }
+    .popup { width: min(100%, 650px); max-height: calc(100vh - 56px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #454545; border-radius: 4px; background: var(--surface); box-shadow: 0 22px 80px #000b; }
+    .topline { display: none; }
+    .windowbar { position: relative; display: flex; align-items: center; flex: 0 0 28px; height: 28px; border-bottom: 1px solid #333; background: #181818; }
+    .app-icon { display: grid; place-items: center; width: 38px; height: 100%; color: #75beff; font-size: 17px; }
+    .window-title { position: absolute; left: 50%; transform: translateX(-50%); color: #bdbdbd; font-size: 12px; white-space: nowrap; }
+    .window-actions { display: flex; height: 100%; margin-left: auto; }
+    .window-actions span { display: grid; place-items: center; width: 42px; color: #aaa; font-size: 12px; }
+    .window-actions span:hover { background: #333; color: #fff; }
+    .window-actions span:last-child { color: #ddd; }
+    .window-actions span:last-child:hover { background: #c42b1c; color: #fff; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+    .date-line { color: #d4d4d4; font-size: 16px; font-weight: 500; }
+    .date-line time { color: #e7e7e7; font-weight: 600; }
+    .date-weekday { margin-left: 7px; color: #9d9d9d; }
+    .open-notebook { display: grid; flex: 0 0 28px; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; color: #bdbdbd; cursor: pointer; }
+    .open-notebook:hover { border-color: #454545; background: #2a2d2e; color: #fff; }
+    .open-notebook svg { width: 16px; height: 16px; }
+    .eyebrow { margin: 0 0 4px; color: #4fc1ff; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 18px; line-height: 1.2; font-weight: 600; color: #e7e7e7; }
+    .subtitle { display: flex; justify-content: space-between; gap: 10px; margin-top: 4px; color: #b5b5b5; font-size: 12px; }
+    main { min-height: 0; overflow-y: auto; padding: 10px 12px 12px; }
+    .task-list { display: grid; gap: 6px; }
+    .task { display: grid; grid-template-columns: 17px minmax(0, 1fr) auto; gap: 9px; align-items: start; padding: 9px 10px; border: 1px solid #3c3c3c; border-radius: 2px; background: #252526; }
+    .check { width: 16px; height: 16px; margin-top: 1px; border: 1px solid #858585; border-radius: 50%; }
+    .task-title { font-size: 13px; line-height: 1.35; font-weight: 600; color: #e0e0e0; }
+    .task-details { margin-top: 3px; color: #b5b5b5; font-size: 11px; line-height: 1.35; }
+    .meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+    .pill { padding: 2px 6px; border: 1px solid #555; border-radius: 2px; color: #ccc; font-size: 10px; white-space: nowrap; }
+    .pill.high { color: #e2c08d; border-color: #806b42; }
+    .pill.overdue { color: #f48771; border-color: #8f4b43; }
+    .pill.done { color: #9fd8b5; border-color: #397553; }
+    .more { padding: 5px 2px 1px; color: var(--muted); font-size: 12px; }
+    .focus-task { padding: 12px; border: 1px solid #007acc; border-radius: 2px; background: #252526; }
+    .focus-label { color: var(--blue); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .focus-task h2 { margin: 6px 0 4px; font-size: 16px; }
+    .focus-task p { margin: 0; color: #c1ccd4; font-size: 13px; line-height: 1.5; }
+    .section { margin: 2px 1px 0; color: #d7ba7d; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .agenda .task { grid-template-columns: 19px minmax(0, 1fr); }
+    footer { display: flex; flex: 0 0 auto; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--border); }
+    footer button, footer select { min-height: 32px; padding: 0 10px; border: 1px solid #454545; border-radius: 2px; background: #2d2d2d; color: #ccc; font: inherit; font-size: 11px; cursor: pointer; }
+    .snooze-select { min-width: 150px; }
+    @supports (appearance: base-select) {
+      .snooze-select, .snooze-select::picker(select) { appearance: base-select; }
+      .snooze-select { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .snooze-select::picker(select) { padding: 3px; border: 1px solid #454545; background: #252526; color: #ccc; box-shadow: 0 6px 16px #0009; }
+      .snooze-select::picker-icon { color: #ccc; }
+      .snooze-select option { min-height: 27px; padding: 5px 9px; background: #252526; color: #ccc; }
+      .snooze-select option:hover, .snooze-select option:checked { background: #094771; color: #fff; }
+    }
+    footer button.primary { margin-left: auto; border-color: #007acc; background: #0e639c; color: white; font-weight: 600; }
+    footer button:hover, .switcher button:hover { filter: brightness(1.15); }
+    @media (max-width: 480px) {
+      body { padding: 56px 12px 12px; }
+      header { padding: 6px 10px; }
+      main { padding: 12px; }
+      footer { flex-wrap: wrap; padding: 12px; }
+      footer button { flex: 1 1 auto; }
+      footer button.primary { margin-left: 0; }
+      .task { grid-template-columns: 19px minmax(0, 1fr); }
+      .task > .pill { grid-column: 2; justify-self: start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="prototype-tag">Throwaway UI prototype · no app data</div>
+  <nav class="switcher" aria-label="Reminder layout variants">
+    <button class="arrow" id="previous" aria-label="Previous layout">‹</button>
+    <button data-variant="A" aria-pressed="true">A</button>
+    <button data-variant="B" aria-pressed="false">B</button>
+    <button data-variant="C" aria-pressed="false">C</button>
+    <button class="arrow" id="next" aria-label="Next layout">›</button>
+  </nav>
+  <section class="popup" role="dialog" aria-label="Notebook reminder">
+    <div class="topline"></div>
+    <div class="windowbar"><span class="app-icon" aria-hidden="true">◈</span><span class="window-title">Mosaic — Notebook Reminder</span><span class="window-actions" aria-hidden="true"><span>—</span><span>□</span><span>×</span></span></div>
+    <header>
+        <div class="date-line"><time id="today-date"></time><span class="date-weekday" id="today-weekday"></span></div>
+      <button class="open-notebook" aria-label="Open Notebook" title="Open Notebook">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 2.5h7.5L13 5v8.5H3z" stroke="currentColor" stroke-width="1.2"/><path d="M10.5 2.7V5H13M5.2 7.4h5.5M5.2 9.5h5.5M5.2 11.6h3.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <main id="content"></main>
+    <footer>
+      <select class="snooze-select" name="snooze-duration" aria-label="Snooze duration" required>
+        <option value="" disabled selected>Snooze</option>
+        <option value="1">Snooze 1 hour</option>
+        <option value="2">Snooze 2 hours</option>
+        <option value="3">Snooze 3 hours</option>
+        <option value="4">Snooze 4 hours</option>
+        <option value="5">Snooze 5 hours</option>
+      </select>
+      <button class="primary">Dismiss</button>
+    </footer>
+  </section>
+  <script>
+    const variants = {
+      A: {
+        name: "Checklist",
+        content: `<div class="task-list">
+          <article class="task"><span class="check"></span><div><div class="task-title">Review project brief</div><div class="task-details">Confirm the scope and send comments to the team.</div><div class="meta"><span class="pill high">High priority</span><span class="pill">Due today</span></div></div></article>
+          <article class="task"><span class="check"></span><div><div class="task-title">Send meeting follow-up</div><div class="task-details">Share decisions and action items.</div><div class="meta"><span class="pill">Normal priority</span><span class="pill">Due today</span></div></div></article>
+          <article class="task"><span class="check"></span><div><div class="task-title">Update weekly report</div><div class="meta"><span class="pill">Normal priority</span><span class="pill">Due tomorrow</span></div></div></article>
+        </div>`
+      },
+      B: {
+        name: "Agenda",
+        content: `<div class="task-list agenda">
+          <div class="section">Overdue · 1</div>
+          <article class="task"><span class="check"></span><div><div class="task-title">Confirm vendor estimate</div><div class="meta"><span class="pill high">High priority</span><span class="pill overdue">Due yesterday</span></div></div></article>
+          <div class="section">Due today · 2</div>
+          <article class="task"><span class="check"></span><div><div class="task-title">Review project brief</div><div class="task-details">Confirm scope and send comments.</div><div class="meta"><span class="pill high">High priority</span></div></div></article>
+          <article class="task"><span class="check"></span><div><div class="task-title">Send meeting follow-up</div><div class="meta"><span class="pill">Normal priority</span></div></div></article>
+        </div>`
+      },
+      C: {
+        name: "Focus first",
+        content: `<div class="task-list">
+          <article class="focus-task"><div class="focus-label">Suggested next · High priority</div><h2>Review project brief</h2><p>Confirm the scope and send comments to the team.</p><div class="meta"><span class="pill high">High priority</span><span class="pill">Due today</span></div></article>
+          <div class="section">Also on your list · 2</div>
+          <article class="task"><span class="check"></span><div><div class="task-title">Send meeting follow-up</div><div class="meta"><span class="pill">Normal priority</span><span class="pill">Due today</span></div></div></article>
+          <article class="task"><span class="check"></span><div><div class="task-title">Update weekly report</div><div class="meta"><span class="pill">Normal priority</span><span class="pill">Due tomorrow</span></div></div></article>
+        </div>`
+      }
+    };
+    const order = ["A", "B", "C"];
+    function selectVariant(key) {
+      const variant = variants[key] || variants.A;
+      document.getElementById("content").innerHTML = variant.content;
+      document.querySelectorAll("[data-variant]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.variant === key)));
+      const url = new URL(location.href);
+      url.searchParams.set("variant", key);
+      history.replaceState(null, "", url);
+    }
+    function step(direction) {
+      const current = order.indexOf(new URL(location.href).searchParams.get("variant") || "A");
+      selectVariant(order[(current + direction + order.length) % order.length]);
+    }
+    document.querySelectorAll("[data-variant]").forEach(button => button.addEventListener("click", () => selectVariant(button.dataset.variant)));
+    document.getElementById("previous").addEventListener("click", () => step(-1));
+    document.getElementById("next").addEventListener("click", () => step(1));
+    document.addEventListener("keydown", event => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.target.matches("input, textarea, select, [contenteditable='true']")) return;
+      if (event.key === "ArrowLeft") step(-1);
+      if (event.key === "ArrowRight") step(1);
+    });
+    const now = new Date();
+    document.getElementById("today-date").textContent = new Intl.DateTimeFormat(undefined, { month: "long", day: "numeric", year: "numeric" }).format(now);
+    document.getElementById("today-date").dateTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    document.getElementById("today-weekday").textContent = ` · ${new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(now)}`;
+    selectVariant(new URL(location.href).searchParams.get("variant") || "B");
+  </script>
+</body>
+</html>

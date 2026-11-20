@@ -191,10 +191,10 @@ export async function processSource(
     }
   }
 
-  // 2. Large Non-Audio File Guard (Avoids cryptic 413 from Vercel)
+  // 2. Guard oversized non-audio documents before sending transcription requests.
   if (fileOrText.file && !isAudioFile(fileOrText.file) && fileOrText.file.size > 4.2 * 1024 * 1024) {
     throw new Error(
-      `Document (${(fileOrText.file.size / (1024 * 1024)).toFixed(1)}MB) exceeds Vercel's 4.5MB serverless upload limit. Please upload a smaller document or paste the text directly.`
+      `Document (${(fileOrText.file.size / (1024 * 1024)).toFixed(1)}MB) is too large to process. Please upload a smaller document or paste the text directly.`
     );
   }
 

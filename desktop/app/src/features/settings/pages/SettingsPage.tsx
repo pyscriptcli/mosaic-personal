@@ -7,6 +7,7 @@ type WorkspaceSettings = {
   directory: string;
   supabaseConfigured: boolean;
   apiKeys: Record<string, boolean>;
+  groqTranscriptionKeyCount: number;
   codexWorkspaceDirectory: string | null;
   sync: { status: string; uploaded: number; downloaded: number; deleted: number; syncedAt: string | null; error: string | null };
 };
@@ -18,6 +19,7 @@ type DesktopBridge = {
   openCredentialManager: () => Promise<boolean>;
   saveSupabaseConfig: (config: { url: string; secretKey: string }) => Promise<{ configured: boolean }>;
   saveApiKey: (provider: string, key: string) => Promise<WorkspaceSettings>;
+  importGroqTranscriptionKeys: () => Promise<{ importedCount: number } | null>;
   syncWorkspaceNow: () => Promise<WorkspaceSettings["sync"]>;
   getCodexStatus: () => Promise<{ available: boolean; connected: boolean; email?: string | null; workspaceDirectory?: string | null; error?: string }>;
   chooseCodexWorkspace: () => Promise<{ workspaceDirectory: string } | null>;
@@ -30,7 +32,6 @@ function bridge() {
 
 const providers = [
   { id: "deepseek", label: "DeepSeek" },
-  { id: "groq", label: "Groq" },
   { id: "openai", label: "OpenAI" },
   { id: "openrouter", label: "OpenRouter" },
   { id: "gemini", label: "Gemini" },
@@ -109,8 +110,25 @@ export function SettingsPage() {
       </section>
 
       <section className="border border-vscode-border bg-vscode-panel p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Groq transcription</h2>
+            <p className="mt-1 max-w-2xl text-xs text-vscode-muted">Import Groq keys from a local .env file. Mosaic encrypts them with Windows secure storage and uses them only for audio transcription.</p>
+            <p className="mt-2 text-xs text-vscode-muted">{settings?.groqTranscriptionKeyCount ?? 0} transcription {settings?.groqTranscriptionKeyCount === 1 ? "key" : "keys"} stored</p>
+          </div>
+          <button type="button" disabled={Boolean(busy)} onClick={() => void run("transcription-keys", async () => {
+            const result = await bridge()?.importGroqTranscriptionKeys();
+            if (result) {
+              setSettings(await bridge()?.getWorkspaceSettings() || null);
+              setMessage(`Imported ${result.importedCount} Groq transcription ${result.importedCount === 1 ? "key" : "keys"}.`);
+            }
+          })} className="inline-flex items-center gap-2 border border-vscode-border px-3 py-2 text-xs hover:bg-vscode-hover disabled:opacity-50"><FolderOpen size={14} /> Import .env keys</button>
+        </div>
+      </section>
+
+      <section className="border border-vscode-border bg-vscode-panel p-5">
         <h2 className="text-sm font-semibold">AI providers</h2>
-        <p className="mt-1 text-xs text-vscode-muted">Keys are encrypted by Windows. Mosaic sends them from its local server to the selected provider; they are not saved in browser storage.</p>
+        <p className="mt-1 text-xs text-vscode-muted">Keys are encrypted by Windows and sent only to their named app provider. Desktop Ask Echo conversations use Codex CLI.</p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {providers.map((provider) => <label key={provider.id} className="text-xs text-vscode-muted">{provider.label} {settings?.apiKeys?.[provider.id] ? <span className="text-green-400">· configured</span> : <span>· not configured</span>}<input type="password" value={apiKeys[provider.id] || ""} onChange={(event) => setApiKeys((current) => ({ ...current, [provider.id]: event.target.value }))} placeholder="Enter a new key" autoComplete="new-password" className="mt-1 w-full border border-vscode-border bg-vscode-input px-3 py-2 text-sm text-vscode-text outline-none focus:border-vscode-accent" /></label>)}
         </div>

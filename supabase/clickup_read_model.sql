@@ -157,4 +157,4 @@ grant execute on function public.echo_fail_clickup_sync_job(bigint,text) to serv
 grant execute on function public.echo_invalidate_clickup_sync(text,text) to service_role;
 grant execute on function public.echo_reserve_clickup_request(text,integer) to service_role;
 
--- frontend/vercel.json runs GET /api/cron/clickup-sync daily; authenticated reads and webhooks also drain the queue.
+-- The desktop sync worker reads and drains queued ClickUp sync jobs.

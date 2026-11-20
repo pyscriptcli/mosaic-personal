@@ -6,9 +6,10 @@ import { requireFeature } from "@/lib/access-control-server";
 
 export async function POST(req: NextRequest) {
   const desktopMode = process.env.MOSAIC_DESKTOP_NO_LOGIN === "1";
-  const token = desktopMode ? "" : getTokenFromRequest(req);
-  const user = desktopMode ? { id: "mosaic-local", username: "Local User", email: "local@mosaic.local" } : getUserFromRequest(req);
-  if (!user || (!desktopMode && (!token || !user.email))) return NextResponse.json({ error: "Connect your ClickUp account to use Ask Echo." }, { status: 401 });
+  if (desktopMode) return NextResponse.json({ error: "Desktop Ask Echo conversations use the local Codex CLI." }, { status: 409 });
+  const token = getTokenFromRequest(req);
+  const user = getUserFromRequest(req);
+  if (!user || !token || !user.email) return NextResponse.json({ error: "Connect your ClickUp account to use Ask Echo." }, { status: 401 });
   try {
     const denied = await requireFeature(req, "ask-echo");
     if (denied) return denied;
