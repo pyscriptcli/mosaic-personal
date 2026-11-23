@@ -56,7 +56,7 @@ function DatePickerInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full text-xs bg-[#FFFCFB] border border-gray-200 rounded-none px-2 py-1 pr-7 focus:outline-none focus:border-[#C9AB4C]"
+        className="w-full text-xs bg-surface-panel border border-line rounded-none px-2 py-1 pr-7 focus:outline-none focus:border-focus"
       />
       <input
         type="date"
@@ -73,7 +73,7 @@ function DatePickerInput({
         type="button"
         onClick={handleIconClick}
         title="Choose date from calendar"
-        className="absolute right-1 text-gray-400 hover:text-[#003366] p-1 cursor-pointer"
+        className="absolute right-1 text-fg-muted hover:text-fg p-1 cursor-pointer"
       >
         <CalendarIcon size={13} />
       </button>
@@ -173,26 +173,26 @@ export function DashboardView({
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Top Header with Interactive Date / Date Range Filter */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-gray-200/80">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-line">
         <div>
-          <h1 className="text-2xl font-serif font-bold text-[#003366] italic">
+          <h1 className="text-2xl font-serif font-bold text-fg italic">
             Executive Overview
           </h1>
-          <p className="text-xs font-bold tracking-wider text-gray-400 uppercase mt-0.5">
+          <p className="text-xs font-bold tracking-wider text-fg-muted uppercase mt-0.5">
             Meeting Intelligence & Operational Cadence
           </p>
         </div>
 
         {/* Minimalist Date Selection */}
         <div className="flex items-center gap-2">
-          <div className="inline-flex bg-[#FFFCFB] p-0.5 rounded-none border border-gray-200 text-xs">
+          <div className="inline-flex bg-surface-panel p-0.5 rounded-none border border-line text-xs">
             <button
               type="button"
               onClick={() => setFilterMode("all")}
               className={`px-3 py-1 text-[11px] font-semibold tracking-wide transition-all ${
                 filterMode === "all"
-                  ? "bg-[#FFFCFB] text-[#1b1d1e] shadow-2xs border-b border-[#C9AB4C]"
-                  : "text-gray-500 hover:text-gray-900"
+                  ? "bg-surface-panel text-fg shadow-2xs border-b border-warning-border"
+                  : "text-fg-muted hover:text-fg"
               }`}
             >
               All
@@ -202,8 +202,8 @@ export function DashboardView({
               onClick={() => setFilterMode("specific")}
               className={`px-3 py-1 text-[11px] font-semibold tracking-wide transition-all ${
                 filterMode === "specific"
-                  ? "bg-[#FFFCFB] text-[#1b1d1e] shadow-2xs border-b border-[#C9AB4C]"
-                  : "text-gray-500 hover:text-gray-900"
+                  ? "bg-surface-panel text-fg shadow-2xs border-b border-warning-border"
+                  : "text-fg-muted hover:text-fg"
               }`}
             >
               Date
@@ -213,8 +213,8 @@ export function DashboardView({
               onClick={() => setFilterMode("range")}
               className={`px-3 py-1 text-[11px] font-semibold tracking-wide transition-all ${
                 filterMode === "range"
-                  ? "bg-[#FFFCFB] text-[#1b1d1e] shadow-2xs border-b border-[#C9AB4C]"
-                  : "text-gray-500 hover:text-gray-900"
+                  ? "bg-surface-panel text-fg shadow-2xs border-b border-warning-border"
+                  : "text-fg-muted hover:text-fg"
               }`}
             >
               Range
@@ -240,7 +240,7 @@ export function DashboardView({
                   placeholder="Start"
                 />
               </div>
-              <span className="text-gray-400 text-xs font-mono">→</span>
+              <span className="text-fg-muted text-xs font-mono">→</span>
               <div className="w-28">
                 <DatePickerInput
                   value={rangeEnd}
@@ -256,50 +256,50 @@ export function DashboardView({
       {/* 4 Stat Metric Cards (Sharp edgy geometry) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* CARD 1: TOTAL MEETINGS */}
-        <div className="bg-[#FFFCFB] border border-gray-200/90 p-5 rounded-none shadow-2xs">
-          <div className="flex items-center justify-between text-gray-400 mb-2">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-gray-500">
+        <div className="bg-surface-panel border border-line p-5 rounded-none shadow-2xs">
+          <div className="flex items-center justify-between text-fg-muted mb-2">
+            <span className="text-[10px] font-bold tracking-widest uppercase text-fg-muted">
               Total Meetings
             </span>
-            <Building2 size={16} className="text-[#003366]" />
+            <Building2 size={16} className="text-fg" />
           </div>
-          <div className="text-3xl font-serif font-bold text-[#003366]">{totalMeetings}</div>
+          <div className="text-3xl font-serif font-bold text-fg">{totalMeetings}</div>
         </div>
 
         {/* CARD 2: TOTAL MEETING TIME */}
-        <div className="bg-[#FFFCFB] border border-gray-200/90 p-5 rounded-none shadow-2xs">
-          <div className="flex items-center justify-between text-gray-400 mb-2">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-gray-500">
+        <div className="bg-surface-panel border border-line p-5 rounded-none shadow-2xs">
+          <div className="flex items-center justify-between text-fg-muted mb-2">
+            <span className="text-[10px] font-bold tracking-widest uppercase text-fg-muted">
               Total Meeting Time
             </span>
-            <Clock size={16} className="text-[#C9AB4C]" />
+            <Clock size={16} className="text-link" />
           </div>
-          <div className="text-3xl font-serif font-bold text-[#003366]">{formattedMeetingTime}</div>
+          <div className="text-3xl font-serif font-bold text-fg">{formattedMeetingTime}</div>
         </div>
 
         {/* CARD 3: TOTAL MEETING COST */}
-        <div className="bg-[#FFFCFB] border border-gray-200/90 p-5 rounded-none shadow-2xs">
-          <div className="flex items-center justify-between text-gray-400 mb-2">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-gray-500">
+        <div className="bg-surface-panel border border-line p-5 rounded-none shadow-2xs">
+          <div className="flex items-center justify-between text-fg-muted mb-2">
+            <span className="text-[10px] font-bold tracking-widest uppercase text-fg-muted">
               Total Meeting Cost
             </span>
-            <PhilippinePeso size={16} className="text-[#C9AB4C]" />
+            <PhilippinePeso size={16} className="text-link" />
           </div>
-          <div className="text-3xl font-serif font-bold text-[#003366]">
+          <div className="text-3xl font-serif font-bold text-fg">
             ₱{totalCostPhp.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
 
         {/* CARD 4: COST / HOUR */}
-        <div className="bg-[#FFFCFB] border border-gray-200/90 p-5 rounded-none shadow-2xs">
-          <div className="flex items-center justify-between text-gray-400 mb-2">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-gray-500">
+        <div className="bg-surface-panel border border-line p-5 rounded-none shadow-2xs">
+          <div className="flex items-center justify-between text-fg-muted mb-2">
+            <span className="text-[10px] font-bold tracking-widest uppercase text-fg-muted">
               Cost / Hour
             </span>
-            <Zap size={16} className="text-emerald-600" />
+            <Zap size={16} className="text-success-fg" />
           </div>
-          <div className="text-3xl font-serif font-bold text-[#003366]">
-            ₱{TOTAL_AI_PHP_PER_HOUR.toFixed(2)} <span className="text-sm font-sans font-normal text-gray-500">/ hr</span>
+          <div className="text-3xl font-serif font-bold text-fg">
+            ₱{TOTAL_AI_PHP_PER_HOUR.toFixed(2)} <span className="text-sm font-sans font-normal text-fg-muted">/ hr</span>
           </div>
         </div>
       </div>
@@ -310,14 +310,14 @@ export function DashboardView({
         {/* Left Column (7 cols): Recent Meetings List */}
         <div className="lg:col-span-7 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold tracking-widest uppercase text-[#003366]">
+            <span className="text-xs font-bold tracking-widest uppercase text-fg">
               Recent Meetings {filterMode === "specific" ? `(Filtered: ${specificDate})` : filterMode === "range" ? `(Range: ${rangeStart} to ${rangeEnd})` : ""}
             </span>
             {filterMode !== "all" && (
               <button
                 type="button"
                 onClick={() => setFilterMode("all")}
-                className="text-[11px] text-[#C9AB4C] hover:underline font-semibold"
+                className="text-[11px] text-link hover:underline font-semibold"
               >
                 Clear date filter
               </button>
@@ -329,38 +329,38 @@ export function DashboardView({
               filteredMeetings.map((meeting) => (
                 <div
                   key={meeting.id}
-                  className="bg-[#FFFCFB] border border-gray-200/90 rounded-none p-5 shadow-2xs hover:border-[#C9AB4C]/80 transition-all group"
+                  className="bg-surface-panel border border-line rounded-none p-5 shadow-2xs hover:border-warning-border transition-all group"
                 >
                   <div className="flex items-start justify-between gap-4 mb-2.5">
                     <div>
-                      <h3 className="font-serif font-bold text-lg text-[#003366] group-hover:text-[#1b1d1e] transition-colors">
+                      <h3 className="font-serif font-bold text-lg text-fg group-hover:text-fg transition-colors">
                         {meeting.title}
                       </h3>
                       <div className="flex flex-wrap items-center gap-2 mt-1">
                         {meeting.is_confidential ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-none bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider flex items-center gap-1">
-                            <Lock size={11} className="text-amber-800" /> Private
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-none bg-warning-surface text-warning-fg border border-warning-border uppercase tracking-wider flex items-center gap-1">
+                            <Lock size={11} className="text-warning-fg" /> Private
                           </span>
                         ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-none bg-blue-50 text-[#003366] border border-blue-200 uppercase tracking-wider flex items-center gap-1">
-                            <Users size={11} className="text-[#003366]" /> Shared
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-none bg-info-surface text-fg border border-info-border uppercase tracking-wider flex items-center gap-1">
+                            <Users size={11} className="text-fg" /> Shared
                           </span>
                         )}
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-none bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-none bg-success-surface text-success-fg border border-success-border uppercase tracking-wider">
                           {meeting.meeting_type}
                         </span>
-                        <span className="text-xs text-gray-500 flex items-center gap-1 font-medium">
-                          <CalendarIcon size={12} className="text-gray-400" /> {formatEchoDate(meeting.date)}
+                        <span className="text-xs text-fg-muted flex items-center gap-1 font-medium">
+                          <CalendarIcon size={12} className="text-fg-muted" /> {formatEchoDate(meeting.date)}
                         </span>
                         {/* Duration & Cost Badges */}
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-none bg-slate-100 text-[#003366] border border-slate-200 flex items-center gap-1" title="Meeting Duration">
-                          <Clock size={10} className="text-[#C9AB4C]" /> {getMeetingDurationMinutes(meeting)}m
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-none bg-surface-raised text-fg border border-line flex items-center gap-1" title="Meeting Duration">
+                          <Clock size={10} className="text-link" /> {getMeetingDurationMinutes(meeting)}m
                         </span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-none bg-emerald-50 text-emerald-800 border border-emerald-200" title="Estimated AI Compute Cost">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-none bg-success-surface text-success-fg border border-success-border" title="Estimated AI Compute Cost">
                           ₱{((getMeetingDurationMinutes(meeting) / 60) * TOTAL_AI_PHP_PER_HOUR).toFixed(2)}
                         </span>
                         {meeting.location && (
-                          <span className="text-xs text-gray-500">
+                          <span className="text-xs text-fg-muted">
                             • {meeting.location}
                           </span>
                         )}
@@ -370,7 +370,7 @@ export function DashboardView({
                     <button
                       type="button"
                       onClick={() => onOpenMeeting(meeting.id)}
-                      className="btn-outline !py-1.5 !px-3 !text-xs shrink-0 flex items-center gap-1.5 group-hover:bg-[#003366] group-hover:text-white group-hover:border-[#003366] transition-all rounded-none"
+                      className="btn-outline !py-1.5 !px-3 !text-xs shrink-0 flex items-center gap-1.5 group-hover:bg-action-hover group-hover:text-fg group-hover:border-link transition-all rounded-none"
                     >
                       <span>Open Meeting Record</span>
                       <ArrowRight size={13} />
@@ -379,22 +379,22 @@ export function DashboardView({
 
                   {/* Executive Summary Paragraph */}
                   {meeting.summary && (
-                    <p className="text-xs text-gray-600 leading-relaxed line-clamp-3 bg-[#FFFCFB]/70 p-3 rounded-none border border-gray-100 italic">
+                    <p className="text-xs text-fg-secondary leading-relaxed line-clamp-3 bg-surface-panel p-3 rounded-none border border-line italic">
                       &ldquo;{meeting.summary}&rdquo;
                     </p>
                   )}
 
                   {/* Discussion count preview */}
-                  <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+                  <div className="mt-3 pt-3 border-t border-line flex items-center justify-between text-[11px] text-fg-muted">
                     <span>{meeting.items.length} Structured Discussion Point{meeting.items.length !== 1 ? "s" : ""}</span>
-                    <span className="text-gray-400">
+                    <span className="text-fg-muted">
                       Attendees: {[...(meeting.attendees_prime || []), ...(meeting.attendees_external || [])].slice(0, 3).join(", ")}
                     </span>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="bg-[#FFFCFB] border border-gray-200 rounded-none p-8 text-center text-gray-400 text-xs">
+              <div className="bg-surface-panel border border-line rounded-none p-8 text-center text-fg-muted text-xs">
                 No meetings found for the selected filter.
               </div>
             )}
@@ -403,13 +403,13 @@ export function DashboardView({
 
         {/* Right Column (5 cols): Interactive Calendar (Ask Echo is available from the top bar.) */}
         <div className="lg:col-span-5">
-          <div className="bg-[#FFFCFB] border border-gray-200/90 rounded-none p-5 shadow-2xs">
+          <div className="bg-surface-panel border border-line rounded-none p-5 shadow-2xs">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-bold tracking-widest uppercase text-[#003366]">
+              <span className="text-xs font-bold tracking-widest uppercase text-fg">
                 Meeting Calendar
               </span>
               <div className="flex items-center gap-1">
-                <span className="text-xs font-semibold text-gray-700 mr-2">
+                <span className="text-xs font-semibold text-fg mr-2">
                   {monthNames[selectedMonth]} {selectedYear}
                 </span>
                 <button
@@ -422,7 +422,7 @@ export function DashboardView({
                       setSelectedMonth(selectedMonth - 1);
                     }
                   }}
-                  className="p-1 hover:bg-[#FFFCFB] rounded-none text-gray-500 transition-colors"
+                  className="p-1 hover:bg-surface-hover rounded-none text-fg-muted transition-colors"
                 >
                   <ChevronLeft size={15} />
                 </button>
@@ -436,7 +436,7 @@ export function DashboardView({
                       setSelectedMonth(selectedMonth + 1);
                     }
                   }}
-                  className="p-1 hover:bg-[#FFFCFB] rounded-none text-gray-500 transition-colors"
+                  className="p-1 hover:bg-surface-hover rounded-none text-fg-muted transition-colors"
                 >
                   <ChevronRight size={15} />
                 </button>
@@ -444,7 +444,7 @@ export function DashboardView({
             </div>
 
             {/* Days Header */}
-            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold tracking-wider text-gray-400 uppercase mb-2">
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold tracking-wider text-fg-muted uppercase mb-2">
               <span>Su</span>
               <span>Mo</span>
               <span>Tu</span>
@@ -458,7 +458,7 @@ export function DashboardView({
             <div className="grid grid-cols-7 gap-1 text-center text-xs">
               {/* Blank offset days */}
               {Array.from({ length: firstDayOfWeek }).map((_, i) => (
-                <div key={`blank-${i}`} className="h-9 flex items-center justify-center text-gray-300" />
+                <div key={`blank-${i}`} className="h-9 flex items-center justify-center text-fg-muted" />
               ))}
 
               {/* Days in Month */}
@@ -486,19 +486,19 @@ export function DashboardView({
                     }}
                     className={`h-9 rounded-none flex flex-col items-center justify-center relative transition-all ${
                       isSelected
-                        ? "bg-[#003366] text-white font-bold shadow-xs"
+                        ? "bg-action text-on-action font-bold shadow-xs"
                         : isInRange
-                        ? "bg-[#C9AB4C]/25 text-[#003366] font-semibold border border-[#C9AB4C]/40"
+                        ? "bg-warning-surface text-fg font-semibold border border-warning-border"
                         : hasMeeting
-                        ? "hover:bg-[#C9AB4C]/15 font-semibold text-[#003366] cursor-pointer"
-                        : "text-gray-600 hover:bg-[#FFFCFB]"
+                        ? "hover:bg-warning-surface font-semibold text-fg cursor-pointer"
+                        : "text-fg-secondary hover:bg-surface-hover"
                     }`}
                   >
                     <span>{dayNum}</span>
                     {hasMeeting && (
                       <span 
                         className={`w-1.5 h-1.5 rounded-none absolute bottom-1 ${
-                          isSelected ? "bg-[#C9AB4C]" : "bg-[#C9AB4C]"
+                          isSelected ? "bg-warning-surface" : "bg-warning-surface"
                         }`} 
                       />
                     )}
@@ -507,9 +507,9 @@ export function DashboardView({
               })}
             </div>
 
-            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-400">
+            <div className="mt-4 pt-3 border-t border-line flex items-center justify-between text-[11px] text-fg-muted">
               <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-none bg-[#C9AB4C]"></span>
+                <span className="w-1.5 h-1.5 rounded-none bg-warning-fg"></span>
                 Dates with scheduled or recorded meetings
               </span>
               <span>Click date to filter</span>

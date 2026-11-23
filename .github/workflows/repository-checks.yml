@@ -32,6 +32,7 @@ jobs:
             desktop/app/package-lock.json
       - run: npm ci
       - run: npm ci --prefix app
+      - run: npm --prefix app run check:theme
       - run: node --check src/main.cjs
       - run: node --check src/preload.cjs
       - run: node --check src/local-app-server.cjs

@@ -18,6 +18,7 @@ import { clickUpScope } from "@/lib/clickupReadStore";
 import { fetchAllClickUpListTasks } from "@/lib/clickupCalendarApi";
 import { getLocalRecord, getLocalSetting, listLocalRecords, removeLocalNotebookCategories, saveLocalRecord, setLocalSetting } from "@/lib/localFirstDatabase";
 import { latestNotebookTaskSnapshots, orderNotebookTasks } from "@/features/notebook/lib/notebookTaskOrdering";
+import { isNotebookWeekday, localDateString, notebookTaskOccurrence } from "@/features/notebook/lib/notebookDates";
 
 export const maxDuration = 60;
 
@@ -28,6 +29,12 @@ const TASK_ORDER_SETTING = "notebook.task-order.v1";
 function notebookTaskOrder() {
   const value = getLocalSetting<unknown>(TASK_ORDER_SETTING, []);
   return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+}
+
+function completionDateFor(value: unknown, fallback: string) {
+  const requested = typeof value === "string" && isValidDate(value) ? value : fallback;
+  const today = localDateString();
+  return requested > today ? today : requested;
 }
 
 function allLocalNotebookTasks(throughDate?: string) {
@@ -219,8 +226,7 @@ export async function GET(req: NextRequest) {
   if (process.env.MOSAIC_DESKTOP === "1") {
     if (req.nextUrl.searchParams.get("reminders") === "1") {
       try {
-        const now = new Date();
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        const today = localDateString();
         const allTasks = allLocalNotebookTasks(today);
         const order = notebookTaskOrder();
         const rank = new Map(order.map((id, index) => [id, index]));
@@ -268,14 +274,10 @@ export async function GET(req: NextRequest) {
       const current = listLocalRecords("my-day").find((record) => record.id === date);
       const data = current?.data as Record<string, unknown> | undefined;
       const allTasks = allLocalNotebookTasks();
+      const today = localDateString();
       const tasks = orderNotebookTasks(allTasks.flatMap((task) => {
-        const isCompleted = task.completed === true || /^(complete|completed|closed|done)$/i.test(String(task.status || ""));
-        const completedDate = String(task.completedDate || (isCompleted ? task.notebookDate : ""));
-        const scheduledDate = String(task.scheduledDate || task.notebookDate);
-        if (isCompleted && completedDate < date) return [];
-        if (isCompleted && completedDate === date) return [{ ...task, completed: true, carriedForward: false }];
-        if (scheduledDate <= date) return [{ ...task, completed: false, carriedForward: scheduledDate < date }];
-        return [];
+        const occurrence = notebookTaskOccurrence(task, date, today);
+        return occurrence ? [{ ...task, ...occurrence }] : [];
       }), notebookTaskOrder());
       const notes = String(data?.notes || "");
       const activity = data?.activity && typeof data.activity === "object" ? data.activity : { client: "", admin: "", adhoc: "", meetings: "" };
@@ -395,6 +397,12 @@ export async function POST(req: NextRequest) {
       }
       if (!isValidDate(body.date)) return NextResponse.json({ error: "A valid day is required." }, { status: 400 });
       const date = String(body.date);
+      if ((body.action === "create" || body.action === "move") && !isNotebookWeekday(date)) {
+        return NextResponse.json({ error: "Notebook tasks can only be assigned to weekdays." }, { status: 400 });
+      }
+      if (body.action === "update" && body.dueDate !== undefined && body.dueDate !== null && body.dueDate !== "" && !isNotebookWeekday(String(body.dueDate))) {
+        return NextResponse.json({ error: "Choose a valid weekday due date." }, { status: 400 });
+      }
       if (body.action === "move") {
         const fromDate = String(body.fromDate || "");
         const listId = String(body.listId || DEFAULT_NOTEBOOK_LIST.id);
@@ -430,6 +438,7 @@ export async function POST(req: NextRequest) {
       } else if (body.action === "create") {
         const name = String(body.name || "").trim();
         if (!name) return NextResponse.json({ error: "Enter a task name." }, { status: 400 });
+        if (body.dueDate && !isNotebookWeekday(String(body.dueDate))) return NextResponse.json({ error: "Choose a valid weekday due date." }, { status: 400 });
         const listId = String(body.listId || DEFAULT_NOTEBOOK_LIST.id);
         if (!localNotebookLists().some((list) => list.id === listId)) return NextResponse.json({ error: "Choose an existing Notebook list." }, { status: 400 });
         const task = { id: randomUUID(), name, description: String(body.description || ""), status: "to do", priority: body.priority === "high" ? "high" : null, dueDate: body.dueDate || null, listId, createdDate: date, scheduledDate: date, completed: false, url: "" };
@@ -450,7 +459,7 @@ export async function POST(req: NextRequest) {
           data.tasks = tasks.map((task) => task.id === taskId ? {
             ...task, ...changes, id: taskId,
             completed: body.completed === undefined ? /complete|completed|closed|done/i.test(String(body.status ?? task.status ?? "")) : body.completed === true,
-            completedDate: body.completed === true ? (typeof body.completedDate === "string" && isValidDate(body.completedDate) ? body.completedDate : date) : body.completed === false ? null : task.completedDate || null,
+            completedDate: body.completed === true ? completionDateFor(body.completedDate, date) : body.completed === false ? null : task.completedDate || null,
           } : task);
           result.task = (data.tasks as Array<Record<string, unknown>>).find((task) => task.id === taskId);
         }
@@ -464,7 +473,7 @@ export async function POST(req: NextRequest) {
             const nextTasks = body.action === "delete" ? recordTasks.filter((task) => task.id !== taskId) : recordTasks.map((task) => task.id !== taskId ? task : {
               ...task, ...duplicateChanges,
               completed: body.completed === undefined ? /^(complete|completed|closed|done)$/i.test(String(body.status ?? task.status ?? "")) : body.completed === true,
-              completedDate: body.completed === true ? (typeof body.completedDate === "string" && isValidDate(body.completedDate) ? body.completedDate : date) : body.completed === false ? null : task.completedDate || null,
+              completedDate: body.completed === true ? completionDateFor(body.completedDate, date) : body.completed === false ? null : task.completedDate || null,
             });
             saveLocalRecord("my-day", { id: record.id, title: record.title, data: { ...recordData, tasks: nextTasks } });
           }

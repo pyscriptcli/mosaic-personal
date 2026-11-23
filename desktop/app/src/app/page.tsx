@@ -38,6 +38,7 @@ import type { DiscoveredTopicItem } from "@/app/api/discover-topics/route";
 import { navRouteForView, navViewForPath } from "@/lib/navRoutes";
 import { clearBrowserPageCache, prefetchPageApis, useBrowserPageQuery } from "@/lib/browserPageCache";
 import { useEchoAI } from "@/features/ask-echo/components/EchoAI";
+import { findLunaModel } from "@/features/ask-echo/lib/models";
 import { 
   Upload, 
   X, 
@@ -75,7 +76,7 @@ import {
   Check
 } from "lucide-react";
 
-const PanelLoading = () => <section role="status" aria-live="polite" className="mx-auto w-full max-w-7xl border border-slate-200 bg-[#FFFCFB] p-4 text-xs text-slate-500">Opening workspace…</section>;
+const PanelLoading = () => <section role="status" aria-live="polite" className="mx-auto w-full max-w-7xl border border-line bg-surface-panel p-4 text-xs text-fg-muted">Opening workspace…</section>;
 const StudioPanel = dynamic(() => import("@/features/notetaker/components/StudioPanel").then((module) => module.StudioPanel), { loading: PanelLoading });
 const UniversalEchoDrawer = dynamic(() => import("@/features/ask-echo/components/UniversalEchoDrawer").then((module) => module.UniversalEchoDrawer), { loading: PanelLoading });
 const MeetingsView = dynamic(() => import("@/features/meetings/pages/MeetingsView").then((module) => module.MeetingsView), { loading: PanelLoading });
@@ -118,7 +119,7 @@ function formatMeetingTime(value?: string) {
 }
 
 export default function Home() {
-  const { runStructured, processSource } = useEchoAI();
+  const { runStructured, runStructuredWithModel, models, processSource, stopTurn } = useEchoAI();
   const pathname = usePathname();
   const router = useRouter();
   const { state: updateState, checkForUpdates, installUpdate } = useDesktopUpdater();
@@ -494,6 +495,7 @@ export default function Home() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    void stopTurn();
     setIsLoading(false);
   };
 
@@ -578,10 +580,31 @@ export default function Home() {
       // Automatically synthesize minutes draft
       setLoadingText("Synthesizing structured Minutes of the Meeting...");
       const topics = "Meeting discussions and decisions";
-      const momRes = await runStructured<any>(
-        `Create factual meeting minutes in JSON. Return fields: summary, bottom_line, matched_items (array of objects with topic_title, category, importance, why_it_matters, discussion_point, evidence_quote, action_plan, indicative_delivery_date, person_in_charge, confidence), recommended_missed_points (same item shape), and other_discussions. Use only supported facts. Distinguish decisions from proposals and open questions. Only create action plans for explicit commitments. Use direct transcript evidence and timestamps; meeting notes are context and never evidence quotes. Summary should be one concise paragraph; bottom_line should separately state the outcome or unresolved status. Omit routine chatter. For each discussion point, write one introductory paragraph followed by optional hyphen bullets. Use empty arrays or strings where appropriate.`,
-        `<topics_of_interest>\n${topics}\n</topics_of_interest>\n\n<meeting_notes>\n${notesToUse || "No meeting notes provided."}\n</meeting_notes>\n\n<transcript>\n${rawTranscript || pastedText}\n</transcript>`,
-      );
+      const minutesInstruction = `Create factual meeting minutes in JSON. Return fields: summary, bottom_line, matched_items (array of objects with topic_title, category, importance, why_it_matters, discussion_point, evidence_quote, action_plan, indicative_delivery_date, person_in_charge, confidence), recommended_missed_points (same item shape), and other_discussions. Use only supported facts. Distinguish decisions from proposals and open questions. Only create action plans for explicit commitments. Use direct transcript evidence and timestamps; meeting notes are context and never evidence quotes. Summary should be one concise paragraph; bottom_line should separately state the outcome or unresolved status. Omit routine chatter. For each discussion point, write one introductory paragraph followed by optional hyphen bullets. Use empty arrays or strings where appropriate.`;
+      const minutesContext = `<topics_of_interest>\n${topics}\n</topics_of_interest>\n\n<meeting_notes>\n${notesToUse || "No meeting notes provided."}\n</meeting_notes>\n\n<transcript>\n${rawTranscript || pastedText}\n</transcript>`;
+      const lunaModel = findLunaModel(models);
+      let momRes: any;
+      try {
+        if (!lunaModel) throw new Error("No Luna model is available.");
+        momRes = await runStructuredWithModel<any>(lunaModel, minutesInstruction, minutesContext);
+      } catch (lunaError) {
+        if (abortController.signal.aborted) throw lunaError;
+        setLoadingText("Luna unavailable; generating minutes with Groq, then DeepSeek if needed...");
+        const fallbackResponse = await fetch("/api/generate-minutes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: abortController.signal,
+          body: JSON.stringify({
+            transcript: rawTranscript || pastedText,
+            notes: notesToUse,
+            user_topics: topics,
+            instruction: minutesInstruction,
+          }),
+        });
+        const fallbackResult = await fallbackResponse.json();
+        if (!fallbackResponse.ok) throw new Error(fallbackResult.error || "Groq and DeepSeek could not generate meeting minutes.");
+        momRes = fallbackResult;
+      }
 
       if (!metadata.end_time) setMetadata((current: any) => ({ ...current, end_time: new Date().toTimeString().slice(0, 5) }));
 
@@ -1028,16 +1051,16 @@ export default function Home() {
   // ClickUp Session Loading Gate
   if (authStatus === "loading") {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#FAF9F7]">
+      <div className="flex h-screen w-screen items-center justify-center bg-surface-selected">
         <div className="flex flex-col items-center gap-4">
           <div className="flex items-center gap-1.5">
-            <span className="font-serif italic text-3xl font-semibold tracking-wide text-[#1b1d1e]">
+            <span className="font-serif italic text-3xl font-semibold tracking-wide text-fg">
               Mosaic
             </span>
-            <span className="w-2 h-2 bg-[#C9AB4C]"></span>
+            <span className="w-2 h-2 bg-warning-surface"></span>
           </div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-[#003366]">
-            <Loader2 className="w-4 h-4 animate-spin text-[#C9AB4C]" />
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-fg">
+            <Loader2 className="w-4 h-4 animate-spin text-link" />
             <span>Verifying ClickUp Session...</span>
           </div>
         </div>
@@ -1050,18 +1073,18 @@ export default function Home() {
   const isMeetingWorkspace = currentView === "minutes" && stage === "Input" && sourceTab === "record";
 
   return (
-    <div className={`vscode-workbench flex h-screen w-screen flex-col overflow-hidden bg-bg-primary font-sans text-[#cccccc] ${isUniversalEchoOpen ? "echo-chat-docked" : ""}`}>
+    <div className={`vscode-workbench flex h-screen w-screen flex-col overflow-hidden bg-surface-canvas font-sans text-fg ${isUniversalEchoOpen ? "echo-chat-docked" : ""}`}>
       {/* Loading Overlay */}
       {isLoading && (
-        <div className="fixed inset-0 bg-[#FFFCFB]/85 z-50 flex flex-col items-center justify-center backdrop-blur-xs">
-          <div className="w-full max-w-sm px-6 py-7 bg-[#FFFCFB] border border-[#C9A84C]/50 shadow-lg">
-            <div className="flex items-center gap-3 mb-6"><div className="w-9 h-9 rounded-full border-2 border-[#003366] border-t-transparent animate-spin" /><div><p className="text-base font-semibold text-[#003366]">Working on your meeting</p><p className="text-xs text-gray-500 mt-0.5">{loadingSteps[loadingStepIndex]}</p></div></div>
-            <div className="space-y-3">{loadingSteps.map((step, index) => <div key={step} className="flex items-center gap-3 text-sm"><span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${index < loadingStepIndex ? "bg-green-600 text-white" : index === loadingStepIndex ? "bg-[#003366] text-white" : "border border-gray-300 text-gray-400"}`}>{index < loadingStepIndex ? "✓" : index + 1}</span><span className={index <= loadingStepIndex ? "text-[#003366]" : "text-gray-400"}>{step}</span></div>)}</div>
+        <div className="fixed inset-0 bg-surface-panel z-50 flex flex-col items-center justify-center backdrop-blur-xs">
+          <div className="w-full max-w-sm px-6 py-7 bg-surface-panel border border-warning-border shadow-lg">
+            <div className="flex items-center gap-3 mb-6"><div className="w-9 h-9 rounded-full border-2 border-link border-t-transparent animate-spin" /><div><p className="text-base font-semibold text-fg">Working on your meeting</p><p className="text-xs text-fg-muted mt-0.5">{loadingSteps[loadingStepIndex]}</p></div></div>
+            <div className="space-y-3">{loadingSteps.map((step, index) => <div key={step} className="flex items-center gap-3 text-sm"><span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${index < loadingStepIndex ? "bg-success-action text-on-action" : index === loadingStepIndex ? "bg-action text-on-action" : "border border-line text-fg-muted"}`}>{index < loadingStepIndex ? "✓" : index + 1}</span><span className={index <= loadingStepIndex ? "text-fg" : "text-fg-muted"}>{step}</span></div>)}</div>
           </div>
           <button
             type="button"
             onClick={handleCancelProcessing}
-            className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-red-700 bg-red-50 border border-red-200 hover:bg-red-100 transition-all rounded-none cursor-pointer"
+            className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-danger-fg bg-danger-surface border border-danger-border hover:bg-danger-surface transition-all rounded-none cursor-pointer"
           >
             Cancel Processing
           </button>
@@ -1190,38 +1213,38 @@ export default function Home() {
         {/* Scrollable View Content (Maximized full width without big margin borders) */}
         <main className={`flex-1 min-h-0 ${isMeetingWorkspace ? "h-full overflow-hidden flex flex-col p-0" : currentView === "minutes" ? "overflow-y-auto p-0" : "overflow-y-auto px-4 py-5 md:px-8"}`}>
           {governanceStatus === "loading" ? (
-            <div role="status" className="flex min-h-[400px] items-center justify-center p-8 text-sm text-slate-600">
-              <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin text-[#C9AB4C]" />
+            <div role="status" className="flex min-h-[400px] items-center justify-center p-8 text-sm text-fg-secondary">
+              <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin text-link" />
               Checking page access…
             </div>
           ) : governanceStatus === "error" ? (
             <div className="flex min-h-[400px] items-center justify-center p-8">
-              <div className="max-w-md border border-slate-200 bg-[#FFFCFB] p-8 text-center shadow-sm">
-                <h2 className="text-lg font-semibold text-slate-800">Page access is unavailable</h2>
-                <p className="mt-2 text-xs text-slate-600">We couldn’t confirm your access. Try loading the page access settings again.</p>
-                <button type="button" onClick={() => window.dispatchEvent(new Event("echo-config-updated"))} className="mt-5 border border-[#003366] bg-[#003366] px-4 py-2 text-xs font-semibold text-white hover:bg-[#002244] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C9AB4C]">
+              <div className="max-w-md border border-line bg-surface-panel p-8 text-center shadow-sm">
+                <h2 className="text-lg font-semibold text-fg">Page access is unavailable</h2>
+                <p className="mt-2 text-xs text-fg-secondary">We couldn’t confirm your access. Try loading the page access settings again.</p>
+                <button type="button" onClick={() => window.dispatchEvent(new Event("echo-config-updated"))} className="mt-5 border border-link bg-action px-4 py-2 text-xs font-semibold text-on-action hover:bg-action-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
                   Try again
                 </button>
               </div>
             </div>
           ) : !isPageAllowed(currentView) ? (
             <div className="flex-1 flex items-center justify-center p-8 min-h-[400px]">
-              <div className="max-w-md w-full bg-[#FFFCFB] border border-slate-200 p-8 text-center shadow-sm">
-                <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto mb-4 text-amber-600">
+              <div className="max-w-md w-full bg-surface-panel border border-line p-8 text-center shadow-sm">
+                <div className="w-12 h-12 rounded-full bg-warning-surface border border-warning-border flex items-center justify-center mx-auto mb-4 text-warning-fg">
                   <Lock className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-bold text-slate-800">Access Restricted</h2>
-                <p className="text-xs text-slate-600 mt-2">
+                <h2 className="text-xl font-bold text-fg">Access Restricted</h2>
+                <p className="text-xs text-fg-secondary mt-2">
                   Your account ({authUser?.email || "current user"}) does not have permission to access the <strong>{currentView.toUpperCase()}</strong> page.
                 </p>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] text-fg-muted mt-1">
                   Please contact your administrator to request access.
                 </p>
                 {allowedPages.length > 0 && (
                   <button
                     type="button"
                     onClick={() => handleSelectView(allowedPages[0])}
-                    className="mt-6 px-4 py-2 bg-[#003366] text-white text-xs font-bold hover:bg-[#002244] transition-colors cursor-pointer"
+                    className="mt-6 px-4 py-2 bg-action text-on-action text-xs font-bold hover:bg-action-hover transition-colors cursor-pointer"
                   >
                     Go to {allowedPages[0].toUpperCase()}
                   </button>
@@ -1326,11 +1349,11 @@ export default function Home() {
 
             {/* VIEW 3: MINUTES GENERATOR */}
             {currentView === "minutes" && (
-              <div ref={notetakerRef} className={`relative flex ${isMeetingWorkspace ? "h-full min-h-0 overflow-hidden" : "min-h-full"} flex-col bg-[#F7F9FC] font-sans text-gray-800`}>
-                {!isMeetingWorkspace && <div className="flex flex-col justify-between gap-4 border-b border-slate-200 bg-[#FFFCFB] px-5 py-3 sm:flex-row sm:items-center md:px-7 shrink-0">
+              <div ref={notetakerRef} className={`relative flex ${isMeetingWorkspace ? "h-full min-h-0 overflow-hidden" : "min-h-full"} flex-col bg-surface-raised font-sans text-fg`}>
+                {!isMeetingWorkspace && <div className="flex flex-col justify-between gap-4 border-b border-line bg-surface-panel px-5 py-3 sm:flex-row sm:items-center md:px-7 shrink-0">
                   <div>
-                    <h1 className="text-2xl font-serif font-bold text-[#003366] italic">Notetaker Workspace</h1>
-                    <p className="text-xs font-bold tracking-wider text-gray-400 uppercase mt-0.5">
+                    <h1 className="text-2xl font-serif font-bold text-fg italic">Notetaker Workspace</h1>
+                    <p className="text-xs font-bold tracking-wider text-fg-muted uppercase mt-0.5">
                       Turn recordings, audio, documents, or text into structured meeting minutes.
                     </p>
                   </div>
@@ -1350,10 +1373,10 @@ export default function Home() {
                             document.body.removeChild(a);
                           }, 1000);
                         }}
-                        className="btn-outline !px-3 !py-2 !text-[10px] flex items-center gap-1.5 border-emerald-600 text-emerald-800 hover:bg-emerald-50 cursor-pointer shadow-2xs font-semibold"
+                        className="btn-outline !px-3 !py-2 !text-[10px] flex items-center gap-1.5 border-success-border text-success-fg hover:bg-success-surface cursor-pointer shadow-2xs font-semibold"
                         title="Download the recorded meeting video file"
                       >
-                        <Download size={12} className="text-emerald-700" />
+                        <Download size={12} className="text-success-fg" />
                         <span>Download Video</span>
                       </button>
                     )}
@@ -1383,10 +1406,10 @@ export default function Home() {
         {stage === "Input" && (
           <div className={`w-full ${sourceTab === "source" ? "grid grid-cols-1 lg:grid-cols-2 gap-4 items-start min-h-full" : "h-full flex flex-col flex-1 min-h-0"}`}>
             
-            {/* Left Panel: Meeting Source (Uniform bg-[#FFFCFB] rounded-none card) */}
-            <div className={`flex min-h-0 flex-col ${sourceTab === "record" ? "w-full h-full flex-1 overflow-hidden" : "bg-[#FFFCFB] border border-gray-200/90 p-4 shadow-2xs"}`}>
-              {sourceTab === "source" && <div className="flex justify-between items-center pb-2.5 mb-3 border-b border-gray-100">
-                <span className="font-serif font-bold text-base text-[#003366] italic">Upload or paste existing material</span>
+            {/* Left Panel: Meeting Source (Uniform bg-surface-panel rounded-none card) */}
+            <div className={`flex min-h-0 flex-col ${sourceTab === "record" ? "w-full h-full flex-1 overflow-hidden" : "bg-surface-panel border border-line p-4 shadow-2xs"}`}>
+              {sourceTab === "source" && <div className="flex justify-between items-center pb-2.5 mb-3 border-b border-line">
+                <span className="font-serif font-bold text-base text-fg italic">Upload or paste existing material</span>
               </div>}
               
               <div className={`flex flex-col flex-1 ${sourceTab === "record" ? "h-full min-h-0" : ""}`}>
@@ -1402,10 +1425,10 @@ export default function Home() {
                       onDrop={handleDrop}
                       className={`relative border border-dashed p-4 transition-all flex flex-col items-center justify-center text-center cursor-pointer rounded-none ${
                         isDragging 
-                          ? "border-[#003366] bg-[#eef1f6] shadow-xs" 
+                          ? "border-link bg-surface-selected shadow-xs"
                           : selectedFile
-                            ? "border-green-600/40 bg-green-50/20"
-                            : "border-gray-300 bg-[#FFFCFB] hover:border-[#003366]/50 hover:bg-[#FFFCFB]"
+                            ? "border-success-border bg-success-surface"
+                            : "border-line bg-surface-panel hover:border-link hover:bg-surface-hover"
                       }`}
                     >
                       <input 
@@ -1418,32 +1441,32 @@ export default function Home() {
 
                       {!selectedFile ? (
                         <label htmlFor="unified-file-upload" className="cursor-pointer flex flex-col items-center w-full py-1">
-                          <div className="w-9 h-9 rounded-none bg-[#003366]/5 flex items-center justify-center mb-2">
+                          <div className="w-9 h-9 rounded-none bg-info-surface flex items-center justify-center mb-2">
                             {isDragging ? (
-                              <ArrowDownCircle size={22} className="text-[#003366] animate-bounce" />
+                              <ArrowDownCircle size={22} className="text-fg animate-bounce" />
                             ) : (
-                              <Upload size={18} className="text-[#003366]" />
+                              <Upload size={18} className="text-fg" />
                             )}
                           </div>
-                          <p className="text-xs font-bold text-[#003366] uppercase tracking-wide mb-0.5">
+                          <p className="text-xs font-bold text-fg uppercase tracking-wide mb-0.5">
                             {isDragging ? "Drop your file here to process immediately" : "Drag and drop your meeting file here"}
                           </p>
-                          <p className="text-[11px] text-gray-500 mb-2">
-                            or <span className="text-[#003366] font-bold underline">Browse files</span> to automatically transcribe & generate
+                          <p className="text-[11px] text-fg-muted mb-2">
+                            or <span className="text-fg font-bold underline">Browse files</span> to automatically transcribe & generate
                           </p>
-                          <div className="flex flex-wrap justify-center gap-1.5 text-[9px] text-gray-400 uppercase font-semibold">
-                            <span className="bg-[#FFFCFB] border border-gray-200 px-1.5 py-0.5">Audio: MP3, WAV, M4A</span>
-                            <span className="bg-[#FFFCFB] border border-gray-200 px-1.5 py-0.5">Documents: PDF, Word (.docx)</span>
-                            <span className="bg-[#FFFCFB] border border-gray-200 px-1.5 py-0.5">Transcripts: TXT, SRT, VTT</span>
+                          <div className="flex flex-wrap justify-center gap-1.5 text-[9px] text-fg-muted uppercase font-semibold">
+                            <span className="bg-surface-panel border border-line px-1.5 py-0.5">Audio: MP3, WAV, M4A</span>
+                            <span className="bg-surface-panel border border-line px-1.5 py-0.5">Documents: PDF, Word (.docx)</span>
+                            <span className="bg-surface-panel border border-line px-1.5 py-0.5">Transcripts: TXT, SRT, VTT</span>
                           </div>
                         </label>
                       ) : (
-                        <div className="w-full flex items-center justify-between bg-[#FFFCFB] border border-gray-200 p-2.5 shadow-2xs">
-                          <div className="flex items-center gap-2.5 text-xs font-semibold text-[#003366] truncate text-left">
-                            <FileCheck size={18} className="text-green-600 shrink-0" />
+                        <div className="w-full flex items-center justify-between bg-surface-panel border border-line p-2.5 shadow-2xs">
+                          <div className="flex items-center gap-2.5 text-xs font-semibold text-fg truncate text-left">
+                            <FileCheck size={18} className="text-success-fg shrink-0" />
                             <div className="truncate">
-                              <p className="truncate font-bold text-xs text-[#003366]">{selectedFile.name}</p>
-                              <p className="text-gray-400 text-[10px]">
+                              <p className="truncate font-bold text-xs text-fg">{selectedFile.name}</p>
+                              <p className="text-fg-muted text-[10px]">
                                 {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Auto-processed
                               </p>
                             </div>
@@ -1465,13 +1488,13 @@ export default function Home() {
                                     document.body.removeChild(a);
                                   }, 1000);
                                 }}
-                                className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer px-1.5 py-0.5 flex items-center gap-1"
+                                className="text-[11px] font-bold text-success-fg hover:underline cursor-pointer px-1.5 py-0.5 flex items-center gap-1"
                                 title="Download video file"
                               >
                                 <Download size={12} /> Download
                               </button>
                             )}
-                            <label htmlFor="unified-file-upload" className="text-[11px] font-bold text-[#003366] hover:underline cursor-pointer px-1.5 py-0.5">
+                            <label htmlFor="unified-file-upload" className="text-[11px] font-bold text-fg hover:underline cursor-pointer px-1.5 py-0.5">
                               Replace
                             </label>
                             <button 
@@ -1480,7 +1503,7 @@ export default function Home() {
                                 e.stopPropagation();
                                 setSelectedFile(null);
                               }}
-                              className="text-gray-400 hover:text-red-500 p-1 hover:bg-[#FFFCFB] rounded-none cursor-pointer"
+                              className="text-fg-muted hover:text-danger-fg p-1 hover:bg-surface-hover rounded-none cursor-pointer"
                               title="Remove file"
                             >
                               <X size={14} />
@@ -1492,24 +1515,24 @@ export default function Home() {
 
                     {/* OR Divider */}
                     <div className="relative flex items-center justify-center my-0.5">
-                      <div className="border-t border-gray-200 w-full"></div>
-                      <span className="bg-[#FFFCFB] px-2.5 text-[9px] uppercase font-bold tracking-widest text-gray-400 shrink-0">
+                      <div className="border-t border-line w-full"></div>
+                      <span className="bg-surface-panel px-2.5 text-[9px] uppercase font-bold tracking-widest text-fg-muted shrink-0">
                         OR PASTE TRANSCRIPT / TEXT
                       </span>
-                      <div className="border-t border-gray-200 w-full"></div>
+                      <div className="border-t border-line w-full"></div>
                     </div>
 
                     {/* Direct Text Paste Area */}
-                    <div className="border border-gray-200 bg-[#FFFCFB] p-3">
+                    <div className="border border-line bg-surface-panel p-3">
                       <div className="flex justify-between items-center mb-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
                           Paste Meeting Text / Notes / Transcript
                         </label>
                         {pastedText && (
                           <button 
                             type="button" 
                             onClick={() => setPastedText("")}
-                            className="text-[10px] text-gray-400 hover:text-red-500 cursor-pointer"
+                            className="text-[10px] text-fg-muted hover:text-danger-fg cursor-pointer"
                           >
                             Clear Text
                           </button>
@@ -1520,7 +1543,7 @@ export default function Home() {
                         value={pastedText}
                         onChange={(e) => setPastedText(e.target.value)}
                         placeholder="Paste raw transcript, meeting notes, chat logs, or key bullet points directly here..."
-                        className="w-full border border-gray-200 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:outline-none focus:border-[#C9AB4C] transition-colors leading-relaxed rounded-none"
+                        className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:outline-none focus:border-focus transition-colors leading-relaxed rounded-none"
                       />
                       {pastedText.trim().length > 0 && (
                         <button
@@ -1553,8 +1576,8 @@ export default function Home() {
                       <div className="space-y-2 p-2.5">
                           {/* Row 1: Meeting Name */}
                           <div>
-                            <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
-                              Meeting Name <span className="text-red-600">*</span>
+                            <label className="block text-[9px] font-bold uppercase tracking-wider text-fg-muted mb-0.5">
+                              Meeting Name <span className="text-danger-fg">*</span>
                             </label>
                             <input
                               type="text"
@@ -1564,31 +1587,31 @@ export default function Home() {
                                 setMetadata({ ...metadata, client_name: event.target.value });
                               }}
                               placeholder="Suggested from transcript after processing"
-                              className="w-full border border-slate-200 bg-[#FFFCFB] px-2 py-1 text-xs text-slate-800 outline-none focus:border-[#C9A84C] transition-colors"
+                              className="w-full border border-line bg-surface-panel px-2 py-1 text-xs text-fg outline-none focus:border-focus transition-colors"
                             />
                           </div>
 
                           {/* Row 2: Date & Venue side-by-side */}
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                              <label className="block text-[9px] font-bold uppercase tracking-wider text-fg-muted mb-0.5">
                                 Meeting Date
                               </label>
                               <input
                                 type="date"
                                 value={metadata.date || ""}
                                 onChange={(event) => setMetadata({ ...metadata, date: event.target.value })}
-                                className="w-full border border-slate-200 bg-[#FFFCFB] px-2 py-1 text-xs text-slate-800 outline-none focus:border-[#C9A84C] transition-colors"
+                                className="w-full border border-line bg-surface-panel px-2 py-1 text-xs text-fg outline-none focus:border-focus transition-colors"
                               />
                             </div>
                             <div>
-                              <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                              <label className="block text-[9px] font-bold uppercase tracking-wider text-fg-muted mb-0.5">
                                 Location / Venue
                               </label>
                               <select
                                 value={metadata.location || VENUE_OPTIONS[0]}
                                 onChange={(event) => setMetadata({ ...metadata, location: event.target.value })}
-                                className="w-full border border-slate-200 bg-[#FFFCFB] px-2 py-1 text-xs text-slate-800 outline-none focus:border-[#C9A84C] transition-colors cursor-pointer"
+                                className="w-full border border-line bg-surface-panel px-2 py-1 text-xs text-fg outline-none focus:border-focus transition-colors cursor-pointer"
                               >
                                 {VENUE_OPTIONS.map((option) => (
                                   <option key={option} value={option}>{option}</option>
@@ -1602,13 +1625,13 @@ export default function Home() {
                               value={metadata.custom_location || ""}
                               onChange={(event) => setMetadata({ ...metadata, custom_location: event.target.value })}
                               placeholder="Enter venue or meeting link..."
-                              className="w-full border border-[#C9A84C] bg-[#FFFCFB] px-2 py-1 text-xs outline-none"
+                              className="w-full border border-warning-border bg-surface-panel px-2 py-1 text-xs outline-none"
                             />
                           )}
 
                           {/* Row 3: Meeting Type */}
                           <div>
-                            <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-0.5">
+                            <label className="block text-[9px] font-bold uppercase tracking-wider text-fg-muted mb-0.5">
                               Meeting Type
                             </label>
                             <div className="grid grid-cols-3 gap-1 w-full">
@@ -1621,8 +1644,8 @@ export default function Home() {
                                     onClick={() => setMetadata({ ...metadata, meeting_type: type })}
                                     className={`py-1 px-1.5 text-[11px] font-semibold text-center transition-all cursor-pointer ${
                                       isSelected
-                                        ? "bg-[#003366] text-white shadow-2xs"
-                                        : "bg-white border border-slate-200 text-slate-600 hover:text-[#003366] hover:border-slate-300"
+                                        ? "bg-action text-on-action shadow-2xs"
+                                        : "bg-surface-panel border border-line text-fg-secondary hover:text-fg hover:border-line"
                                     }`}
                                   >
                                     {type}
@@ -1633,40 +1656,40 @@ export default function Home() {
                           </div>
 
                           {/* Row 4: Time Start & Time End */}
-                          <div className="grid grid-cols-2 gap-2 bg-slate-50 border border-slate-200 p-1">
+                          <div className="grid grid-cols-2 gap-2 bg-surface-raised border border-line p-1">
                             <div>
                               <div className="flex items-center justify-between mb-0.5">
-                                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Start Time</label>
-                                <span className="text-[8px] text-slate-400 font-medium">Auto on record</span>
+                                <label className="text-[9px] font-bold uppercase tracking-wider text-fg-muted">Start Time</label>
+                                <span className="text-[8px] text-fg-muted font-medium">Auto on record</span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <input
                                   type="time"
                                   value={metadata.start_time || ""}
                                   onChange={(e) => setMetadata({ ...metadata, start_time: e.target.value })}
-                                  className="w-full min-w-0 border border-slate-200 bg-white px-1.5 py-0.5 text-xs font-mono font-bold text-[#003366] outline-none focus:border-[#C9A84C]"
+                                  className="w-full min-w-0 border border-line bg-surface-panel px-1.5 py-0.5 text-xs font-mono font-bold text-fg outline-none focus:border-focus"
                                 />
                                 {metadata.start_time && (
-                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="Start time captured" />
+                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-success-fg shrink-0" title="Start time captured" />
                                 )}
                               </div>
                             </div>
                             <div>
                               <div className="flex items-center justify-between mb-0.5">
-                                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">End Time</label>
-                                <span className="text-[8px] text-slate-400 font-medium">Auto on stop</span>
+                                <label className="text-[9px] font-bold uppercase tracking-wider text-fg-muted">End Time</label>
+                                <span className="text-[8px] text-fg-muted font-medium">Auto on stop</span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <input
                                   type="time"
                                   value={metadata.end_time || ""}
                                   onChange={(e) => setMetadata({ ...metadata, end_time: e.target.value })}
-                                  className="w-full min-w-0 border border-slate-200 bg-white px-1.5 py-0.5 text-xs font-mono font-bold text-[#003366] outline-none focus:border-[#C9A84C]"
+                                  className="w-full min-w-0 border border-line bg-surface-panel px-1.5 py-0.5 text-xs font-mono font-bold text-fg outline-none focus:border-focus"
                                 />
                                 {metadata.end_time ? (
-                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" title="End time captured" />
+                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-link shrink-0" title="End time captured" />
                                 ) : (
-                                  <span className="text-[9px] text-slate-400 italic shrink-0 whitespace-nowrap">On stop</span>
+                                  <span className="text-[9px] text-fg-muted italic shrink-0 whitespace-nowrap">On stop</span>
                                 )}
                               </div>
                             </div>
@@ -1674,15 +1697,15 @@ export default function Home() {
 
                           {/* Row 5: Team Attendees */}
                           <div>
-                            <label className="block text-[9px] font-bold uppercase tracking-wider text-[#003366] mb-0.5">
+                            <label className="block text-[9px] font-bold uppercase tracking-wider text-fg mb-0.5">
                               Team Attendees
                             </label>
                             {primeAttendees.length > 0 && (
                               <div className="flex flex-wrap gap-1 mb-1">
                                 {primeAttendees.map((name) => (
-                                  <span key={name} className="inline-flex items-center gap-1 bg-[#003366] text-[#c9ab4c] font-bold text-[10px] px-1.5 py-0.5 shadow-2xs">
+                                  <span key={name} className="inline-flex items-center gap-1 bg-action text-on-action font-bold text-[10px] px-1.5 py-0.5 shadow-2xs">
                                     {name}
-                                    <X size={10} onClick={() => removePrimeAttendee(name)} className="cursor-pointer text-white hover:text-red-300" />
+                                    <X size={10} onClick={() => removePrimeAttendee(name)} className="cursor-pointer text-on-action hover:text-danger-fg" />
                                   </span>
                                 ))}
                               </div>
@@ -1699,12 +1722,12 @@ export default function Home() {
                                     addPrimeAttendee();
                                   }
                                 }}
-                                className="flex-1 min-w-0 border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[#003366]"
+                                className="flex-1 min-w-0 border border-line bg-surface-panel px-2 py-1 text-xs outline-none focus:border-focus"
                               />
                               <button
                                 type="button"
                                 onClick={addPrimeAttendee}
-                                className="shrink-0 border border-[#003366] px-2.5 py-1 text-[11px] font-bold text-[#003366] hover:bg-[#003366] hover:text-white transition-colors cursor-pointer"
+                                className="shrink-0 border border-link px-2.5 py-1 text-[11px] font-bold text-fg hover:bg-action-hover hover:text-fg transition-colors cursor-pointer"
                               >
                                 ADD
                               </button>
@@ -1713,15 +1736,15 @@ export default function Home() {
 
                           {/* Row 6: External Attendees */}
                           <div>
-                            <label className="block text-[9px] font-bold uppercase tracking-wider text-[#C9A84C] mb-0.5">
+                            <label className="block text-[9px] font-bold uppercase tracking-wider text-link mb-0.5">
                               External Attendees
                             </label>
                             {externalAttendees.length > 0 && (
                               <div className="flex flex-wrap gap-1 mb-1">
                                 {externalAttendees.map((name) => (
-                                  <span key={name} className="inline-flex items-center gap-1 bg-[#003366] text-white font-bold text-[10px] px-1.5 py-0.5 shadow-2xs">
+                                  <span key={name} className="inline-flex items-center gap-1 bg-action text-on-action font-bold text-[10px] px-1.5 py-0.5 shadow-2xs">
                                     {name}
-                                    <X size={10} onClick={() => removeExternalAttendee(name)} className="cursor-pointer text-white hover:text-red-300" />
+                                    <X size={10} onClick={() => removeExternalAttendee(name)} className="cursor-pointer text-on-action hover:text-danger-fg" />
                                   </span>
                                 ))}
                               </div>
@@ -1738,12 +1761,12 @@ export default function Home() {
                                     addExternalAttendee();
                                   }
                                 }}
-                                className="flex-1 min-w-0 border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[#C9A84C]"
+                                className="flex-1 min-w-0 border border-line bg-surface-panel px-2 py-1 text-xs outline-none focus:border-focus"
                               />
                               <button
                                 type="button"
                                 onClick={addExternalAttendee}
-                                className="shrink-0 border border-[#003366] px-2.5 py-1 text-[11px] font-bold text-[#003366] hover:bg-[#003366] hover:text-white transition-colors cursor-pointer"
+                                className="shrink-0 border border-link px-2.5 py-1 text-[11px] font-bold text-fg hover:bg-action-hover hover:text-fg transition-colors cursor-pointer"
                               >
                                 ADD
                               </button>
@@ -1751,20 +1774,20 @@ export default function Home() {
                           </div>
 
                           {/* Collapsible Routing & Ownership */}
-                          <details className="group border border-slate-200 bg-slate-50/40">
-                            <summary className="cursor-pointer list-none px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-[#003366] flex items-center justify-between select-none hover:bg-slate-100/50 transition-colors">
+                          <details className="group border border-line bg-surface-raised">
+                            <summary className="cursor-pointer list-none px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-fg flex items-center justify-between select-none hover:bg-surface-hover transition-colors">
                               <span>Routing and ownership</span>
-                              <span className="text-[#C9A84C] group-open:rotate-45 transition-transform font-bold text-xs">+</span>
+                              <span className="text-link group-open:rotate-45 transition-transform font-bold text-xs">+</span>
                             </summary>
-                            <div className="space-y-1.5 border-t border-slate-200 bg-white p-2">
+                            <div className="space-y-1.5 border-t border-line bg-surface-panel p-2">
                               <div className="grid grid-cols-2 gap-1.5">
-                                <input aria-label="Department" value={metadata.department || ""} onChange={(event) => setMetadata({ ...metadata, department: event.target.value })} placeholder="Department (e.g. CRD)" className="w-full min-w-0 border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />
-                                {!desktopMode && <input aria-label="ClickUp workspace" value={metadata.workspace || ""} onChange={(event) => setMetadata({ ...metadata, workspace: event.target.value })} placeholder="ClickUp workspace" className="w-full min-w-0 border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />}
+                                <input aria-label="Department" value={metadata.department || ""} onChange={(event) => setMetadata({ ...metadata, department: event.target.value })} placeholder="Department (e.g. CRD)" className="w-full min-w-0 border border-line px-2 py-1 text-xs outline-none focus:border-focus" />
+                                {!desktopMode && <input aria-label="ClickUp workspace" value={metadata.workspace || ""} onChange={(event) => setMetadata({ ...metadata, workspace: event.target.value })} placeholder="ClickUp workspace" className="w-full min-w-0 border border-line px-2 py-1 text-xs outline-none focus:border-focus" />}
                               </div>
-                              {!desktopMode && <input aria-label="ClickUp space ID" value={metadata.space_id || ""} onChange={(event) => setMetadata({ ...metadata, space_id: event.target.value })} placeholder="ClickUp Space ID" className="w-full border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />}
+                              {!desktopMode && <input aria-label="ClickUp space ID" value={metadata.space_id || ""} onChange={(event) => setMetadata({ ...metadata, space_id: event.target.value })} placeholder="ClickUp Space ID" className="w-full border border-line px-2 py-1 text-xs outline-none focus:border-focus" />}
                               <div className="grid grid-cols-2 gap-1.5">
-                                <input aria-label="Prepared by" value={metadata.prepared_by || "Dave Policarpio"} onChange={(event) => setMetadata({ ...metadata, prepared_by: event.target.value })} placeholder="Prepared by" className="w-full min-w-0 border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />
-                                <input aria-label="Confirmed by" value={metadata.confirmed_by || "Client Rep or Lead"} onChange={(event) => setMetadata({ ...metadata, confirmed_by: event.target.value })} placeholder="Confirmed by" className="w-full min-w-0 border border-slate-200 px-2 py-1 text-xs outline-none focus:border-[#C9A84C]" />
+                                <input aria-label="Prepared by" value={metadata.prepared_by || "Dave Policarpio"} onChange={(event) => setMetadata({ ...metadata, prepared_by: event.target.value })} placeholder="Prepared by" className="w-full min-w-0 border border-line px-2 py-1 text-xs outline-none focus:border-focus" />
+                                <input aria-label="Confirmed by" value={metadata.confirmed_by || "Client Rep or Lead"} onChange={(event) => setMetadata({ ...metadata, confirmed_by: event.target.value })} placeholder="Confirmed by" className="w-full min-w-0 border border-line px-2 py-1 text-xs outline-none focus:border-focus" />
                               </div>
                             </div>
                           </details>
@@ -1784,9 +1807,9 @@ export default function Home() {
               </div>
             {sourceTab === "source" && (<>
             {/* Meeting Information for uploaded material. Live meeting information sits inside the recording status column. */}
-            <div className="bg-[#FFFCFB] border border-gray-200/90 rounded-none p-4 shadow-2xs flex flex-col">
-              <div className="flex justify-between items-center pb-2.5 mb-3 border-b border-gray-100">
-                <span className="font-serif font-bold text-base text-[#003366] italic">
+            <div className="bg-surface-panel border border-line rounded-none p-4 shadow-2xs flex flex-col">
+              <div className="flex justify-between items-center pb-2.5 mb-3 border-b border-line">
+                <span className="font-serif font-bold text-base text-fg italic">
                   2. Meeting Information
                 </span>
                 {transcript && (
@@ -1801,30 +1824,30 @@ export default function Home() {
                 {/* Date and Times */}
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Date</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">Date</label>
                     <input 
                       type="date" 
                       value={metadata.date || ""}
                       onChange={(e) => setMetadata({ ...metadata, date: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 focus:bg-[#FFFCFB] focus:border-[#C9AB4C] outline-none transition-colors rounded-none" 
+                      className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line focus:bg-surface-panel focus:border-focus outline-none transition-colors rounded-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Start Time</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">Start Time</label>
                     <input 
                       type="time" 
                       value={metadata.start_time || "09:00"}
                       onChange={(e) => setMetadata({ ...metadata, start_time: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 focus:bg-[#FFFCFB] focus:border-[#C9AB4C] outline-none transition-colors rounded-none" 
+                      className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line focus:bg-surface-panel focus:border-focus outline-none transition-colors rounded-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">End Time</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">End Time</label>
                     <input 
                       type="time" 
                       value={metadata.end_time || "10:00"}
                       onChange={(e) => setMetadata({ ...metadata, end_time: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 focus:bg-[#FFFCFB] focus:border-[#C9AB4C] outline-none transition-colors rounded-none" 
+                      className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line focus:bg-surface-panel focus:border-focus outline-none transition-colors rounded-none"
                     />
                   </div>
                 </div>
@@ -1832,11 +1855,11 @@ export default function Home() {
                 {/* Meeting Type & Venue */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Meeting Type</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">Meeting Type</label>
                     <select 
                       value={metadata.meeting_type || "Internal"} 
                       onChange={(e) => setMetadata({ ...metadata, meeting_type: e.target.value })} 
-                      className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 focus:bg-[#FFFCFB] focus:border-[#C9AB4C] outline-none transition-colors rounded-none cursor-pointer"
+                      className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line focus:bg-surface-panel focus:border-focus outline-none transition-colors rounded-none cursor-pointer"
                     >
                       <option value="Internal">Internal</option>
                       <option value="External">External</option>
@@ -1847,11 +1870,11 @@ export default function Home() {
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Venue / Location</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">Venue / Location</label>
                     <select 
                       value={metadata.location || VENUE_OPTIONS[0]} 
                       onChange={(e) => setMetadata({ ...metadata, location: e.target.value })} 
-                      className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 focus:bg-[#FFFCFB] focus:border-[#C9AB4C] outline-none transition-colors rounded-none cursor-pointer"
+                      className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line focus:bg-surface-panel focus:border-focus outline-none transition-colors rounded-none cursor-pointer"
                     >
                       {VENUE_OPTIONS.map((opt) => (
                         <option key={opt} value={opt}>{opt}</option>
@@ -1866,7 +1889,7 @@ export default function Home() {
                           placeholder="Enter custom venue name or address..."
                           value={metadata.custom_location || ""}
                           onChange={(e) => setMetadata({ ...metadata, custom_location: e.target.value })}
-                          className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-[#c9ab4c] outline-none transition-colors rounded-none"
+                          className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-focus outline-none transition-colors rounded-none"
                         />
                       </div>
                     )}
@@ -1875,7 +1898,7 @@ export default function Home() {
 
                 {/* Meeting name */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Meeting Name</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">Meeting Name</label>
                   <input 
                     type="text" 
                     placeholder="Suggested from transcript after processing"
@@ -1884,14 +1907,14 @@ export default function Home() {
                       autoMeetingNameRef.current = null;
                       setMetadata({ ...metadata, client_name: e.target.value });
                     }}
-                    className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 focus:bg-[#FFFCFB] focus:border-[#C9AB4C] outline-none transition-colors rounded-none" 
+                    className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line focus:bg-surface-panel focus:border-focus outline-none transition-colors rounded-none"
                   />
                 </div>
 
                 <div className={`grid grid-cols-1 ${desktopMode ? "md:grid-cols-2" : "md:grid-cols-3"} gap-3 mt-3`}>
-                  {!desktopMode && <div><label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">ClickUp Workspace</label><input value={metadata.workspace || ""} onChange={(e) => setMetadata({ ...metadata, workspace: e.target.value })} placeholder="Workspace name" className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200" /></div>}
-                  <div><label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Department</label><input value={metadata.department || ""} onChange={(e) => setMetadata({ ...metadata, department: e.target.value })} placeholder="e.g. CRD or IT" className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200" /></div>
-                  {!desktopMode && <div><label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">ClickUp Space ID</label><input value={metadata.space_id || ""} onChange={(e) => setMetadata({ ...metadata, space_id: e.target.value })} placeholder="Required for archive" className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200" /></div>}
+                  {!desktopMode && <div><label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">ClickUp Workspace</label><input value={metadata.workspace || ""} onChange={(e) => setMetadata({ ...metadata, workspace: e.target.value })} placeholder="Workspace name" className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line" /></div>}
+                  <div><label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">Department</label><input value={metadata.department || ""} onChange={(e) => setMetadata({ ...metadata, department: e.target.value })} placeholder="e.g. CRD or IT" className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line" /></div>
+                  {!desktopMode && <div><label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">ClickUp Space ID</label><input value={metadata.space_id || ""} onChange={(e) => setMetadata({ ...metadata, space_id: e.target.value })} placeholder="Required for archive" className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line" /></div>}
                 </div>
 
                 {/* Team Attendees & External Attendees */}
@@ -1899,17 +1922,17 @@ export default function Home() {
                   
                   {/* Team Attendees */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       Team Attendees
                     </label>
-                    <div className="flex flex-wrap gap-1.5 p-2 bg-[#FFFCFB] border border-gray-200 min-h-[36px] items-center">
+                    <div className="flex flex-wrap gap-1.5 p-2 bg-surface-panel border border-line min-h-[36px] items-center">
                       {primeAttendees.map((name) => (
-                        <span key={name} className="bg-[#003366] text-[#c9ab4c] font-bold text-[11px] tracking-wider px-2 py-0.5 rounded-none flex items-center gap-1 shadow-2xs">
+                        <span key={name} className="bg-action text-on-action font-bold text-[11px] tracking-wider px-2 py-0.5 rounded-none flex items-center gap-1 shadow-2xs">
                           {name}
                           <X 
                             size={11} 
                             onClick={() => removePrimeAttendee(name)} 
-                            className="cursor-pointer text-white hover:text-red-300" 
+                            className="cursor-pointer text-on-action hover:text-danger-fg"
                           />
                         </span>
                       ))}
@@ -1925,9 +1948,9 @@ export default function Home() {
                               addPrimeAttendee();
                             }
                           }}
-                          className="text-[11px] py-0.5 px-1.5 border border-dashed border-gray-300 focus:outline-none focus:border-[#003366] w-20 bg-[#FFFCFB]"
+                          className="text-[11px] py-0.5 px-1.5 border border-dashed border-line focus:outline-none focus:border-focus w-20 bg-surface-panel"
                         />
-                        <button type="button" onClick={addPrimeAttendee} className="text-xs text-[#003366] hover:bg-gray-200 p-0.5">
+                        <button type="button" onClick={addPrimeAttendee} className="text-xs text-fg hover:bg-surface-hover p-0.5">
                           <Plus size={13} />
                         </button>
                       </div>
@@ -1936,17 +1959,17 @@ export default function Home() {
 
                   {/* External Attendees */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       External Attendees
                     </label>
-                    <div className="flex flex-wrap gap-1.5 p-2 bg-[#FFFCFB] border border-gray-200 min-h-[36px] items-center">
+                    <div className="flex flex-wrap gap-1.5 p-2 bg-surface-panel border border-line min-h-[36px] items-center">
                       {externalAttendees.map((name) => (
-                        <span key={name} className="bg-[#003366] text-white font-bold text-[11px] tracking-wider px-2 py-0.5 rounded-none flex items-center gap-1 shadow-2xs">
+                        <span key={name} className="bg-action text-on-action font-bold text-[11px] tracking-wider px-2 py-0.5 rounded-none flex items-center gap-1 shadow-2xs">
                           {name}
                           <X 
                             size={11} 
                             onClick={() => removeExternalAttendee(name)} 
-                            className="cursor-pointer text-white hover:text-red-300" 
+                            className="cursor-pointer text-on-action hover:text-danger-fg"
                           />
                         </span>
                       ))}
@@ -1962,9 +1985,9 @@ export default function Home() {
                               addExternalAttendee();
                             }
                           }}
-                          className="text-[11px] py-0.5 px-1.5 border border-dashed border-gray-300 focus:outline-none focus:border-[#003366] w-20 bg-[#FFFCFB]"
+                          className="text-[11px] py-0.5 px-1.5 border border-dashed border-line focus:outline-none focus:border-focus w-20 bg-surface-panel"
                         />
-                        <button type="button" onClick={addExternalAttendee} className="text-xs text-[#003366] hover:bg-gray-200 p-0.5">
+                        <button type="button" onClick={addExternalAttendee} className="text-xs text-fg hover:bg-surface-hover p-0.5">
                           <Plus size={13} />
                         </button>
                       </div>
@@ -1976,21 +1999,21 @@ export default function Home() {
                 {/* Prepared By & Confirmed By */}
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Prepared By</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">Prepared By</label>
                     <input 
                       type="text" 
                       value={metadata.prepared_by || "Dave Policarpio"}
                       onChange={(e) => setMetadata({ ...metadata, prepared_by: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 focus:bg-[#FFFCFB] focus:border-[#C9AB4C] outline-none transition-colors rounded-none" 
+                      className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line focus:bg-surface-panel focus:border-focus outline-none transition-colors rounded-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Confirmed By</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">Confirmed By</label>
                     <input 
                       type="text" 
                       value={metadata.confirmed_by || "Client Rep or Lead"}
                       onChange={(e) => setMetadata({ ...metadata, confirmed_by: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 focus:bg-[#FFFCFB] focus:border-[#C9AB4C] outline-none transition-colors rounded-none" 
+                      className="w-full px-2.5 py-1.5 text-xs bg-surface-panel border border-line focus:bg-surface-panel focus:border-focus outline-none transition-colors rounded-none"
                     />
                   </div>
                 </div>
@@ -2020,11 +2043,11 @@ export default function Home() {
               />
             ) : reviewTab === "transcript" ? (
               /* TRANSCRIPT TAB */
-              <div className="border border-gray-200 bg-[#FFFCFB] p-5 shadow-2xs rounded-none space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="border border-line bg-surface-panel p-5 shadow-2xs rounded-none space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-line">
                   <div>
-                    <h3 className="text-lg font-serif text-[#003366] italic">Full Raw Transcript</h3>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
+                    <h3 className="text-lg font-serif text-fg italic">Full Raw Transcript</h3>
+                    <p className="text-[11px] text-fg-muted mt-0.5">
                       Spoken dialogue and speaker turns captured during the recording session.
                     </p>
                   </div>
@@ -2038,7 +2061,7 @@ export default function Home() {
                       }}
                       className="btn-outline !py-1 !px-2.5 !text-[11px] rounded-none flex items-center gap-1.5 cursor-pointer"
                     >
-                      {copiedTranscript ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                      {copiedTranscript ? <Check size={12} className="text-success-fg" /> : <Copy size={12} />}
                       <span>{copiedTranscript ? "Copied" : "Copy Transcript"}</span>
                     </button>
                   )}
@@ -2046,26 +2069,26 @@ export default function Home() {
                 {transcript?.trim() ? (
                   <AutoResizeTextarea
                     rows={12}
-                    className="w-full text-xs font-mono text-gray-700 bg-[#FFFCFB] border border-gray-200 rounded-none p-3.5 focus:outline-none focus:border-[#C9AB4C] leading-relaxed min-h-[300px]"
+                    className="w-full text-xs font-mono text-fg bg-surface-panel border border-line rounded-none p-3.5 focus:outline-none focus:border-focus leading-relaxed min-h-[300px]"
                     value={transcript}
                     onChange={(e) => setTranscript(e.target.value)}
                     placeholder="Full raw transcript text..."
                   />
                 ) : (
-                  <div className="border border-dashed border-slate-300 bg-white/60 p-8 text-center">
-                    <FileText size={22} className="mx-auto text-[#003366]" />
-                    <p className="mt-2 text-sm font-medium text-slate-600">No transcript available</p>
-                    <p className="mt-1 text-xs text-slate-400">Audio recordings or uploaded transcripts appear here.</p>
+                  <div className="border border-dashed border-line bg-surface-panel p-8 text-center">
+                    <FileText size={22} className="mx-auto text-fg" />
+                    <p className="mt-2 text-sm font-medium text-fg-secondary">No transcript available</p>
+                    <p className="mt-1 text-xs text-fg-muted">Audio recordings or uploaded transcripts appear here.</p>
                   </div>
                 )}
               </div>
             ) : reviewTab === "notes" ? (
               /* MEETING NOTES TAB */
-              <div className="border border-gray-200 bg-[#FFFCFB] p-5 shadow-2xs rounded-none space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="border border-line bg-surface-panel p-5 shadow-2xs rounded-none space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-line">
                   <div>
-                    <h3 className="text-lg font-serif text-[#003366] italic">Meeting Notes</h3>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
+                    <h3 className="text-lg font-serif text-fg italic">Meeting Notes</h3>
+                    <p className="text-[11px] text-fg-muted mt-0.5">
                       Notes captured in the workspace during the meeting session.
                     </p>
                   </div>
@@ -2077,10 +2100,10 @@ export default function Home() {
                   const lines = rawNotes.split("\n").map((l) => l.trim()).filter(Boolean);
                   if (lines.length === 0) {
                     return (
-                      <div className="border border-dashed border-slate-300 bg-white/60 p-8 text-center">
-                        <MessageCircle size={22} className="mx-auto text-[#003366]" />
-                        <p className="mt-2 text-sm font-medium text-slate-600">No meeting notes recorded</p>
-                        <p className="mt-1 text-xs text-slate-400">Notes captured in the workspace stay linked to the meeting time.</p>
+                      <div className="border border-dashed border-line bg-surface-panel p-8 text-center">
+                        <MessageCircle size={22} className="mx-auto text-fg" />
+                        <p className="mt-2 text-sm font-medium text-fg-secondary">No meeting notes recorded</p>
+                        <p className="mt-1 text-xs text-fg-muted">Notes captured in the workspace stay linked to the meeting time.</p>
                       </div>
                     );
                   }
@@ -2090,8 +2113,8 @@ export default function Home() {
                         const match = line.match(/^(\[\d{2}:\d{2}(?::\d{2})?\])\s*(.*)$/);
                         const noteText = match ? match[2] : line;
                         return (
-                          <div key={idx} className="flex items-start gap-2.5 border border-slate-200 bg-white p-3 shadow-2xs">
-                            <span className="text-xs text-slate-700 flex-1 leading-relaxed break-words">
+                          <div key={idx} className="flex items-start gap-2.5 border border-line bg-surface-panel p-3 shadow-2xs">
+                            <span className="text-xs text-fg flex-1 leading-relaxed break-words">
                               {noteText}
                             </span>
                           </div>
@@ -2102,8 +2125,8 @@ export default function Home() {
                 })()}
               </div>
             ) : reviewTab === "actions" ? (
-              <div className="border border-gray-200 bg-[#FFFCFB] p-5 shadow-2xs rounded-none space-y-3">
-                <h3 className="text-lg font-serif text-[#003366] italic">Action Items</h3>
+              <div className="border border-line bg-surface-panel p-5 shadow-2xs rounded-none space-y-3">
+                <h3 className="text-lg font-serif text-fg italic">Action Items</h3>
                 <MeetingActionItemsTable
                   items={actionItems.map((action) => {
                     const source = momItems.find((item) => String(item.id) === String(action.discussion_point_id));
@@ -2129,26 +2152,26 @@ export default function Home() {
             ) : (
               <>
             {/* EXECUTIVE MINUTES MATRIX */}
-            <div className="border border-[#003366]/20 bg-[#FFFCFB] shadow-2xs overflow-hidden rounded-none">
+            <div className="border border-link bg-surface-panel shadow-2xs overflow-hidden rounded-none">
               
               {/* Header */}
-              <div className="bg-[#003366] text-white px-5 py-3.5 flex justify-between items-center">
+              <div className="bg-action text-on-action px-5 py-3.5 flex justify-between items-center">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-2 h-2 bg-[#c9ab4c]"></div>
+                  <div className="w-2 h-2 bg-warning-surface"></div>
                   <span className="text-xs font-bold uppercase tracking-[0.2em]">
                     Discussion Points
                   </span>
                 </div>
-                <span className="text-[11px] text-gray-300 font-semibold tracking-wider uppercase">
+                <span className="text-[11px] text-fg-muted font-semibold tracking-wider uppercase">
                   {momItems.length} {momItems.length === 1 ? "Topic" : "Topics"}
                 </span>
               </div>
 
               {/* Discussion Cards Container */}
-              <div className="p-4 bg-[#FFFCFB] space-y-4">
+              <div className="p-4 bg-surface-panel space-y-4">
                 {momItems.length === 0 ? (
-                  <div className="border border-gray-200 bg-[#FFFCFB] p-10 text-center">
-                    <p className="mb-3 text-xs text-gray-500">No minutes items generated yet.</p>
+                  <div className="border border-line bg-surface-panel p-10 text-center">
+                    <p className="mb-3 text-xs text-fg-muted">No minutes items generated yet.</p>
                     <button onClick={addRow} className="btn-primary !text-xs !py-1.5 !px-3 rounded-none cursor-pointer">
                       <Plus size={13} className="mr-1 inline" /> Add First Topic Manually
                     </button>
@@ -2175,19 +2198,19 @@ export default function Home() {
                       setMomItems(nextItems);
                     }}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-2">
-                      <span className="text-[10px] font-mono text-gray-400">Topic #{idx + 1}</span>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-2">
+                      <span className="text-[10px] font-mono text-fg-muted">Topic #{idx + 1}</span>
                       <div className="flex items-center gap-1.5">
-                        <button type="button" onClick={() => moveRow(idx, -1)} disabled={idx === 0} title="Move topic up" className="border border-gray-200 p-1 text-gray-500 transition-colors hover:bg-[#003366] hover:text-white disabled:pointer-events-none disabled:opacity-30"><ChevronUp size={13} /></button>
-                        <button type="button" onClick={() => moveRow(idx, 1)} disabled={idx === momItems.length - 1} title="Move topic down" className="border border-gray-200 p-1 text-gray-500 transition-colors hover:bg-[#003366] hover:text-white disabled:pointer-events-none disabled:opacity-30"><ChevronDown size={13} /></button>
-                        <button type="button" onClick={() => removeRow(idx)} title="Remove topic" className="border border-gray-200 p-1 text-gray-400 transition-colors hover:border-red-500 hover:bg-red-500 hover:text-white"><X size={13} /></button>
+                        <button type="button" onClick={() => moveRow(idx, -1)} disabled={idx === 0} title="Move topic up" className="border border-line p-1 text-fg-muted transition-colors hover:bg-action-hover hover:text-fg disabled:pointer-events-none "><ChevronUp size={13} /></button>
+                        <button type="button" onClick={() => moveRow(idx, 1)} disabled={idx === momItems.length - 1} title="Move topic down" className="border border-line p-1 text-fg-muted transition-colors hover:bg-action-hover hover:text-fg disabled:pointer-events-none "><ChevronDown size={13} /></button>
+                        <button type="button" onClick={() => removeRow(idx)} title="Remove topic" className="border border-line p-1 text-fg-muted transition-colors hover:border-danger-border hover:bg-danger-action-hover hover:text-fg"><X size={13} /></button>
                       </div>
                     </div>
                   </MeetingDiscussionCard>
                 ))}
               </div>
               {/* Table / Card List Footer */}
-              <div className="p-3.5 bg-[#FFFCFB] border-t border-gray-200 flex items-center gap-2">
+              <div className="p-3.5 bg-surface-panel border-t border-line flex items-center gap-2">
                 <button onClick={addRow} className="btn-primary !py-2 !px-4 text-xs rounded-none cursor-pointer">
                   <Plus size={14} className="inline mr-1.5 -mt-0.5" /> Add Topic
                 </button>
@@ -2203,9 +2226,9 @@ export default function Home() {
                       void discoverTopics("");
                     }
                   }}
-                  className="btn-outline !py-2 !px-4 text-xs flex items-center gap-1.5 rounded-none text-[#003366] hover:bg-[#003366] hover:text-white transition-colors cursor-pointer"
+                  className="btn-outline !py-2 !px-4 text-xs flex items-center gap-1.5 rounded-none text-fg hover:bg-action-hover hover:text-fg transition-colors cursor-pointer"
                 >
-                  <Sparkles size={14} className="text-[#c9ab4c]" />
+                  <Sparkles size={14} className="text-link" />
                   <span>Discover Topics</span>
                 </button>
               </div>
@@ -2213,13 +2236,13 @@ export default function Home() {
             </div>
 
             {/* Other Discussions */}
-            <div className="border border-gray-200 bg-[#FFFCFB] p-5 shadow-2xs rounded-none">
-              <h3 className="text-lg font-serif text-[#003366] italic mb-1.5">Other Discussions & Peripheral Notes</h3>
-              <p className="text-[11px] text-gray-500 mb-3">
+            <div className="border border-line bg-surface-panel p-5 shadow-2xs rounded-none">
+              <h3 className="text-lg font-serif text-fg italic mb-1.5">Other Discussions & Peripheral Notes</h3>
+              <p className="text-[11px] text-fg-muted mb-3">
                 Summary of housekeeping topics, general announcements, administrative items, and non-action discussions.
               </p>
               <textarea 
-                className="w-full border border-gray-200 p-3 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] min-h-[100px] focus:outline-none focus:border-[#C9AB4C] transition-colors leading-relaxed shadow-2xs rounded-none" 
+                className="w-full border border-line p-3 text-xs bg-surface-panel focus:bg-surface-panel min-h-[100px] focus:outline-none focus:border-focus transition-colors leading-relaxed shadow-2xs rounded-none"
                 value={otherDiscussions}
                 onChange={(e) => setOtherDiscussions(e.target.value)}
                 placeholder="Summary paragraph of all general discussions and administrative updates..."

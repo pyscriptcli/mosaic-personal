@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle, Download, X, Sparkles, Folder } from "lucide-react";
 import type { StudioSession } from "@/features/notetaker/types/studio";
-import { getInterruptedSessions, downloadSession, clearSession, exportSessionAsFile } from "@/features/notetaker/lib/studioStorage";
+import { getInterruptedSessions, downloadSession, clearSession, exportSessionAsFile, saveToLocalDocuments } from "@/features/notetaker/lib/studioStorage";
 
 interface StudioRecoveryBannerProps {
   onProcessSession?: (file: File) => void;
@@ -15,7 +15,7 @@ interface StudioRecoveryBannerProps {
 
 /**
  * Banner shown at the top of the page when an interrupted recording session
- * is found in IndexedDB or Documents/Mosaic Meetings (e.g., after a browser crash or battery cut).
+ * is found in IndexedDB or local recording storage (e.g., after a browser crash or battery cut).
  * Offers 1-click Notetaker processing, download, or discard.
  */
 export function StudioRecoveryBanner({
@@ -56,10 +56,13 @@ export function StudioRecoveryBanner({
   const handleProcess = async (sessionId: string) => {
     setProcessing(sessionId);
     try {
-      const file = await exportSessionAsFile(sessionId);
+      const rawFile = await exportSessionAsFile(sessionId);
+      const session = sessions.find((item) => item.sessionId === sessionId);
+      const saved = await saveToLocalDocuments(sessionId, rawFile, "completed", session?.mediaType || "audio", rawFile.name, session?.notes, true);
+      if (!saved.success || !saved.file) throw new Error("Recording conversion did not finish.");
       await clearSession(sessionId);
       setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
-      onProcessSession?.(file);
+      onProcessSession?.(saved.file);
     } catch (err) {
       console.error("[Studio Recovery] Processing failed:", err);
     } finally {
@@ -111,17 +114,17 @@ export function StudioRecoveryBanner({
       {visibleSessions.map((session) => (
         <div
           key={session.sessionId}
-          className="bg-amber-50 border-b border-amber-300 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs"
+          className="bg-warning-surface border-b border-warning-border px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs"
         >
-          <div className="flex items-center gap-2 text-amber-900 text-xs font-medium min-w-0">
-            <AlertTriangle size={15} className="shrink-0 text-amber-600" />
+          <div className="flex items-center gap-2 text-warning-fg text-xs font-medium min-w-0">
+            <AlertTriangle size={15} className="shrink-0 text-warning-fg" />
             <div className="truncate">
               <span className="font-bold">Interrupted recording recovered</span>
               {session.elapsedSeconds > 0 && ` (${formatDuration(session.elapsedSeconds)}`}
               {session.startedAt && ` from ${formatDate(session.startedAt)}`}
               {session.elapsedSeconds > 0 && ")"}
-              <span className="ml-2 text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.5 border border-amber-200 inline-flex items-center gap-1">
-                <Folder size={10} /> Auto-saved in Documents/Mosaic Meetings
+              <span className="ml-2 text-[10px] text-warning-fg bg-warning-surface px-1.5 py-0.5 border border-warning-border inline-flex items-center gap-1">
+                <Folder size={10} /> Auto-saved locally
               </span>
             </div>
           </div>
@@ -131,9 +134,9 @@ export function StudioRecoveryBanner({
                 type="button"
                 onClick={() => handleProcess(session.sessionId)}
                 disabled={processing === session.sessionId}
-                className="inline-flex items-center gap-1 text-xs font-bold bg-[#003366] text-white px-2.5 py-1 hover:bg-[#002244] transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
+                className="inline-flex items-center gap-1 text-xs font-bold bg-action text-on-action px-2.5 py-1 hover:bg-action-hover transition-colors  cursor-pointer shadow-2xs"
               >
-                <Sparkles size={11} className="text-[#C9A84C]" />
+                <Sparkles size={11} className="text-link" />
                 {processing === session.sessionId ? "Loading…" : "Process into Minutes Now"}
               </button>
             )}
@@ -141,16 +144,16 @@ export function StudioRecoveryBanner({
               type="button"
               onClick={() => handleDownload(session.sessionId)}
               disabled={downloading === session.sessionId}
-              className="inline-flex items-center gap-1 text-xs font-bold text-[#003366] hover:underline disabled:opacity-50 px-1.5 py-0.5"
+              className="inline-flex items-center gap-1 text-xs font-bold text-fg hover:underline  px-1.5 py-0.5"
             >
               <Download size={12} />
               {downloading === session.sessionId ? "Downloading…" : "Download"}
             </button>
-            <span className="text-amber-300">·</span>
+            <span className="text-warning-fg">·</span>
             <button
               type="button"
               onClick={() => handleDiscard(session.sessionId)}
-              className="inline-flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-red-600 px-1.5 py-0.5 cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-bold text-fg-muted hover:text-danger-fg px-1.5 py-0.5 cursor-pointer"
             >
               <X size={12} />
               Discard

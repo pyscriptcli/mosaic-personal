@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callGroqChatPool, getGroqMeetingApiKeys } from "@/lib/groqPool";
 
 export async function POST(req: NextRequest) {
   try {
-    const headerKey = req.headers.get("x-api-key") || req.headers.get("x-deepseek-api-key");
-    const apiKey = headerKey || process.env.DEEPSEEK_API_KEY || "";
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "DeepSeek API Key is required. Please configure your key in settings." }, { status: 401 });
-    }
+    const apiKeys = getGroqMeetingApiKeys();
+    const deepseekApiKey = process.env.DEEPSEEK_API?.trim();
 
     const { transcript, user_topics, notes, instruction } = await req.json();
 
@@ -117,42 +114,55 @@ ${meetingNotes || "No meeting notes provided."}
 ${meetingTranscript}
 </transcript>`;
 
-    const response = await fetch("https://api.deepseek.com/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent }
-        ],
-        response_format: { type: "json_object" }
-      })
-    });
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
+    ];
+    const providerErrors: string[] = [];
+    const parseContent = (content: string) => {
+      const cleaned = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+      return JSON.parse(cleaned);
+    };
 
-    if (!response.ok) {
-      const errData = await response.json();
-      throw new Error(errData.error?.message || `AI error (${response.status})`);
+    if (apiKeys.length) {
+      try {
+        const result = await callGroqChatPool(messages, {
+          model: process.env.GROQ_NOTETAKER_MODEL || "openai/gpt-oss-120b",
+          responseFormat: { type: "json_object" },
+          apiKeys,
+          signal: req.signal,
+        });
+        return NextResponse.json(parseContent(result.data.choices?.[0]?.message?.content || ""));
+      } catch (error) {
+        if (req.signal.aborted) throw error;
+        providerErrors.push(`Groq: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    
-    let cleanedJson = content.trim();
-    if (cleanedJson.includes("```json")) {
-      cleanedJson = cleanedJson.split("```json")[1].split("```")[0].trim();
-    } else if (cleanedJson.includes("```")) {
-      cleanedJson = cleanedJson.split("```")[1].split("```")[0].trim();
+    if (deepseekApiKey) {
+      try {
+        const response = await fetch("https://api.deepseek.com/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${deepseekApiKey}` },
+          signal: req.signal,
+          body: JSON.stringify({ model: "deepseek-chat", messages, response_format: { type: "json_object" } }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error?.message || `DeepSeek returned ${response.status}.`);
+        return NextResponse.json(parseContent(payload?.choices?.[0]?.message?.content || ""));
+      } catch (error) {
+        if (req.signal.aborted) throw error;
+        providerErrors.push(`DeepSeek: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
-    const parsed = JSON.parse(cleanedJson);
-    return NextResponse.json(parsed);
-  } catch (error: any) {
+    if (!apiKeys.length && !deepseekApiKey) {
+      return NextResponse.json({ error: "Configure Groq keys in Settings or set DEEPSEEK_API to enable meeting minutes." }, { status: 401 });
+    }
+    return NextResponse.json({ error: `Meeting minutes providers failed. ${providerErrors.join("; ")}` }, { status: 502 });
+  } catch (error: unknown) {
     console.error("Error generating minutes:", error);
-    const msg = error?.message || String(error);
+    const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

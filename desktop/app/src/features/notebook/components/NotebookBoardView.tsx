@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, CalendarDays, ChevronLeft, ChevronRight, GripVertical, ListPlus, LoaderCircle, Pencil, Trash2 } from "lucide-react";
 import { orderNotebookTasks } from "@/features/notebook/lib/notebookTaskOrdering";
+import { isNotebookWeekday, localDateString, notebookTaskOccurrence } from "@/features/notebook/lib/notebookDates";
 
 type NotebookList = { id: string; name: string };
 type NotebookTask = {
@@ -96,17 +97,18 @@ export default function NotebookBoardView({ mode, selectedDate, onSelectedDateCh
     setRenaming(null);
   };
 
-  const complete = (task: NotebookTask) => void change({ action: "update", date: task.notebookDate, taskId: task.id, completed: !task.completed, completedDate: task.completed ? null : task.displayDate || selectedDate, status: task.completed ? "to do" : "complete" });
+  const complete = (task: NotebookTask) => {
+    const today = localDateString();
+    const displayDate = mode === "week" ? task.displayDate || selectedDate : today;
+    const completedDate = displayDate > today ? today : displayDate;
+    void change({ action: "update", date: task.notebookDate, taskId: task.id, completed: !task.completed, completedDate: task.completed ? null : completedDate, status: task.completed ? "to do" : "complete" });
+  };
   const listNameFor = (id: string) => lists.find((list) => list.id === id)?.name || "My Tasks";
+  const today = localDateString();
   const weekTasks = weekDates.flatMap((date) => {
     const daily = tasks.flatMap((task) => {
-      const completionDate = task.completedDate || (task.completed ? task.notebookDate : "");
-      if (task.completed && completionDate && completionDate < date) return [];
-      const scheduledDate = task.scheduledDate || task.notebookDate;
-      if (task.completed && completionDate && completionDate > date && scheduledDate <= date) return [{ ...task, completed: false, carriedForward: scheduledDate < date }];
-      if (completionDate === date) return [{ ...task, completed: true, carriedForward: false }];
-      if (task.completed || scheduledDate > date) return [];
-      return [{ ...task, carriedForward: scheduledDate < date }];
+      const occurrence = notebookTaskOccurrence(task, date, today);
+      return occurrence ? [{ ...task, ...occurrence }] : [];
     });
     return orderNotebookTasks(daily, taskOrder).map((task) => ({ ...task, displayDate: date }));
   });
@@ -132,13 +134,13 @@ export default function NotebookBoardView({ mode, selectedDate, onSelectedDateCh
   };
 
   const renderTask = (task: NotebookTask, visible: NotebookTask[]) => (
-    <article key={`${task.notebookDate}:${task.id}:${"displayDate" in task ? task.displayDate : ""}`} onDragOver={(event) => { event.preventDefault(); setDropTargetId(task.id); }} onDragLeave={() => setDropTargetId("")} onDrop={(event) => { event.preventDefault(); setDropTargetId(""); const id = event.dataTransfer.getData("text/plain"); if (id) void reorder(id, task.id, visible); }} data-completed={task.completed} data-drop-target={dropTargetId === task.id} className={`mosaic-flat-card group border p-2 ${dropTargetId === task.id ? "border-t-2 border-t-[#007acc]" : ""} ${task.completed ? "border-slate-200 bg-slate-50 text-slate-500" : "border-slate-200 bg-white text-slate-800 hover:border-[#C9A84C]"}`}>
+    <article key={`${task.notebookDate}:${task.id}:${"displayDate" in task ? task.displayDate : ""}`} onDragOver={(event) => { event.preventDefault(); setDropTargetId(task.id); }} onDragLeave={() => setDropTargetId("")} onDrop={(event) => { event.preventDefault(); setDropTargetId(""); const id = event.dataTransfer.getData("text/plain"); if (id) void reorder(id, task.id, visible); }} data-completed={task.completed} data-drop-target={dropTargetId === task.id} className={`mosaic-flat-card group border p-2 ${dropTargetId === task.id ? "border-t-2 border-t-link" : ""} ${task.completed ? "border-line bg-surface-raised text-fg-muted" : "border-line bg-surface-panel text-fg hover:border-warning-border"}`}>
       <div className="flex items-start gap-2">
-        <div className="flex shrink-0 items-center gap-1"><button type="button" draggable onDragStart={(event) => { event.dataTransfer.setData("text/plain", task.id); event.dataTransfer.effectAllowed = "move"; }} onKeyDown={(event) => { if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return; event.preventDefault(); const index = visible.findIndex((item) => item.id === task.id); const adjacent = visible[index + (event.key === "ArrowUp" ? -1 : 1)]; if (adjacent) void reorder(task.id, adjacent.id, visible); }} aria-label={`Drag ${task.name} to reorder; use up or down arrow to move`} title="Drag to reorder" className="grid h-5 w-4 place-items-center cursor-grab touch-none text-slate-400 hover:text-[#003366] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#007acc] active:cursor-grabbing"><GripVertical size={15} /></button><button type="button" onClick={() => complete(task)} aria-label={task.completed ? `Reopen ${task.name}` : `Complete ${task.name}`} className={`grid h-[18px] w-[18px] shrink-0 place-items-center border ${task.completed ? "border-[#003366] bg-[#003366] text-white" : "border-slate-400 hover:border-[#003366]"}`}>{task.completed ? "✓" : ""}</button></div>
+        <div className="flex shrink-0 items-center gap-1"><button type="button" draggable onDragStart={(event) => { event.dataTransfer.setData("text/plain", task.id); event.dataTransfer.effectAllowed = "move"; }} onKeyDown={(event) => { if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return; event.preventDefault(); const index = visible.findIndex((item) => item.id === task.id); const adjacent = visible[index + (event.key === "ArrowUp" ? -1 : 1)]; if (adjacent) void reorder(task.id, adjacent.id, visible); }} aria-label={`Drag ${task.name} to reorder; use up or down arrow to move`} title="Drag to reorder" className="grid h-5 w-4 place-items-center cursor-grab touch-none text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus active:cursor-grabbing"><GripVertical size={15} /></button><button type="button" onClick={() => complete(task)} aria-label={task.completed ? `Reopen ${task.name}` : `Complete ${task.name}`} className={`grid h-[18px] w-[18px] shrink-0 place-items-center border ${task.completed ? "border-link bg-action text-on-action" : "border-control-border hover:border-link"}`}>{task.completed ? "✓" : ""}</button></div>
         <div className="min-w-0 flex-1">
-          <div className={`break-words text-sm font-semibold ${task.completed ? "line-through" : "text-[#003366]"}`}>{task.name}</div>
-          {task.description && <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-xs leading-snug text-slate-500">{task.description}</p>}
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] uppercase tracking-wide text-slate-500">
+          <div className={`break-words text-sm font-semibold ${task.completed ? "line-through" : "text-fg"}`}>{task.name}</div>
+          {task.description && <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-xs leading-snug text-fg-muted">{task.description}</p>}
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] uppercase tracking-wide text-fg-muted">
             {mode === "week" ? <span>{listNameFor(task.listId)}</span> : <span>{dayLabel(task.notebookDate)}</span>}
             {task.priority === "high" && <span className="notebook-priority-badge border px-1.5 py-0.5 font-semibold">High priority</span>}
             {task.carriedForward && <span>Since {parseDate(task.createdDate || task.notebookDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>}
@@ -146,8 +148,8 @@ export default function NotebookBoardView({ mode, selectedDate, onSelectedDateCh
           </div>
           <label className="mt-1 block">
             <span className="sr-only">{mode === "week" ? `Move ${task.name} to a weekday` : `Move ${task.name} to a list`}</span>
-            {mode === "week" ? <select value={task.notebookDate} onChange={(event) => move(task, { date: event.target.value })} className="h-7 max-w-full border border-slate-200 bg-transparent px-1.5 text-[10px] text-slate-600 focus:border-[#003366]">{weekDates.map((date) => <option key={date} value={date}>{dayLabel(date)}</option>)}</select>
-              : <select value={task.listId} onChange={(event) => move(task, { listId: event.target.value })} className="h-7 max-w-full border border-slate-200 bg-transparent px-1.5 text-[10px] text-slate-600 focus:border-[#003366]">{lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select>}
+            {mode === "week" ? <select value={task.notebookDate} onChange={(event) => move(task, { date: event.target.value })} className="h-7 max-w-full border border-line bg-transparent px-1.5 text-[10px] text-fg-secondary focus:border-focus">{weekDates.map((date) => <option key={date} value={date}>{dayLabel(date)}</option>)}</select>
+              : <select value={task.listId} onChange={(event) => move(task, { listId: event.target.value })} className="h-7 max-w-full border border-line bg-transparent px-1.5 text-[10px] text-fg-secondary focus:border-focus">{lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select>}
           </label>
         </div>
       </div>
@@ -164,38 +166,38 @@ export default function NotebookBoardView({ mode, selectedDate, onSelectedDateCh
         const task = tasks.find((candidate) => candidate.id === id);
         if (task) move(task, mode === "week" ? { date } : { listId });
       } catch { /* Ignore data dragged from outside Notebook. */ }
-    }} className="flex min-h-[420px] w-[272px] shrink-0 flex-col border border-slate-200 bg-[#F7F8FA]">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-[#F7F8FA] px-3 py-3">
+    }} className="flex min-h-[420px] w-[272px] shrink-0 flex-col border border-line bg-surface-raised">
+      <header className="sticky top-0 z-10 border-b border-line bg-surface-raised px-3 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            {renaming === listId ? <form onSubmit={saveRename} className="flex gap-1"><input autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} aria-label="Rename list" className="h-7 min-w-0 flex-1 border border-slate-300 bg-white px-2 text-xs" /><button className="h-7 bg-[#003366] px-2 text-[10px] text-white">Save</button></form> : <h3 className="truncate text-sm font-semibold text-[#003366]">{title}</h3>}
-            <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">{open.length} open {open.length === 1 ? "task" : "tasks"}</p>
+            {renaming === listId ? <form onSubmit={saveRename} className="flex gap-1"><input autoFocus value={renameValue} onChange={(event) => setRenameValue(event.target.value)} aria-label="Rename list" className="h-7 min-w-0 flex-1 border border-line bg-surface-panel px-2 text-xs" /><button className="h-7 bg-action px-2 text-[10px] text-on-action">Save</button></form> : <h3 className="truncate text-sm font-semibold text-fg">{title}</h3>}
+            <p className="mt-1 text-[10px] uppercase tracking-wider text-fg-muted">{open.length} open {open.length === 1 ? "task" : "tasks"}</p>
           </div>
           {listControls}
         </div>
-        {date && <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-500"><CalendarDays size={12} />{date === isoDate(new Date()) ? "Today" : parseDate(date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}</p>}
+        {date && <p className="mt-2 flex items-center gap-1 text-[10px] text-fg-muted"><CalendarDays size={12} />{date === isoDate(new Date()) ? "Today" : parseDate(date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}</p>}
       </header>
-      <div className="flex-1 space-y-2 p-2">{visible.map((task) => renderTask(task, visible))}{visible.length === 0 && <p className="px-2 py-5 text-center text-xs text-slate-400">{status === "done" ? "No completed tasks" : "No open tasks"}</p>}</div>
+      <div className="flex-1 space-y-2 p-2">{visible.map((task) => renderTask(task, visible))}{visible.length === 0 && <p className="px-2 py-5 text-center text-xs text-fg-muted">{status === "done" ? "No completed tasks" : "No open tasks"}</p>}</div>
     </section>;
   };
 
   const listControls = (list: NotebookList, index: number) => list.id === DEFAULT_LIST_ID ? null : <div className="flex shrink-0 items-center gap-0.5">
-    <button type="button" onClick={() => { setRenaming(list.id); setRenameValue(list.name); }} title={`Rename ${list.name}`} aria-label={`Rename ${list.name}`} className="grid h-7 w-7 place-items-center text-slate-500 hover:bg-slate-200 hover:text-[#003366]"><Pencil size={12} /></button>
-    <button type="button" disabled={index === 1} onClick={() => void change({ action: "reorder-list", listId: list.id, direction: "up" })} title="Move list up" aria-label={`Move ${list.name} up`} className="grid h-7 w-7 place-items-center text-slate-500 hover:bg-slate-200 disabled:opacity-30"><ArrowUp size={13} /></button>
-    <button type="button" disabled={index === lists.length - 1} onClick={() => void change({ action: "reorder-list", listId: list.id, direction: "down" })} title="Move list down" aria-label={`Move ${list.name} down`} className="grid h-7 w-7 place-items-center text-slate-500 hover:bg-slate-200 disabled:opacity-30"><ArrowDown size={13} /></button>
-    <button type="button" onClick={() => { if (window.confirm(`Delete “${list.name}”? Its tasks will move to My Tasks.`)) void change({ action: "delete-list", listId: list.id }); }} title={`Delete ${list.name}`} aria-label={`Delete ${list.name}`} className="grid h-7 w-7 place-items-center text-slate-500 hover:bg-red-50 hover:text-red-700"><Trash2 size={12} /></button>
+    <button type="button" onClick={() => { setRenaming(list.id); setRenameValue(list.name); }} title={`Rename ${list.name}`} aria-label={`Rename ${list.name}`} className="grid h-7 w-7 place-items-center text-fg-muted hover:bg-surface-hover hover:text-fg"><Pencil size={12} /></button>
+    <button type="button" disabled={index === 1} onClick={() => void change({ action: "reorder-list", listId: list.id, direction: "up" })} title="Move list up" aria-label={`Move ${list.name} up`} className="grid h-7 w-7 place-items-center text-fg-muted hover:bg-surface-hover "><ArrowUp size={13} /></button>
+    <button type="button" disabled={index === lists.length - 1} onClick={() => void change({ action: "reorder-list", listId: list.id, direction: "down" })} title="Move list down" aria-label={`Move ${list.name} down`} className="grid h-7 w-7 place-items-center text-fg-muted hover:bg-surface-hover "><ArrowDown size={13} /></button>
+    <button type="button" onClick={() => { if (window.confirm(`Delete “${list.name}”? Its tasks will move to My Tasks.`)) void change({ action: "delete-list", listId: list.id }); }} title={`Delete ${list.name}`} aria-label={`Delete ${list.name}`} className="grid h-7 w-7 place-items-center text-fg-muted hover:bg-danger-surface hover:text-danger-fg"><Trash2 size={12} /></button>
   </div>;
 
-  return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#FFFCFB]">
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-      <div><h2 className="font-serif text-lg italic text-[#003366]">{mode === "week" ? "Week board" : "List board"}</h2><p className="mt-0.5 text-xs text-slate-500">{openCount} open tasks</p></div>
-      {mode === "week" ? <div className="flex items-center gap-2"><button type="button" onClick={() => onSelectedDateChange(shiftDate(selectedDate, -7))} aria-label="Previous week" className="grid h-8 w-8 place-items-center border border-slate-200 hover:border-[#003366]"><ChevronLeft size={15} /></button><span className="min-w-36 text-center text-xs font-medium text-slate-600">{parseDate(weekDates[0]).toLocaleDateString("en-US", { month: "short", day: "numeric" })} – {parseDate(weekDates[4]).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span><button type="button" onClick={() => onSelectedDateChange(shiftDate(selectedDate, 7))} aria-label="Next week" className="grid h-8 w-8 place-items-center border border-slate-200 hover:border-[#003366]"><ChevronRight size={15} /></button></div>
-        : <label className="flex items-center gap-2 text-xs text-slate-600">New task date<input type="date" value={selectedDate} onChange={(event) => onSelectedDateChange(event.target.value)} className="h-8 border border-slate-200 bg-white px-2 text-xs text-[#003366]" /></label>}
+  return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-panel">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface-panel px-4 py-3">
+      <div><h2 className="font-serif text-lg italic text-fg">{mode === "week" ? "Week board" : "List board"}</h2><p className="mt-0.5 text-xs text-fg-muted">{openCount} open tasks</p></div>
+      {mode === "week" ? <div className="flex items-center gap-2"><button type="button" onClick={() => onSelectedDateChange(shiftDate(selectedDate, -7))} aria-label="Previous week" className="grid h-8 w-8 place-items-center border border-line hover:border-link"><ChevronLeft size={15} /></button><span className="min-w-36 text-center text-xs font-medium text-fg-secondary">{parseDate(weekDates[0]).toLocaleDateString("en-US", { month: "short", day: "numeric" })} – {parseDate(weekDates[4]).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span><button type="button" onClick={() => onSelectedDateChange(shiftDate(selectedDate, 7))} aria-label="Next week" className="grid h-8 w-8 place-items-center border border-line hover:border-link"><ChevronRight size={15} /></button></div>
+        : <label className="flex items-center gap-2 text-xs text-fg-secondary">New task date<input type="date" value={selectedDate} onChange={(event) => { const value = event.target.value; if (!isNotebookWeekday(value)) { setError("Choose a weekday. Notebook dates skip weekends."); return; } setError(""); onSelectedDateChange(value); }} className="h-8 border border-line bg-surface-panel px-2 text-xs text-fg" /></label>}
     </div>
-    {mode === "lists" && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-2.5"><p className="text-xs text-slate-500">Drag a task into another list, or use its list selector.</p><form onSubmit={addList} className="flex gap-2"><input value={listName} onChange={(event) => setListName(event.target.value)} placeholder="New list name" aria-label="New list name" className="h-8 w-40 border border-slate-200 px-2 text-xs outline-none focus:border-[#003366]" /><button type="submit" disabled={!listName.trim()} className="inline-flex h-8 items-center gap-1 bg-[#003366] px-2.5 text-xs font-medium text-white disabled:opacity-50"><ListPlus size={14} />Create list</button></form></div>}
-    {error && <p role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">{error}</p>}
+    {mode === "lists" && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5"><p className="text-xs text-fg-muted">Drag a task into another list, or use its list selector.</p><form onSubmit={addList} className="flex gap-2"><input value={listName} onChange={(event) => setListName(event.target.value)} placeholder="New list name" aria-label="New list name" className="h-8 w-40 border border-line px-2 text-xs outline-none focus:border-focus" /><button type="submit" disabled={!listName.trim()} className="inline-flex h-8 items-center gap-1 bg-action px-2.5 text-xs font-medium text-on-action "><ListPlus size={14} />Create list</button></form></div>}
+    {error && <p role="alert" className="border-b border-danger-border bg-danger-surface px-4 py-2 text-xs text-danger-fg">{error}</p>}
     <p id="notebook-reorder-status" role="status" className="sr-only" />
-    {loading && tasks.length === 0 ? <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-slate-500"><LoaderCircle size={17} className="animate-spin" />Loading Notebook</div> : <div className="min-h-0 flex-1 overflow-auto p-3"><div className="flex h-full min-h-full items-start gap-3">
+    {loading && tasks.length === 0 ? <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted"><LoaderCircle size={17} className="animate-spin" />Loading Notebook</div> : <div className="min-h-0 flex-1 overflow-auto p-3"><div className="flex h-full min-h-full items-start gap-3">
       {mode === "week" ? weekDates.map((date) => { const columnTasks = weekTasks.filter((task) => (task as NotebookTask & { displayDate: string }).displayDate === date); return renderColumn(date, dayLabel(date), columnTasks, date, DEFAULT_LIST_ID); })
         : lists.map((list, index) => renderColumn(list.id, list.name, visibleTasks.filter((task) => task.listId === list.id), undefined, list.id, listControls(list, index)))}
     </div></div>}

@@ -53,19 +53,29 @@ Development mode uses a separate app profile, browser session, and single-instan
 - Notebook Daily starts with equal-width Tasks and Day notes panes. Drag the divider to resize either pane from 15% to 85%; Mosaic remembers your chosen split. Use the pane tabs when the window is too narrow for two columns.
 - Use the Notebook header to switch Daily, Weekly, and Lists, followed by the Daily date controls. Add task sits beside the selected date; in Weekly and Lists, it stays in the header. To do includes overdue tasks; Done shows completed tasks for the selected view. High tasks sort first by default, but dragging lets you set any order across priority levels. Only High displays a priority badge.
 - Drag from the handle beside each checkbox; use the handle's arrow keys for keyboard reordering. Task rows stay compact and have no separate up/down buttons.
-- Unfinished tasks appear in later Daily and Weekly To do views until completed. Repeated dated snapshots collapse to the latest task record so each carried task appears once. Tasks stay stored on their original Notebook date; Lists shows each task once.
+- Unfinished tasks carry forward through weekdays as each day arrives; browsing ahead shows only tasks assigned or due on that future weekday. Weekend dates are skipped, and weekend task or due dates are rejected. Opening a date does not create its daily record; adding a task or note does. Repeated dated snapshots collapse to the latest task record so each carried task appears once. Tasks stay stored on their original Notebook date; Lists shows each task once.
 - Notebook reminders start off for profiles without a saved choice. Enable them from the reminder bell. The popup separates Overdue from To do, lets you complete or reopen tasks, and shares task ordering with Notebook; choose one to five hours from the Snooze menu.
 - Records save locally first. When Supabase is configured in **Settings**, Mosaic syncs JSON records automatically and offers **Sync now**. Video and audio files stay on this device and are excluded from cloud sync.
+- New audio recordings are saved as MP3; screen recordings are saved as MP4. Existing saved recordings are converted in the background. Archives shows progress and offers pause, resume, and retry. Original files stay available there if conversion fails. Mosaic bundles its offline FFmpeg/FFprobe tools; see the [recording format plan](../docs/RECORDING_FORMATS_PLAN.md) for format, migration, and license details.
 - To import legacy `TasksData` files once, run `node scripts/import-tasksdata.cjs --source <TasksData folder> --workspace <Mosaic folder> --apply` from `desktop/`. Run without `--apply` first to review the import plan. Task dates use `carriedForwardTo` or the source filename; notes go to Day Notes. Deleted tasks and empty source files are skipped, and a completion marker prevents a second import.
 - To enable sync, create a private Supabase project, run [`supabase/mosaic_workspace_sync.sql`](../supabase/mosaic_workspace_sync.sql) in its SQL editor, then enter its project URL and secret key in Mosaic Settings. The secret key is encrypted with Windows secure storage and used only by Electron's main process. SQL is not applied automatically.
 - Ask Echo opens as a nonblocking, resizable right dock; pages remain interactive beside it. The header keeps Workspace and New chat beside the title. Mention an available skill by name in your prompt to apply it. The compact composer keeps Markdown formatting tools behind its plus button, and the activity timeline shows agent steps with an elapsed HH:MM:SS timer. Codex can create requested reports under `Outputs/` and create Notebook, meeting, and IT Project records through Mosaic's local APIs; successful direct creations show an Undo action. Workspace writes remain subject to Codex approvals. AI responses require an internet connection.
 - Codex is instructed to archive removals in `C:\Mosaic\Recycle Bin` and retain them indefinitely. This is best effort: native CLI commands can still permanently delete files, so Mosaic cannot guarantee that every deletion is recoverable.
 - AI provider keys and local preferences are stored under Electron's per-user data folder. AI provider keys use Windows secure storage.
-- In desktop Settings, import Groq transcription keys from `desktop/app/.env`. The app encrypts the values in its local profile and passes them only to the transcription route. `.env` files are not packaged or committed. The desktop chatbot uses the locally installed Codex CLI.
+- In desktop Settings, import Groq keys from `desktop/app/.env`. The app encrypts the values in its local profile and supplies them to audio transcription and Notetaker minutes, summary refinement, and topic discovery. Audio transcription uses Groq Whisper; Notetaker text generation tries any available Luna model, then Groq, then DeepSeek using `DEEPSEEK_API`. Topic discovery uses Groq chat. `.env` files are not packaged or committed. The chatbot uses only the locally installed Codex CLI.
 - Automatic daily backups keep the latest seven snapshots of the `Mosaic` folder and run asynchronously so the desktop window stays responsive. Use the Mosaic tray menu to export or restore a backup; restoring replaces the current local workspace.
 - Closing the window hides Mosaic in the system tray. Choose **Quit Mosaic** to stop Electron and the local app server.
 - **Start with Windows** stays off by default.
 - External links open in the system browser.
+
+## UI theme
+
+Desktop UI colors are owned by [`app/src/app/theme.css`](app/src/app/theme.css).
+Use semantic color roles for surfaces, text, actions, status, focus, and control
+borders. Run `npm --prefix app run check:theme` before reviewing UI changes; CI
+runs the same color-pair and source checks. See the
+[permanent contrast plan](../docs/DESKTOP_UI_CONTRAST_PLAN.md) for the migration
+record and acceptance checklist.
 
 ## Automatic updates
 

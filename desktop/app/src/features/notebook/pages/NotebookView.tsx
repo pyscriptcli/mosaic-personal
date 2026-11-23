@@ -124,10 +124,10 @@ function presetRange(preset: "this-week" | "last-week" | "this-month" | "last-mo
 
 function MemberAvatar({ member }: { member: NotebookMember }) {
   if (member.profilePicture) {
-    return <img src={member.profilePicture} alt="" className="w-8 h-8 object-cover border border-[#C9AB4C]/60 shrink-0" />;
+    return <img src={member.profilePicture} alt="" className="w-8 h-8 object-cover border border-warning-border shrink-0" />;
   }
   return (
-    <span className="w-8 h-8 bg-[#003366] text-white flex items-center justify-center text-xs font-bold shrink-0">
+    <span className="w-8 h-8 bg-action text-on-action flex items-center justify-center text-xs font-bold shrink-0">
       {member.initials || member.name.slice(0, 2).toUpperCase()}
     </span>
   );
@@ -427,7 +427,7 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
 
   if (loading && !payload) {
     return (
-      <div className="min-h-[460px] flex items-center justify-center text-[#003366]">
+      <div className="min-h-[460px] flex items-center justify-center text-fg">
         <div className="flex items-center gap-3 text-sm font-semibold"><Loader2 className="animate-spin" size={20} /> Loading team notebook…</div>
       </div>
     );
@@ -435,10 +435,10 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
 
   if (error && !payload) {
     return (
-      <div className="max-w-xl mx-auto mt-16 bg-[#FFFCFB] border border-red-200 p-7 text-center">
-        <AlertCircle className="mx-auto text-red-500 mb-3" size={26} />
+      <div className="max-w-xl mx-auto mt-16 bg-surface-panel border border-danger-border p-7 text-center">
+        <AlertCircle className="mx-auto text-danger-fg mb-3" size={26} />
         <h1 className="text-xl">Notebook unavailable</h1>
-        <p className="text-sm text-gray-600 mt-2">{error}</p>
+        <p className="text-sm text-fg-secondary mt-2">{error}</p>
         <button type="button" onClick={() => void requestNotebookRefresh()} className="btn-outline mt-5 inline-flex items-center gap-2"><RefreshCw size={14} /> Try again</button>
       </div>
     );
@@ -446,12 +446,12 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
-      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 pb-4 border-b border-gray-200/90">
+      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 pb-4 border-b border-line">
         {!hidePageTitle && <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-serif font-bold text-[#003366] italic">Notebook</h1>
+            <h1 className="text-2xl font-serif font-bold text-fg italic">Notebook</h1>
           </div>
-          <p className="text-sm text-gray-500 mt-1">Review your daily activity and team logging progress.</p>
+          <p className="text-sm text-fg-muted mt-1">Review your daily activity and team logging progress.</p>
         </div>}
         <div className="flex items-center gap-2 flex-wrap">
           {activeTab !== "insights" && payload && payload.members.length > 0 && (
@@ -459,7 +459,7 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
               value={member?.id || ""}
               onChange={(event) => setSelectedMemberId(event.target.value)}
               aria-label="Team member"
-              className="h-10 min-w-52 bg-[#FFFCFB] border border-gray-300 px-3 text-sm text-[#1b1d1e] focus:outline-none focus:border-[#C9AB4C]"
+              className="h-10 min-w-52 bg-surface-panel border border-line px-3 text-sm text-fg focus:outline-none focus:border-focus"
             >
               {payload.members.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
             </select>
@@ -468,15 +468,15 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
             type="button"
             onClick={() => void requestNotebookRefresh()}
             disabled={loading}
-            className="h-10 px-3 bg-[#FFFCFB] border border-gray-300 text-[#003366] text-sm font-semibold flex items-center gap-2 hover:border-[#C9AB4C] disabled:opacity-50"
+            className="h-10 px-3 bg-surface-panel border border-line text-fg text-sm font-semibold flex items-center gap-2 hover:border-warning-border "
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
         </div>
       </div>
 
-      <div className="bg-[#FFFCFB] border border-gray-200 shadow-2xs p-2 flex items-center justify-between gap-3 flex-wrap">
-        {!hideViewTabs && <div className="inline-flex border border-gray-200 bg-[#FFFCFB]" role="tablist" aria-label="Notebook views">
+      <div className="bg-surface-panel border border-line shadow-2xs p-2 flex items-center justify-between gap-3 flex-wrap">
+        {!hideViewTabs && <div className="inline-flex border border-line bg-surface-panel" role="tablist" aria-label="Notebook views">
           {([
             ["today", "Today"],
             ["week", "Daily activity"],
@@ -488,8 +488,8 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
               role="tab"
               aria-selected={activeTab === id}
               onClick={() => setActiveTab(id)}
-              className={`h-10 px-5 text-sm font-semibold border-r last:border-r-0 border-gray-200 transition-colors ${
-                activeTab === id ? "bg-[#003366] text-white shadow-[inset_0_-2px_0_#C9AB4C]" : "bg-[#FFFCFB] text-gray-500 hover:text-[#003366] hover:bg-[#FFFCFB]"
+              className={`h-10 px-5 text-sm font-semibold border-r last:border-r-0 border-line transition-colors ${
+                activeTab === id ? "bg-action text-on-action border-b-2 border-focus" : "bg-surface-panel text-fg-muted hover:text-fg hover:bg-surface-hover"
               }`}
             >
               {label}
@@ -499,42 +499,42 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
 
         {activeTab === "insights" ? (
           <div className="flex items-center gap-2 flex-wrap">
-            <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500"><span className="hidden 2xl:inline">View</span><select value={insightMemberId} onChange={(event) => setInsightMemberId(event.target.value)} aria-label="Insight team member" className="h-10 min-w-52 bg-[#FFFCFB] border border-gray-300 px-3 text-sm font-medium normal-case tracking-normal text-[#1b1d1e] focus:outline-none focus:border-[#C9AB4C]">
+            <label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-fg-muted"><span className="hidden 2xl:inline">View</span><select value={insightMemberId} onChange={(event) => setInsightMemberId(event.target.value)} aria-label="Insight team member" className="h-10 min-w-52 bg-surface-panel border border-line px-3 text-sm font-medium normal-case tracking-normal text-fg focus:outline-none focus:border-focus">
               <option value="all">All team members</option>
               {(payload?.members || []).map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
             </select></label>
-            <select value={rangePreset} onChange={(event) => applyPreset(event.target.value as "this-week" | "last-week" | "this-month" | "last-month" | "custom")} aria-label="Reporting range preset" className="h-10 bg-[#003366] border border-[#003366] px-3 text-sm font-medium text-white focus:outline-none focus:ring-1 focus:ring-[#C9AB4C]">
+            <select value={rangePreset} onChange={(event) => applyPreset(event.target.value as "this-week" | "last-week" | "this-month" | "last-month" | "custom")} aria-label="Reporting range preset" className="h-10 bg-action border border-link px-3 text-sm font-medium text-on-action focus:outline-none focus:ring-1 focus:ring-focus">
               <option value="this-week">This week</option>
               <option value="last-week">Last week</option>
               <option value="this-month">This month</option>
               <option value="last-month">Last month</option>
               <option value="custom">Custom range</option>
             </select>
-            <input type="date" value={rangeStart} onChange={(event) => { setRangePreset("custom"); setRangeStart(event.target.value); }} aria-label="Reporting range start" className="h-10 bg-[#FFFCFB] border border-gray-300 px-3 text-sm focus:outline-none focus:border-[#C9AB4C]" />
-            <span className="text-sm text-gray-500">to</span>
-            <input type="date" value={rangeEnd} onChange={(event) => { setRangePreset("custom"); setRangeEnd(event.target.value); }} aria-label="Reporting range end" className="h-10 bg-[#FFFCFB] border border-gray-300 px-3 text-sm focus:outline-none focus:border-[#C9AB4C]" />
+            <input type="date" value={rangeStart} onChange={(event) => { setRangePreset("custom"); setRangeStart(event.target.value); }} aria-label="Reporting range start" className="h-10 bg-surface-panel border border-line px-3 text-sm focus:outline-none focus:border-focus" />
+            <span className="text-sm text-fg-muted">to</span>
+            <input type="date" value={rangeEnd} onChange={(event) => { setRangePreset("custom"); setRangeEnd(event.target.value); }} aria-label="Reporting range end" className="h-10 bg-surface-panel border border-line px-3 text-sm focus:outline-none focus:border-focus" />
           </div>
         ) : activeTab === "week" ? (
           <div className="flex items-center gap-2 flex-wrap">
-            <select value={rangePreset} onChange={(event) => applyPreset(event.target.value as "this-week" | "last-week" | "this-month" | "last-month" | "custom")} aria-label="Activity period" className="h-10 bg-[#003366] border border-[#003366] px-3 text-sm font-medium text-white focus:outline-none focus:ring-1 focus:ring-[#C9A84C]">
+            <select value={rangePreset} onChange={(event) => applyPreset(event.target.value as "this-week" | "last-week" | "this-month" | "last-month" | "custom")} aria-label="Activity period" className="h-10 bg-action border border-link px-3 text-sm font-medium text-on-action focus:outline-none focus:ring-1 focus:ring-focus">
               <option value="this-week">This week</option><option value="last-week">Last week</option><option value="this-month">This month</option><option value="last-month">Last month</option><option value="custom">Custom range</option>
             </select>
-            <input type="date" value={rangeStart} onChange={(event) => { setRangePreset("custom"); setRangeStart(event.target.value); }} aria-label="Activity start date" className="h-10 bg-[#FFFCFB] border border-gray-300 px-3 text-sm focus:outline-none focus:border-[#C9AB4C]" />
-            <span className="text-sm text-gray-500">to</span>
-            <input type="date" value={rangeEnd} onChange={(event) => { setRangePreset("custom"); setRangeEnd(event.target.value); }} aria-label="Activity end date" className="h-10 bg-[#FFFCFB] border border-gray-300 px-3 text-sm focus:outline-none focus:border-[#C9AB4C]" />
+            <input type="date" value={rangeStart} onChange={(event) => { setRangePreset("custom"); setRangeStart(event.target.value); }} aria-label="Activity start date" className="h-10 bg-surface-panel border border-line px-3 text-sm focus:outline-none focus:border-focus" />
+            <span className="text-sm text-fg-muted">to</span>
+            <input type="date" value={rangeEnd} onChange={(event) => { setRangePreset("custom"); setRangeEnd(event.target.value); }} aria-label="Activity end date" className="h-10 bg-surface-panel border border-line px-3 text-sm focus:outline-none focus:border-focus" />
           </div>
         ) : (
-          <div className="flex items-center bg-[#FFFCFB] border border-gray-300">
-            <button type="button" onClick={previousDay} aria-label="Previous day" className="w-10 h-10 grid place-items-center text-gray-500 hover:text-[#003366] hover:bg-[#FFFCFB]"><ChevronLeft size={17} /></button>
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="h-10 border-x border-y-0 border-gray-300 px-3 text-sm text-[#1b1d1e] focus:outline-none" />
-            <button type="button" onClick={nextDay} aria-label="Next day" className="w-10 h-10 grid place-items-center text-gray-500 hover:text-[#003366] hover:bg-[#FFFCFB]"><ChevronRight size={17} /></button>
+          <div className="flex items-center bg-surface-panel border border-line">
+            <button type="button" onClick={previousDay} aria-label="Previous day" className="w-10 h-10 grid place-items-center text-fg-muted hover:text-fg hover:bg-surface-hover"><ChevronLeft size={17} /></button>
+            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="h-10 border-x border-y-0 border-line px-3 text-sm text-fg focus:outline-none" />
+            <button type="button" onClick={nextDay} aria-label="Next day" className="w-10 h-10 grid place-items-center text-fg-muted hover:text-fg hover:bg-surface-hover"><ChevronRight size={17} /></button>
           </div>
         )}
       </div>
 
-      {loading && payload && <p role="status" className="border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">{desktopMode ? "Loading local entries. Showing the last loaded range until it finishes." : "Loading this date range from ClickUp. Showing the last loaded range until it finishes."}</p>}
-      {error && <div className="border border-amber-200 bg-amber-50 text-amber-800 px-4 py-3 text-sm">Showing the last loaded data. Refresh failed: {error}</div>}
-      {payload?.warning && <div role="status" className="border border-amber-200 bg-amber-50 text-amber-800 px-4 py-3 text-sm">{payload.warning}</div>}
+      {loading && payload && <p role="status" className="border border-line bg-surface-raised px-3 py-2 text-xs text-fg-secondary">{desktopMode ? "Loading local entries. Showing the last loaded range until it finishes." : "Loading this date range from ClickUp. Showing the last loaded range until it finishes."}</p>}
+      {error && <div className="border border-warning-border bg-warning-surface text-warning-fg px-4 py-3 text-sm">Showing the last loaded data. Refresh failed: {error}</div>}
+      {payload?.warning && <div role="status" className="border border-warning-border bg-warning-surface text-warning-fg px-4 py-3 text-sm">{payload.warning}</div>}
 
       {activeTab === "today" && (
         <div className="space-y-5">
@@ -543,64 +543,64 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
               <div className="flex items-end justify-between gap-4 mb-3">
                 <div>
                   <h2 className="text-xl">{formatDate(selectedDate)}</h2>
-                  <p className="text-sm text-gray-500 mt-1">{member?.name || "Team member"}</p>
+                  <p className="text-sm text-fg-muted mt-1">{member?.name || "Team member"}</p>
                 </div>
-                <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 border ${selectedDayEntries.some((entry) => entry.hasContent) ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-amber-700 bg-amber-50 border-amber-200"}`}>
+                <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 border ${selectedDayEntries.some((entry) => entry.hasContent) ? "text-success-fg bg-success-surface border-success-border" : "text-warning-fg bg-warning-surface border-warning-border"}`}>
                   {selectedDayEntries.some((entry) => entry.hasContent) ? "Tasks recorded" : "No tasks recorded"}
                 </span>
               </div>
 
-              <section className="mt-4 border border-gray-200 bg-[#FFFCFB] p-4">
+              <section className="mt-4 border border-line bg-surface-panel p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-lg font-serif italic text-[#003366]">My Day tasks</h3>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">{selectedDayEntry?.dailyTasks?.length || 0} item{(selectedDayEntry?.dailyTasks?.length || 0) === 1 ? "" : "s"}</span>
+                  <h3 className="text-lg font-serif italic text-fg">My Day tasks</h3>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted">{selectedDayEntry?.dailyTasks?.length || 0} item{(selectedDayEntry?.dailyTasks?.length || 0) === 1 ? "" : "s"}</span>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">Tasks created in My Day appear in that day’s daily log.</p>
+                <p className="mt-1 text-xs text-fg-muted">Tasks created in My Day appear in that day’s daily log.</p>
                 {selectedDayEntry?.dailyTasks?.length ? (
-                  <ul className="mt-3 divide-y divide-gray-100 border-t border-gray-100">
+                  <ul className="mt-3 divide-y divide-line border-t border-line">
                     {selectedDayEntry.dailyTasks.map((task) => <li key={task.id} className="flex items-start justify-between gap-3 py-2.5">
                       <div className="min-w-0">
-                        <span className={`text-xs ${task.completed ? "text-gray-500 line-through" : "text-gray-700"}`}>{task.name}</span>
-                        {task.description && <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-500">{task.description}</p>}
+                        <span className={`text-xs ${task.completed ? "text-fg-muted line-through" : "text-fg"}`}>{task.name}</span>
+                        {task.description && <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-fg-muted">{task.description}</p>}
                       </div>
-                      <div className="flex shrink-0 items-center gap-2 text-[10px] text-gray-500">
-                        <span className={task.completed ? "text-emerald-700" : "text-slate-500"}>{task.completed ? "Completed" : "Open"}</span>
-                        {task.priority && <span className={task.priority === "high" ? "border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800" : "border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-slate-500"}>{task.priority === "high" ? "High priority" : "Normal priority"}</span>}
+                      <div className="flex shrink-0 items-center gap-2 text-[10px] text-fg-muted">
+                        <span className={task.completed ? "text-success-fg" : "text-fg-muted"}>{task.completed ? "Completed" : "Open"}</span>
+                        {task.priority && <span className={task.priority === "high" ? "border border-warning-border bg-warning-surface px-1.5 py-0.5 text-warning-fg" : "border border-line bg-surface-raised px-1.5 py-0.5 text-fg-muted"}>{task.priority === "high" ? "High priority" : "Normal priority"}</span>}
                         {task.dueDate && <span>Due {new Date(`${task.dueDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
-                        {!desktopMode && task.url && <a href={task.url} target="_blank" rel="noreferrer" aria-label={`Open ${task.name} in ClickUp`} className="text-[#31577D] hover:text-[#003366]"><ExternalLink size={12} /></a>}
+                        {!desktopMode && task.url && <a href={task.url} target="_blank" rel="noreferrer" aria-label={`Open ${task.name} in ClickUp`} className="text-fg-secondary hover:text-fg"><ExternalLink size={12} /></a>}
                       </div>
                     </li>)}
                   </ul>
-                ) : <p className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-500">No My Day tasks are linked to this date yet.</p>}
+                ) : <p className="mt-3 border-t border-line pt-3 text-xs text-fg-muted">No My Day tasks are linked to this date yet.</p>}
               </section>
             </section>
 
             <aside className="lg:col-span-4 space-y-4">
-              <div className="bg-[#FFFCFB] border border-gray-200 p-5">
-                <h3 className="text-lg flex items-center gap-2"><FileText size={17} className="text-[#C9AB4C]" /> Source record</h3>
-                <p className="text-sm text-gray-500 mt-2 leading-relaxed">{desktopMode ? "Daily records stay on this device. My Day tasks are shown here." : "Edit directly here. Mosaic keeps the same month parent and daily subtask structure your team already uses in ClickUp."}</p>
+              <div className="bg-surface-panel border border-line p-5">
+                <h3 className="text-lg flex items-center gap-2"><FileText size={17} className="text-link" /> Source record</h3>
+                <p className="text-sm text-fg-muted mt-2 leading-relaxed">{desktopMode ? "Daily records stay on this device. My Day tasks are shown here." : "Edit directly here. Mosaic keeps the same month parent and daily subtask structure your team already uses in ClickUp."}</p>
                 {selectedDayEntries[0]?.url ? (
                   <a href={selectedDayEntries[0].url} target="_blank" rel="noreferrer" className="mt-4 btn-outline !px-4 !py-2 inline-flex items-center gap-2">
                     Open daily log <ExternalLink size={14} />
                   </a>
-                ) : <p className="text-xs text-gray-500 mt-4">{desktopMode ? "No local daily record exists for this date yet." : "Save an entry to create this date in ClickUp."}</p>}
+                ) : <p className="text-xs text-fg-muted mt-4">{desktopMode ? "No local daily record exists for this date yet." : "Save an entry to create this date in ClickUp."}</p>}
               </div>
-              <div className="bg-[#FFFCFB] border border-gray-200 p-5">
+              <div className="bg-surface-panel border border-line p-5">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-lg flex items-center gap-2">
-                    <CalendarPlus size={17} className="text-[#C9AB4C]" /> Month Placeholders
+                    <CalendarPlus size={17} className="text-link" /> Month Placeholders
                   </h3>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#003366] bg-[#003366]/5 px-2 py-0.5 border border-[#003366]/15">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-fg bg-info-surface px-2 py-0.5 border border-link">
                     {desktopMode ? "Local" : "ClickUp"}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                <p className="text-xs text-fg-muted mt-2 leading-relaxed">
                   {desktopMode ? "Create a local daily log for each weekday of a month." : `Generate placeholder daily tasks in ClickUp for all weekdays of a month under ${member?.name || "the member"}'s parent task.`}
                 </p>
 
                 <div className="mt-4 space-y-3">
                   <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       Target Month
                     </label>
                     <select
@@ -610,7 +610,7 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
                         setGenerateFeedback(null);
                       }}
                       disabled={generatingMonth}
-                      className="w-full h-9 bg-[#FFFCFB] border border-gray-300 px-2.5 text-xs text-[#1b1d1e] focus:outline-none focus:border-[#C9AB4C]"
+                      className="w-full h-9 bg-surface-panel border border-line px-2.5 text-xs text-fg focus:outline-none focus:border-focus"
                     >
                       {availableMonths.map((m) => (
                         <option key={m.value} value={m.value}>
@@ -620,9 +620,9 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
                     </select>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs py-1.5 px-2 bg-gray-50 border border-gray-200">
-                    <span className="text-gray-600">Existing weekdays:</span>
-                    <span className="font-semibold text-[#003366]">
+                  <div className="flex items-center justify-between text-xs py-1.5 px-2 bg-surface-raised border border-line">
+                    <span className="text-fg-secondary">Existing weekdays:</span>
+                    <span className="font-semibold text-fg">
                       {monthStats.existingCount} / {monthStats.totalWeekdays} tasks
                     </span>
                   </div>
@@ -631,14 +631,14 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
                     <div
                       className={`text-xs p-2.5 border flex items-start gap-1.5 ${
                         generateFeedback.type === "success"
-                          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                          : "bg-red-50 border-red-200 text-red-800"
+                          ? "bg-success-surface border-success-border text-success-fg"
+                          : "bg-danger-surface border-danger-border text-danger-fg"
                       }`}
                     >
                       {generateFeedback.type === "success" ? (
-                        <CheckCircle2 size={14} className="shrink-0 mt-0.5 text-emerald-600" />
+                        <CheckCircle2 size={14} className="shrink-0 mt-0.5 text-success-fg" />
                       ) : (
-                        <AlertCircle size={14} className="shrink-0 mt-0.5 text-red-600" />
+                        <AlertCircle size={14} className="shrink-0 mt-0.5 text-danger-fg" />
                       )}
                       <span>{generateFeedback.text}</span>
                     </div>
@@ -648,7 +648,7 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
                     type="button"
                     onClick={handleGenerateMonthTasks}
                     disabled={generatingMonth || !member}
-                    className="w-full h-10 bg-[#003366] text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-[#002244] disabled:opacity-50 transition-colors shadow-xs"
+                    className="w-full h-10 bg-action text-on-action text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-action-hover  transition-colors shadow-xs"
                   >
                     {generatingMonth ? (
                       <>
@@ -666,10 +666,10 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
                   </button>
                 </div>
               </div>
-              <div className="bg-[#1b1d1e] border border-[#C9AB4C]/50 p-5 text-white">
-                <div className="text-xs uppercase tracking-widest text-[#C9AB4C] font-bold">Daily completeness</div>
+              <div className="bg-surface-panel border border-warning-border p-5 text-on-action">
+                <div className="text-xs uppercase tracking-widest text-link font-bold">Daily completeness</div>
                 <div className="text-3xl font-serif mt-3">{selectedDayEntries.some((entry) => entry.hasContent) ? "Complete" : "Empty"}</div>
-                <p className="text-sm text-gray-300 mt-2">A day has activity when at least one My Day task is linked.</p>
+                <p className="text-sm text-fg-muted mt-2">A day has activity when at least one My Day task is linked.</p>
               </div>
             </aside>
           </div>
@@ -677,25 +677,25 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
       )}
 
       {activeTab === "week" && (
-        <section className="border border-gray-200 bg-[#FFFCFB]">
-          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-gray-200 p-4">
-            <div><h2 className="text-xl">Daily tasks</h2><p className="mt-1 text-sm text-gray-500">{formatDate(rangeStart, { month: "long", day: "numeric", year: "numeric" })}–{formatDate(rangeEnd, { month: "long", day: "numeric", year: "numeric" })} · {member?.name || "Team member"}</p></div>
-            <span className="text-xs text-gray-500">{entries.filter((entry) => entry.member.id === member?.id && entry.date >= rangeStart && entry.date <= rangeEnd && entry.hasContent).length} days with tasks</span>
+        <section className="border border-line bg-surface-panel">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line p-4">
+            <div><h2 className="text-xl">Daily tasks</h2><p className="mt-1 text-sm text-fg-muted">{formatDate(rangeStart, { month: "long", day: "numeric", year: "numeric" })}–{formatDate(rangeEnd, { month: "long", day: "numeric", year: "numeric" })} · {member?.name || "Team member"}</p></div>
+            <span className="text-xs text-fg-muted">{entries.filter((entry) => entry.member.id === member?.id && entry.date >= rangeStart && entry.date <= rangeEnd && entry.hasContent).length} days with tasks</span>
           </div>
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-line">
             {entries.filter((entry) => entry.member.id === member?.id && entry.date >= rangeStart && entry.date <= rangeEnd && entry.hasContent).sort((a, b) => b.date.localeCompare(a.date)).map((entry) => (
               <article key={entry.id} className="grid gap-3 p-4 md:grid-cols-[180px_1fr]">
-                <div><h3 className="font-semibold text-sm text-[#003366]">{formatDate(entry.date, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</h3><button type="button" onClick={() => { if (hideViewTabs && onOpenDay) onOpenDay(entry.date); else { setSelectedDate(entry.date); setActiveTab("today"); } }} className="mt-2 text-xs font-semibold text-[#31577D] hover:text-[#003366]">Open this day →</button></div>
+                <div><h3 className="font-semibold text-sm text-fg">{formatDate(entry.date, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</h3><button type="button" onClick={() => { if (hideViewTabs && onOpenDay) onOpenDay(entry.date); else { setSelectedDate(entry.date); setActiveTab("today"); } }} className="mt-2 text-xs font-semibold text-fg-secondary hover:text-fg">Open this day →</button></div>
                 <div>
-                  {entry.dailyTasks?.length ? <ul className="divide-y divide-gray-100">
-                    {entry.dailyTasks.map((task) => <li key={task.id} className="py-2 text-sm text-gray-700">
-                      <div className={`font-medium ${task.completed ? "line-through text-gray-500" : ""}`}>{task.name}</div>
-                      {task.description && <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-gray-500">{task.description}</p>}
+                  {entry.dailyTasks?.length ? <ul className="divide-y divide-line">
+                    {entry.dailyTasks.map((task) => <li key={task.id} className="py-2 text-sm text-fg">
+                      <div className={`font-medium ${task.completed ? "line-through text-fg-muted" : ""}`}>{task.name}</div>
+                      {task.description && <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-fg-muted">{task.description}</p>}
                     </li>)}
-                  </ul> : <p className="text-sm text-gray-500">No My Day tasks are linked to this date.</p>}
+                  </ul> : <p className="text-sm text-fg-muted">No My Day tasks are linked to this date.</p>}
                 </div>              </article>
             ))}
-            {!entries.some((entry) => entry.member.id === member?.id && entry.date >= rangeStart && entry.date <= rangeEnd && entry.hasContent) && <p className="p-8 text-center text-sm text-gray-500">No activity recorded in this period.</p>}
+            {!entries.some((entry) => entry.member.id === member?.id && entry.date >= rangeStart && entry.date <= rangeEnd && entry.hasContent) && <p className="p-8 text-center text-sm text-fg-muted">No activity recorded in this period.</p>}
           </div>
         </section>
       )}
@@ -704,55 +704,55 @@ export function NotebookView({ currentUserName, userId, initialDate, initialTab 
         <div className="space-y-5">
           <div>
             <h2 className="text-xl">{formatDate(rangeStart, { month: "long", day: "numeric", year: "numeric" })}–{formatDate(rangeEnd, { month: "long", day: "numeric", year: "numeric" })}</h2>
-            <p className="text-sm text-gray-500 mt-1">{insightMemberId === "all" ? "All team members" : (payload?.members.find((person) => person.id === insightMemberId)?.name || "Selected member")} · weekends and future dates are excluded from completeness.</p>
+            <p className="text-sm text-fg-muted mt-1">{insightMemberId === "all" ? "All team members" : (payload?.members.find((person) => person.id === insightMemberId)?.name || "Selected member")} · weekends and future dates are excluded from completeness.</p>
           </div>
 
           <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-            <div className="bg-[#FFFCFB] border border-gray-200 p-5"><div className="text-xs uppercase tracking-wider font-bold text-gray-500">Team completeness</div><div className="text-3xl font-serif font-bold text-[#003366] mt-2">{averageCompleteness}%</div><div className="text-xs text-gray-500 mt-1">{submittedLogs} of {expectedLogs} expected logs</div></div>
-            <div className="bg-[#FFFCFB] border border-gray-200 p-5"><div className="text-xs uppercase tracking-wider font-bold text-gray-500">Members tracked</div><div className="text-3xl font-serif font-bold text-[#003366] mt-2">{filteredRows.length}</div><div className="text-xs text-gray-500 mt-1">within the selected view</div></div>
-            <div className="bg-[#FFFCFB] border border-gray-200 p-5"><div className="text-xs uppercase tracking-wider font-bold text-gray-500">Empty logs</div><div className="text-3xl font-serif font-bold text-orange-700 mt-2">{emptyDayLogs}</div><div className="text-xs text-gray-500 mt-1">no daily record found</div></div>
+            <div className="bg-surface-panel border border-line p-5"><div className="text-xs uppercase tracking-wider font-bold text-fg-muted">Team completeness</div><div className="text-3xl font-serif font-bold text-fg mt-2">{averageCompleteness}%</div><div className="text-xs text-fg-muted mt-1">{submittedLogs} of {expectedLogs} expected logs</div></div>
+            <div className="bg-surface-panel border border-line p-5"><div className="text-xs uppercase tracking-wider font-bold text-fg-muted">Members tracked</div><div className="text-3xl font-serif font-bold text-fg mt-2">{filteredRows.length}</div><div className="text-xs text-fg-muted mt-1">within the selected view</div></div>
+            <div className="bg-surface-panel border border-line p-5"><div className="text-xs uppercase tracking-wider font-bold text-fg-muted">Empty logs</div><div className="text-3xl font-serif font-bold text-warning-fg mt-2">{emptyDayLogs}</div><div className="text-xs text-fg-muted mt-1">no daily record found</div></div>
           </div>
 
-          <section className="bg-[#FFFCFB] border border-gray-200">
-            <div className="p-5 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div><h3 className="text-lg flex items-center gap-2"><Users size={18} className="text-[#C9AB4C]" /> Completeness by team member</h3><p className="text-sm text-gray-500 mt-1">Submitted logs compared with elapsed working days.</p></div>
-              <div className="text-xs text-gray-500">Expected per member: <strong className="text-[#003366]">{workdays.length} days</strong></div>
+          <section className="bg-surface-panel border border-line">
+            <div className="p-5 border-b border-line flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div><h3 className="text-lg flex items-center gap-2"><Users size={18} className="text-link" /> Completeness by team member</h3><p className="text-sm text-fg-muted mt-1">Submitted logs compared with elapsed working days.</p></div>
+              <div className="text-xs text-fg-muted">Expected per member: <strong className="text-fg">{workdays.length} days</strong></div>
             </div>
-            <div className="divide-y divide-gray-200">
+            <div className="divide-y divide-line">
               {filteredRows.map((row) => (
                 <div key={row.member.id} className="p-4 md:p-5 grid grid-cols-1 md:grid-cols-[minmax(190px,1fr)_minmax(220px,2fr)_100px] gap-4 items-center">
-                  <div className="flex items-center gap-3 min-w-0"><MemberAvatar member={row.member} /><div className="min-w-0"><div className="text-sm font-semibold text-[#1b1d1e] truncate">{row.member.name}</div><div className="text-xs text-gray-500">{row.submittedDates.length} submitted · {row.emptyDays.length} empty logs</div></div></div>
+                  <div className="flex items-center gap-3 min-w-0"><MemberAvatar member={row.member} /><div className="min-w-0"><div className="text-sm font-semibold text-fg truncate">{row.member.name}</div><div className="text-xs text-fg-muted">{row.submittedDates.length} submitted · {row.emptyDays.length} empty logs</div></div></div>
                   <div>
-                    <div className="h-2.5 bg-[#FFFCFB] overflow-hidden flex" role="progressbar" aria-label={`${row.member.name} completeness`} aria-valuenow={row.percent} aria-valuemin={0} aria-valuemax={100}>
-                      <span className="bg-[#003366] h-full" style={{ width: `${row.percent}%` }} />
+                    <div className="h-2.5 bg-surface-panel overflow-hidden flex" role="progressbar" aria-label={`${row.member.name} completeness`} aria-valuenow={row.percent} aria-valuemin={0} aria-valuemax={100}>
+                      <span className="bg-action h-full" style={{ width: `${row.percent}%` }} />
                     </div>
                   </div>
-                  <div className="md:text-right"><span className={`text-2xl font-serif font-bold ${row.percent >= 90 ? "text-emerald-700" : row.percent >= 70 ? "text-amber-700" : "text-red-700"}`}>{row.percent}%</span></div>
+                  <div className="md:text-right"><span className={`text-2xl font-serif font-bold ${row.percent >= 90 ? "text-success-fg" : row.percent >= 70 ? "text-warning-fg" : "text-danger-fg"}`}>{row.percent}%</span></div>
                 </div>
               ))}
-              {!displayedRows.length && <div className="p-8 text-center text-sm text-gray-500">No team members were found in this list.</div>}
+              {!displayedRows.length && <div className="p-8 text-center text-sm text-fg-muted">No team members were found in this list.</div>}
             </div>
           </section>
 
-          <section className="bg-[#FFFCFB] border border-gray-200">
-            <div className="p-5 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div><h3 className="text-lg flex items-center gap-2"><CalendarDays size={18} className="text-[#C9AB4C]" /> Coverage by workday</h3><p className="text-sm text-gray-500 mt-1">A daily audit of submitted logs and days without any logs.</p></div>
-              <div className="flex items-center gap-4 text-xs text-gray-500"><span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 bg-emerald-600" /> Submitted</span><span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 bg-orange-200 border border-orange-300" /> Empty log</span></div>
+          <section className="bg-surface-panel border border-line">
+            <div className="p-5 border-b border-line flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div><h3 className="text-lg flex items-center gap-2"><CalendarDays size={18} className="text-link" /> Coverage by workday</h3><p className="text-sm text-fg-muted mt-1">A daily audit of submitted logs and days without any logs.</p></div>
+              <div className="flex items-center gap-4 text-xs text-fg-muted"><span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 bg-success-action" /> Submitted</span><span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 bg-warning-surface border border-warning-border" /> Empty log</span></div>
             </div>
             <div className="overflow-x-auto p-5">
               <div style={{ minWidth: `${Math.max(720, 210 + workdays.length * 35)}px` }}>
                 <div className="grid gap-1.5 items-end mb-2" style={{ gridTemplateColumns: `190px repeat(${workdays.length}, minmax(28px, 1fr))` }}>
-                  <div className="text-xs uppercase tracking-wider font-bold text-gray-500">Team member</div>
-                  {workdays.map((date) => <div key={date} className="text-center"><div className="text-[11px] uppercase text-gray-500">{formatDate(date, { weekday: "narrow" })}</div><div className="text-xs font-bold text-[#003366]">{fromIso(date).getDate()}</div></div>)}
+                  <div className="text-xs uppercase tracking-wider font-bold text-fg-muted">Team member</div>
+                  {workdays.map((date) => <div key={date} className="text-center"><div className="text-[11px] uppercase text-fg-muted">{formatDate(date, { weekday: "narrow" })}</div><div className="text-xs font-bold text-fg">{fromIso(date).getDate()}</div></div>)}
                 </div>
                 <div className="space-y-1.5">
                   {filteredRows.map((row) => (
                     <div key={row.member.id} className="grid gap-1.5 items-center" style={{ gridTemplateColumns: `190px repeat(${workdays.length}, minmax(28px, 1fr))` }}>
-                      <div className="text-sm font-semibold text-gray-700 truncate pr-3">{row.member.name}</div>
+                      <div className="text-sm font-semibold text-fg truncate pr-3">{row.member.name}</div>
                       {workdays.map((date) => {
                         const dayEntries = row.byDate.get(date) || [];
                         const status = dayEntries.some((entry) => entry.hasContent) ? "submitted" : "empty";
-                        return <div key={date} title={`${formatDate(date)}: ${status === "submitted" ? "submitted" : "empty log"}`} aria-label={`${row.member.name}, ${formatDate(date)}: ${status === "submitted" ? "submitted" : "empty log"}`} className={`h-8 grid place-items-center text-xs font-bold ${status === "submitted" ? "bg-emerald-600 text-white" : "bg-orange-100 text-orange-800 border border-orange-300"}`}>{status === "submitted" ? "✓" : "·"}</div>;
+                        return <div key={date} title={`${formatDate(date)}: ${status === "submitted" ? "submitted" : "empty log"}`} aria-label={`${row.member.name}, ${formatDate(date)}: ${status === "submitted" ? "submitted" : "empty log"}`} className={`h-8 grid place-items-center text-xs font-bold ${status === "submitted" ? "bg-success-action text-on-action" : "bg-warning-surface text-warning-fg border border-warning-border"}`}>{status === "submitted" ? "✓" : "·"}</div>;
                       })}
                     </div>
                   ))}

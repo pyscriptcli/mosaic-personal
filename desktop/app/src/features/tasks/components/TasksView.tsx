@@ -666,28 +666,28 @@ export default function TasksView({
     const p = priority.toLowerCase();
     if (p.includes("urgent")) {
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 bg-red-100 text-red-700 uppercase tracking-wider rounded-none">
-          <span className="w-1.5 h-1.5 bg-red-600"></span> Urgent
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 bg-danger-surface text-danger-fg uppercase tracking-wider rounded-none">
+          <span className="w-1.5 h-1.5 bg-danger-fg"></span> Urgent
         </span>
       );
     }
     if (p.includes("high")) {
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-800 uppercase tracking-wider rounded-none">
-          <span className="w-1.5 h-1.5 bg-amber-600"></span> High
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 bg-warning-surface text-warning-fg uppercase tracking-wider rounded-none">
+          <span className="w-1.5 h-1.5 bg-warning-fg"></span> High
         </span>
       );
     }
     if (p.includes("normal") || p.includes("medium")) {
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 bg-blue-50 text-[#003366] uppercase tracking-wider rounded-none">
-          <span className="w-1.5 h-1.5 bg-[#003366]"></span> Normal
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 bg-info-surface text-fg uppercase tracking-wider rounded-none">
+          <span className="w-1.5 h-1.5 bg-link"></span> Normal
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 bg-[#FFFCFB] text-gray-600 uppercase tracking-wider rounded-none">
-        <span className="w-1.5 h-1.5 bg-gray-400"></span> Low
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 bg-surface-panel text-fg-secondary uppercase tracking-wider rounded-none">
+        <span className="w-1.5 h-1.5 bg-surface-raised"></span> Low
       </span>
     );
   };
@@ -696,18 +696,18 @@ export default function TasksView({
     const s = statusStr.toLowerCase();
     const cat = getStatusCategory(s);
 
-    let badgeClass = "bg-[#FFFCFB] text-gray-700 border-gray-200";
-    if (cat === "Not started") badgeClass = "bg-amber-50 text-amber-800 border-amber-200";
+    let badgeClass = "bg-surface-panel text-fg border-line";
+    if (cat === "Not started") badgeClass = "bg-warning-surface text-warning-fg border-warning-border";
     else if (cat === "Active") {
-      if (s.includes("delayed")) badgeClass = "bg-red-50 text-red-700 border-red-200";
-      else if (s.includes("recovery")) badgeClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
-      else badgeClass = "bg-yellow-50 text-yellow-800 border-yellow-200";
+      if (s.includes("delayed")) badgeClass = "bg-danger-surface text-danger-fg border-danger-border";
+      else if (s.includes("recovery")) badgeClass = "bg-success-surface text-success-fg border-success-border";
+      else badgeClass = "bg-warning-surface text-warning-fg border-warning-border";
     } else if (cat === "Done") {
-      if (s.includes("delayed")) badgeClass = "bg-pink-50 text-pink-700 border-pink-200";
-      else if (s.includes("onhold") || s.includes("shelved")) badgeClass = "bg-[#FFFCFB] text-gray-600 border-gray-200";
-      else badgeClass = "bg-blue-50 text-[#003366] border-blue-200";
+      if (s.includes("delayed")) badgeClass = "bg-special-surface text-special-fg border-special-border";
+      else if (s.includes("onhold") || s.includes("shelved")) badgeClass = "bg-surface-panel text-fg-secondary border-line";
+      else badgeClass = "bg-info-surface text-fg border-info-border";
     } else if (cat === "Closed") {
-      badgeClass = "bg-emerald-100 text-emerald-800 border-emerald-300";
+      badgeClass = "bg-success-surface text-success-fg border-success-border";
     }
 
     return (
@@ -719,30 +719,30 @@ export default function TasksView({
 
   // Kanban Board Columns by Category
   const KANBAN_CATEGORIES: Array<{ key: string; label: string; color: string }> = [
-    { key: "Not started", label: "NOT STARTED", color: "border-amber-400" },
-    { key: "Active", label: "ACTIVE & ONGOING", color: "border-blue-500" },
-    { key: "Done", label: "DONE & RESOLVED", color: "border-purple-500" },
-    { key: "Closed", label: "CLOSED", color: "border-emerald-500" },
+    { key: "Not started", label: "NOT STARTED", color: "border-warning-border" },
+    { key: "Active", label: "ACTIVE & ONGOING", color: "border-info-border" },
+    { key: "Done", label: "DONE & RESOLVED", color: "border-special-border" },
+    { key: "Closed", label: "CLOSED", color: "border-success-border" },
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#FFFCFB] overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-surface-panel overflow-hidden">
       {/* Top Header Bar */}
-      <div className="bg-[#FFFCFB] border-b border-gray-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shrink-0 shadow-xs">
+      <div className="bg-surface-panel border-b border-line px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shrink-0 shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#1b1d1e] flex items-center justify-center text-[#c9ab4c]">
+          <div className="w-8 h-8 bg-surface-panel flex items-center justify-center text-link">
             <CheckSquare size={17} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-serif italic font-bold text-xl text-[#003366] leading-none">
+              <h1 className="font-serif italic font-bold text-xl text-fg leading-none">
                 Meeting Action Items & Tasks
               </h1>
-              <span className="text-[10px] bg-purple-50 text-purple-800 font-bold px-2 py-0.5 border border-purple-200 tracking-wider uppercase">
+              <span className="text-[10px] bg-special-surface text-special-fg font-bold px-2 py-0.5 border border-special-border tracking-wider uppercase">
                 {desktopMode ? "Saved on this device" : pendingSync ? `${pendingSync} change${pendingSync === 1 ? "" : "s"} syncing` : "Up to date"}
               </span>
             </div>
-            <p className="text-[11px] text-gray-500 mt-0.5">
+            <p className="text-[11px] text-fg-muted mt-0.5">
               {desktopMode ? "Manage tasks saved in your local workspace." : "Closed-loop operational execution synchronized directly with ClickUp. Click any task to view or edit details."}
             </p>
           </div>
@@ -750,7 +750,7 @@ export default function TasksView({
 
         {/* View Switcher, List Selector & Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {desktopMode ? <div className="flex items-center gap-2 border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-[#003366]"><FolderKanban size={15} className="text-[#c9ab4c]" />This device</div> : <>
+          {desktopMode ? <div className="flex items-center gap-2 border border-line bg-surface-raised px-3 py-1.5 text-xs font-semibold text-fg"><FolderKanban size={15} className="text-link" />This device</div> : <>
           {/* Active ClickUp List Selector Dropdown */}
           <div className="relative" ref={listDropdownRef}>
             <button
@@ -760,57 +760,57 @@ export default function TasksView({
                 if (availableLists.length === 0) loadDiscoveredLists(false);
               }}
               title="Click to switch ClickUp list"
-              className="flex items-center gap-2 px-3 py-1.5 bg-[#FAF9F7] hover:bg-[#FFFCFB] border border-[#1b1d1e]/20 hover:border-[#c9ab4c] transition-all text-xs font-semibold text-[#1b1d1e] shadow-2xs rounded-none cursor-pointer"
+              className="flex items-center gap-2 px-3 py-1.5 bg-surface-selected hover:bg-surface-hover border border-line hover:border-focus transition-all text-xs font-semibold text-fg shadow-2xs rounded-none cursor-pointer"
             >
-              <FolderKanban size={15} className="text-[#c9ab4c] shrink-0" />
+              <FolderKanban size={15} className="text-link shrink-0" />
               <div className="flex flex-col text-left leading-tight max-w-[170px] sm:max-w-[240px] truncate">
-                <span className="text-[9px] uppercase tracking-widest text-gray-500 font-bold truncate">
+                <span className="text-[9px] uppercase tracking-widest text-fg-muted font-bold truncate">
                   {selectedSpaceName || "ClickUp Space"}
                 </span>
-                <span className="text-xs font-bold text-[#003366] truncate">
+                <span className="text-xs font-bold text-fg truncate">
                   {selectedListName || (selectedListId ? `List #${selectedListId}` : "Select List...")}
                 </span>
               </div>
               <ChevronDown
                 size={13}
-                className={`text-gray-400 ml-1 transition-transform ${isListDropdownOpen ? "rotate-180" : ""}`}
+                className={`text-fg-muted ml-1 transition-transform ${isListDropdownOpen ? "rotate-180" : ""}`}
               />
             </button>
 
             {/* Dropdown Menu */}
             {isListDropdownOpen && (
-              <div className="absolute right-0 mt-1.5 w-80 sm:w-96 bg-[#FFFCFB] border-2 border-[#1b1d1e] shadow-2xl z-50 rounded-none overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+              <div className="absolute right-0 mt-1.5 w-80 sm:w-96 bg-surface-panel border border-line shadow-2xl z-50 rounded-none overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
                 {/* Search / Filter bar inside dropdown */}
-                <div className="p-2.5 bg-[#1b1d1e] text-white border-b border-[#2c2f32]">
+                <div className="p-2.5 bg-surface-panel text-on-action border-b border-line">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-bold tracking-widest uppercase text-[#c9ab4c]">
+                    <span className="text-[10px] font-bold tracking-widest uppercase text-link">
                       Workspace Lists
                     </span>
                     <button
                       type="button"
                       onClick={() => loadDiscoveredLists(true)}
                       disabled={loadingLists}
-                      className="text-[10px] text-gray-300 hover:text-white flex items-center gap-1 font-bold disabled:opacity-50 cursor-pointer"
+                      className="text-[10px] text-fg-muted hover:text-fg flex items-center gap-1 font-bold  cursor-pointer"
                     >
-                      <FolderSync size={11} className={loadingLists ? "animate-spin text-[#c9ab4c]" : ""} />
+                      <FolderSync size={11} className={loadingLists ? "animate-spin text-link" : ""} />
                       <span>{loadingLists ? "Scanning..." : "Rescan"}</span>
                     </button>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-[#25282a] border border-[#3a3e42] px-2 py-1 text-xs">
-                    <Search size={12} className="text-gray-400 shrink-0" />
+                  <div className="flex items-center gap-1.5 bg-surface-raised border border-line px-2 py-1 text-xs">
+                    <Search size={12} className="text-fg-muted shrink-0" />
                     <input
                       type="text"
                       placeholder="Filter spaces and lists..."
                       value={listSearchQuery}
                       onChange={(e) => setListSearchQuery(e.target.value)}
-                      className="w-full bg-transparent text-white placeholder-gray-500 outline-none text-xs"
+                      className="w-full bg-transparent text-on-action placeholder-fg-muted outline-none text-xs"
                       autoFocus
                     />
                     {listSearchQuery && (
                       <button
                         type="button"
                         onClick={() => setListSearchQuery("")}
-                        className="text-gray-400 hover:text-white cursor-pointer"
+                        className="text-fg-muted hover:text-fg cursor-pointer"
                       >
                         <X size={11} />
                       </button>
@@ -819,24 +819,24 @@ export default function TasksView({
                 </div>
 
                 {/* Lists Content */}
-                <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+                <div className="max-h-72 overflow-y-auto divide-y divide-line">
                   {loadingLists && availableLists.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-gray-500 flex flex-col items-center gap-2">
-                      <RefreshCw size={16} className="animate-spin text-[#c9ab4c]" />
+                    <div className="p-6 text-center text-xs text-fg-muted flex flex-col items-center gap-2">
+                      <RefreshCw size={16} className="animate-spin text-link" />
                       <span>Discovering workspace lists...</span>
                     </div>
                   ) : listsBySpace.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-gray-500">
+                    <div className="p-6 text-center text-xs text-fg-muted">
                       {listSearchQuery ? "No lists match your search." : "No lists found. Click Rescan to discover."}
                     </div>
                   ) : (
                     listsBySpace.map(([spaceName, spaceLists]) => (
                       <div key={spaceName}>
-                        <div className="bg-[#FFFCFB] px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-500 border-b border-gray-100 flex items-center justify-between">
+                        <div className="bg-surface-panel px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-fg-muted border-b border-line flex items-center justify-between">
                           <span>{spaceName}</span>
-                          <span className="text-gray-400">{spaceLists.length} lists</span>
+                          <span className="text-fg-muted">{spaceLists.length} lists</span>
                         </div>
-                        <div className="divide-y divide-gray-50">
+                        <div className="divide-y divide-line">
                           {spaceLists.map((l) => {
                             const isSelected = selectedListId === l.id;
                             return (
@@ -846,30 +846,30 @@ export default function TasksView({
                                 onClick={() => handleSelectList(l)}
                                 className={`w-full text-left px-3.5 py-2.5 flex items-center justify-between group transition-colors cursor-pointer ${
                                   isSelected
-                                    ? "bg-amber-50/70 border-l-4 border-[#c9ab4c]"
-                                    : "hover:bg-[#FFFCFB]"
+                                    ? "bg-warning-surface border-l-4 border-focus"
+                                    : "hover:bg-surface-hover"
                                 }`}
                               >
                                 <div className="truncate pr-2">
                                   {l.folderName && (
-                                    <span className="text-[10px] text-gray-400 block font-normal truncate">
+                                    <span className="text-[10px] text-fg-muted block font-normal truncate">
                                       {l.folderName}
                                     </span>
                                   )}
                                   <span
                                     className={`text-xs font-semibold block truncate ${
-                                      isSelected ? "text-[#003366] font-bold" : "text-gray-800 group-hover:text-[#003366]"
+                                      isSelected ? "text-fg font-bold" : "text-fg group-hover:text-fg"
                                     }`}
                                   >
                                     {l.name}
                                   </span>
                                 </div>
                                 {isSelected ? (
-                                  <Check size={14} className="text-[#c9ab4c] shrink-0" />
+                                  <Check size={14} className="text-link shrink-0" />
                                 ) : (
                                   <ChevronRight
                                     size={13}
-                                    className="text-gray-300 group-hover:text-[#003366] opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                                    className="text-fg-muted group-hover:text-fg opacity-0 group-hover:opacity-100 transition-all shrink-0"
                                   />
                                 )}
                               </button>
@@ -882,7 +882,7 @@ export default function TasksView({
                 </div>
 
                 {/* Dropdown Footer */}
-                <div className="p-2 bg-[#FFFCFB] border-t border-gray-200 flex items-center justify-between text-[10px] text-gray-500 px-3">
+                <div className="p-2 bg-surface-panel border-t border-line flex items-center justify-between text-[10px] text-fg-muted px-3">
                   <span>
                     {availableLists.length > 0 ? `${availableLists.length} lists available` : "Click Rescan to refresh"}
                   </span>
@@ -892,7 +892,7 @@ export default function TasksView({
                       setIsListDropdownOpen(false);
                       setNeedsListSelection(true);
                     }}
-                    className="text-[#003366] font-bold hover:underline cursor-pointer"
+                    className="text-fg font-bold hover:underline cursor-pointer"
                   >
                     Manage / Switch
                   </button>
@@ -903,13 +903,13 @@ export default function TasksView({
           </>}
 
           {/* Board / List Toggle */}
-          <div className="flex bg-[#FFFCFB] p-0.5 border border-gray-200">
+          <div className="flex bg-surface-panel p-0.5 border border-line">
             <button
               onClick={() => setViewMode("board")}
               className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold transition-colors cursor-pointer ${
                 viewMode === "board"
-                  ? "bg-[#003366] text-white shadow-xs"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-action text-on-action shadow-xs"
+                  : "text-fg-secondary hover:text-fg"
               }`}
             >
               <Kanban size={13} />
@@ -919,8 +919,8 @@ export default function TasksView({
               onClick={() => setViewMode("list")}
               className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold transition-colors cursor-pointer ${
                 viewMode === "list"
-                  ? "bg-[#003366] text-white shadow-xs"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-action text-on-action shadow-xs"
+                  : "text-fg-secondary hover:text-fg"
               }`}
             >
               <List size={13} />
@@ -933,9 +933,9 @@ export default function TasksView({
             onClick={() => void requestTasksRefresh()}
             disabled={refreshing || loading}
             title={desktopMode ? "Refresh local tasks" : "Refresh from ClickUp"}
-            className="p-1.5 text-gray-600 hover:text-[#003366] bg-[#FFFCFB] border border-gray-200 hover:border-gray-300 transition-colors disabled:opacity-50 cursor-pointer"
+            className="p-1.5 text-fg-secondary hover:text-fg bg-surface-panel border border-line hover:border-line transition-colors  cursor-pointer"
           >
-            <RefreshCw size={14} className={refreshing ? "animate-spin text-[#c9ab4c]" : ""} />
+            <RefreshCw size={14} className={refreshing ? "animate-spin text-link" : ""} />
           </button>
 
           {/* Create Task Button */}
@@ -950,52 +950,52 @@ export default function TasksView({
       </div>
 
       {/* Metric Strip */}
-      <div className="bg-[#1b1d1e] text-white px-6 py-2.5 border-b border-[#c9ab4c]/30 flex items-center justify-between gap-4 shrink-0 text-xs">
-        <div className="flex items-center gap-6 divide-x divide-white/10">
+      <div className="bg-surface-panel text-on-action px-6 py-2.5 border-b border-focus flex items-center justify-between gap-4 shrink-0 text-xs">
+        <div className="flex items-center gap-6 divide-x divide-control-border">
           <div className="flex items-center gap-2">
-            <span className="text-gray-400 text-[11px] uppercase tracking-wider font-semibold">
+            <span className="text-fg-muted text-[11px] uppercase tracking-wider font-semibold">
               Total Synced:
             </span>
-            <span className="font-mono font-bold text-white text-sm">{metrics.total}</span>
+            <span className="font-mono font-bold text-on-action text-sm">{metrics.total}</span>
           </div>
           <div className="pl-6 flex items-center gap-2">
-            <span className="text-gray-400 text-[11px] uppercase tracking-wider font-semibold">
+            <span className="text-fg-muted text-[11px] uppercase tracking-wider font-semibold">
               In Progress / Active:
             </span>
-            <span className="font-mono font-bold text-blue-400 text-sm">{metrics.inProgress}</span>
+            <span className="font-mono font-bold text-info-fg text-sm">{metrics.inProgress}</span>
           </div>
           <div className="pl-6 flex items-center gap-2">
-            <span className="text-gray-400 text-[11px] uppercase tracking-wider font-semibold">
+            <span className="text-fg-muted text-[11px] uppercase tracking-wider font-semibold">
               Completed / Done:
             </span>
-            <span className="font-mono font-bold text-emerald-400 text-sm">{metrics.completed}</span>
+            <span className="font-mono font-bold text-success-fg text-sm">{metrics.completed}</span>
           </div>
           <div className="pl-6 flex items-center gap-2">
-            <span className="text-gray-400 text-[11px] uppercase tracking-wider font-semibold">
+            <span className="text-fg-muted text-[11px] uppercase tracking-wider font-semibold">
               Overdue:
             </span>
-            <span className="font-mono font-bold text-rose-400 text-sm">{metrics.overdue}</span>
+            <span className="font-mono font-bold text-danger-fg text-sm">{metrics.overdue}</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] text-[#c9ab4c]">
+        <div className="flex items-center gap-2 text-[11px] text-link">
           <Tag size={12} />
           <span className="font-mono">Tag: meeting archive</span>
         </div>
       </div>
 
       {/* Enterprise Filter Bar */}
-      <div className="bg-[#FFFCFB] border-b border-gray-200 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <div className="bg-surface-panel border-b border-line px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div className="flex flex-wrap items-center gap-3">
           {/* Search Box */}
           <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-muted" />
             <input
               type="text"
               placeholder="Search tasks, meetings, assignees..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1 bg-[#FFFCFB] border border-gray-200 text-xs w-60 focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none"
+              className="pl-8 pr-3 py-1 bg-surface-panel border border-line text-xs w-60 focus:bg-surface-panel focus:border-focus outline-none"
             />
           </div>
 
@@ -1003,7 +1003,7 @@ export default function TasksView({
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="px-2.5 py-1 text-xs bg-[#FFFCFB] border border-gray-200 text-gray-700 outline-none focus:border-[#c9ab4c] font-bold uppercase"
+            className="px-2.5 py-1 text-xs bg-surface-panel border border-line text-fg outline-none focus:border-focus font-bold uppercase"
           >
             <option value="all">Status: All Statuses</option>
             {statusCategories.map(cat => (
@@ -1021,7 +1021,7 @@ export default function TasksView({
           <select
             value={dateFilter}
             onChange={e => setDateFilter(e.target.value as any)}
-            className="px-2.5 py-1 text-xs bg-[#FFFCFB] border border-gray-200 text-gray-700 outline-none focus:border-[#c9ab4c]"
+            className="px-2.5 py-1 text-xs bg-surface-panel border border-line text-fg outline-none focus:border-focus"
           >
             <option value="all">Due: All Dates</option>
             <option value="today">Due: Today</option>
@@ -1034,7 +1034,7 @@ export default function TasksView({
             <select
               value={assigneeFilter}
               onChange={e => setAssigneeFilter(e.target.value)}
-              className="px-2.5 py-1 text-xs bg-[#FFFCFB] border border-gray-200 text-gray-700 outline-none focus:border-[#c9ab4c]"
+              className="px-2.5 py-1 text-xs bg-surface-panel border border-line text-fg outline-none focus:border-focus"
             >
               <option value="all">Assignee: All Members</option>
               {allAssignees.map(a => (
@@ -1050,7 +1050,7 @@ export default function TasksView({
             <select
               value={meetingFilter}
               onChange={e => setMeetingFilter(e.target.value)}
-              className="px-2.5 py-1 text-xs bg-[#FFFCFB] border border-gray-200 text-gray-700 outline-none focus:border-[#c9ab4c] max-w-[200px] truncate"
+              className="px-2.5 py-1 text-xs bg-surface-panel border border-line text-fg outline-none focus:border-focus max-w-[200px] truncate"
             >
               <option value="all">Meeting: All Sources</option>
               {allMeetings.map(m => (
@@ -1062,9 +1062,9 @@ export default function TasksView({
           )}
         </div>
 
-        <div className="text-[11px] text-gray-400">
-          Showing <span className="font-bold text-gray-700">{filteredTasks.length}</span> of{" "}
-          <span className="font-bold text-gray-700">{tasks.length}</span> tasks
+        <div className="text-[11px] text-fg-muted">
+          Showing <span className="font-bold text-fg">{filteredTasks.length}</span> of{" "}
+          <span className="font-bold text-fg">{tasks.length}</span> tasks
         </div>
       </div>
 
@@ -1073,67 +1073,67 @@ export default function TasksView({
         {/* Auth / Connection Warning Card */}
         {/* List Selection Required Card */}
         {needsListSelection && !loading && (
-          <div className="max-w-3xl mx-auto mb-8 bg-[#FFFCFB] border-2 border-[#1b1d1e] p-7 shadow-xl rounded-none">
+          <div className="max-w-3xl mx-auto mb-8 bg-surface-panel border border-line p-7 shadow-xl rounded-none">
             <div className="flex items-start gap-3.5 mb-5">
-              <div className="w-10 h-10 bg-[#1b1d1e] text-[#c9ab4c] flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 bg-surface-panel text-link flex items-center justify-center shrink-0">
                 <FolderKanban size={22} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="font-serif italic font-bold text-xl text-[#003366]">
+                  <h3 className="font-serif italic font-bold text-xl text-fg">
                     Select a ClickUp List to Display
                   </h3>
-                  <span className="text-[9px] uppercase tracking-widest bg-amber-50 text-[#003366] font-bold px-2 py-0.5 border border-[#c9ab4c]/40">
+                  <span className="text-[9px] uppercase tracking-widest bg-warning-surface text-fg font-bold px-2 py-0.5 border border-focus">
                     Workspace Connected
                   </span>
                 </div>
-                <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                <p className="text-xs text-fg-secondary mt-1 leading-relaxed">
                   Choose which list inside your connected ClickUp workspace you would like to view and synchronize with Mosaic.
                 </p>
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-gray-100">
+            <div className="space-y-4 pt-4 border-t border-line">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-700">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-fg">
                     Available Lists in Your Workspace
                   </label>
                   <button
                     type="button"
                     onClick={() => loadDiscoveredLists(true)}
                     disabled={loadingLists}
-                    className="text-[11px] text-[#003366] hover:text-[#c9ab4c] font-bold flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    className="text-[11px] text-fg hover:text-link font-bold flex items-center gap-1.5  cursor-pointer"
                   >
-                    <FolderSync size={13} className={loadingLists ? "animate-spin text-[#c9ab4c]" : ""} />
+                    <FolderSync size={13} className={loadingLists ? "animate-spin text-link" : ""} />
                     <span>{loadingLists ? "Scanning Workspace..." : "Rescan Lists"}</span>
                   </button>
                 </div>
 
                 {availableLists.length > 0 ? (
-                  <div className="border border-gray-200 divide-y divide-gray-100 max-h-80 overflow-y-auto bg-[#FAF9F7]">
+                  <div className="border border-line divide-y divide-line max-h-80 overflow-y-auto bg-surface-selected">
                     {listsBySpace.map(([spaceName, spaceLists]) => (
                       <div key={spaceName}>
-                        <div className="bg-[#FFFCFB]/80 px-3.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-gray-600 border-b border-gray-200 flex items-center justify-between">
+                        <div className="bg-surface-panel px-3.5 py-1.5 text-[9px] font-bold uppercase tracking-widest text-fg-secondary border-b border-line flex items-center justify-between">
                           <span>{spaceName}</span>
-                          <span className="text-gray-400">{spaceLists.length} lists</span>
+                          <span className="text-fg-muted">{spaceLists.length} lists</span>
                         </div>
-                        <div className="divide-y divide-gray-100 bg-[#FFFCFB]">
+                        <div className="divide-y divide-line bg-surface-panel">
                           {spaceLists.map((l) => (
                             <div
                               key={l.id}
-                              className="px-4 py-3 hover:bg-amber-50/60 transition-colors flex items-center justify-between gap-4"
+                              className="px-4 py-3 hover:bg-warning-surface transition-colors flex items-center justify-between gap-4"
                             >
                               <div className="truncate">
                                 {l.folderName && (
-                                  <span className="text-[10px] text-gray-400 font-semibold block uppercase tracking-wider">
+                                  <span className="text-[10px] text-fg-muted font-semibold block uppercase tracking-wider">
                                     {l.folderName}
                                   </span>
                                 )}
-                                <span className="text-xs font-bold text-gray-900 block truncate">
+                                <span className="text-xs font-bold text-fg block truncate">
                                   {l.name}
                                 </span>
-                                <span className="text-[10px] text-gray-400 font-mono">
+                                <span className="text-[10px] text-fg-muted font-mono">
                                   ID: {l.id}
                                 </span>
                               </div>
@@ -1152,15 +1152,15 @@ export default function TasksView({
                     ))}
                   </div>
                 ) : (
-                  <div className="p-8 bg-[#FFFCFB] border border-gray-200 text-center">
+                  <div className="p-8 bg-surface-panel border border-line text-center">
                     {loadingLists ? (
-                      <div className="flex flex-col items-center justify-center gap-2 text-xs text-gray-500">
-                        <RefreshCw size={20} className="animate-spin text-[#c9ab4c]" />
-                        <span className="font-semibold text-gray-700">Auto-discovering spaces and lists in your ClickUp workspace...</span>
+                      <div className="flex flex-col items-center justify-center gap-2 text-xs text-fg-muted">
+                        <RefreshCw size={20} className="animate-spin text-link" />
+                        <span className="font-semibold text-fg">Auto-discovering spaces and lists in your ClickUp workspace...</span>
                       </div>
                     ) : (
                       <div>
-                        <p className="text-xs text-gray-500 mb-3">
+                        <p className="text-xs text-fg-muted mb-3">
                           No lists were automatically discovered from your workspace. Click the button below to scan.
                         </p>
                         <button
@@ -1178,9 +1178,9 @@ export default function TasksView({
               </div>
 
               {/* Manual List ID input fallback */}
-              <div className="pt-3 border-t border-gray-100">
-                <details className="text-xs text-gray-500">
-                  <summary className="cursor-pointer font-bold hover:text-[#003366] text-[11px]">
+              <div className="pt-3 border-t border-line">
+                <details className="text-xs text-fg-muted">
+                  <summary className="cursor-pointer font-bold hover:text-fg text-[11px]">
                     Or enter a ClickUp List ID manually
                   </summary>
                   <div className="mt-3 flex items-center gap-2">
@@ -1189,7 +1189,7 @@ export default function TasksView({
                       placeholder="e.g. 9012345678"
                       value={listIdInput}
                       onChange={(e) => setListIdInput(e.target.value)}
-                      className="flex-1 border border-gray-300 p-2 text-xs font-mono bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none"
+                      className="flex-1 border border-line p-2 text-xs font-mono bg-surface-panel focus:border-focus outline-none"
                     />
                     <button
                       type="button"
@@ -1213,26 +1213,26 @@ export default function TasksView({
 
         {/* Auth / Connection Warning Card */}
         {!desktopMode && needsAuth && (
-          <div className="max-w-2xl mx-auto mb-6 bg-[#FFFCFB] border-2 border-[#003366] p-6 shadow-md">
+          <div className="max-w-2xl mx-auto mb-6 bg-surface-panel border border-line p-6 shadow-md">
             <div className="flex items-start gap-3 mb-4">
-              <AlertCircle className="text-[#c9ab4c] shrink-0 mt-0.5" size={22} />
+              <AlertCircle className="text-link shrink-0 mt-0.5" size={22} />
               <div>
-                <h3 className="font-serif italic font-bold text-lg text-[#003366]">
+                <h3 className="font-serif italic font-bold text-lg text-fg">
                   Connect Your ClickUp Workspace
                 </h3>
-                <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                <p className="text-xs text-fg-secondary mt-1 leading-relaxed">
                   Mosaic synchronizes live tasks with ClickUp. Connect a workspace using a personal API token below.
                 </p>
               </div>
             </div>
 
-            <div className="space-y-3.5 pt-2 border-t border-gray-100">
+            <div className="space-y-3.5 pt-2 border-t border-line">
               <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-400">Configure a token below to connect ClickUp.</span>
+                <span className="text-xs text-fg-muted">Configure a token below to connect ClickUp.</span>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-secondary mb-1">
                   ClickUp Personal API Token (pk_...)
                 </label>
                 <input
@@ -1240,13 +1240,13 @@ export default function TasksView({
                   placeholder="pk_12345678_..."
                   value={tokenInput}
                   onChange={e => setTokenInput(e.target.value)}
-                  className="w-full border border-gray-300 p-2 text-xs font-mono bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none"
+                  className="w-full border border-line p-2 text-xs font-mono bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none"
                 />
               </div>
 
               <div className="flex items-center justify-between pt-2">
                 {saveSuccess && (
-                  <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                  <span className="text-xs text-success-fg font-bold flex items-center gap-1">
                     <CheckCircle2 size={13} /> Connected successfully!
                   </span>
                 )}
@@ -1264,15 +1264,15 @@ export default function TasksView({
 
         {/* Loading State */}
         {loading && (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-            <RefreshCw size={24} className="animate-spin text-[#c9ab4c] mb-3" />
+          <div className="flex flex-col items-center justify-center py-20 text-fg-muted">
+            <RefreshCw size={24} className="animate-spin text-link mb-3" />
             <p className="text-xs font-semibold">Synchronizing with ClickUp API...</p>
           </div>
         )}
 
         {/* Error Notification */}
         {!loading && error && !needsAuth && !needsListSelection && (
-          <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs mb-6 flex items-center justify-between">
+          <div className="p-4 bg-danger-surface border border-danger-border text-danger-fg text-xs mb-6 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlertCircle size={16} />
               <span>{error}</span>
@@ -1280,13 +1280,13 @@ export default function TasksView({
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setNeedsListSelection(true)}
-                className="font-bold underline hover:text-red-900 cursor-pointer"
+                className="font-bold underline hover:text-danger-fg cursor-pointer"
               >
                 Change List
               </button>
               <button
                 onClick={() => loadTasks()}
-                className="font-bold underline hover:text-red-900 cursor-pointer"
+                className="font-bold underline hover:text-danger-fg cursor-pointer"
               >
                 Retry
               </button>
@@ -1296,12 +1296,12 @@ export default function TasksView({
 
         {/* Empty State */}
         {!loading && !error && filteredTasks.length === 0 && (
-          <div className="text-center py-16 bg-[#FFFCFB] border border-gray-200 p-8 max-w-xl mx-auto">
-            <CheckSquare size={32} className="mx-auto text-gray-300 mb-3" />
-            <h3 className="font-serif italic font-bold text-base text-[#003366] mb-1">
+          <div className="text-center py-16 bg-surface-panel border border-line p-8 max-w-xl mx-auto">
+            <CheckSquare size={32} className="mx-auto text-fg-muted mb-3" />
+            <h3 className="font-serif italic font-bold text-base text-fg mb-1">
               No Meeting Tasks Found
             </h3>
-            <p className="text-xs text-gray-500 mb-5 leading-relaxed max-w-sm mx-auto">
+            <p className="text-xs text-fg-muted mb-5 leading-relaxed max-w-sm mx-auto">
               No tasks matched your current filters. Add tasks from the Notetaker discussion points,
               or create one directly above.
             </p>
@@ -1325,16 +1325,16 @@ export default function TasksView({
               return (
                 <div
                   key={col.key}
-                  className="bg-[#FFFCFB]/80 border border-gray-200 flex flex-col min-h-[500px]"
+                  className="bg-surface-panel border border-line flex flex-col min-h-[500px]"
                 >
                   {/* Column Header */}
-                  <div className={`bg-[#FFFCFB] px-3.5 py-2.5 border-b-2 ${col.color} flex items-center justify-between shadow-2xs`}>
+                  <div className={`bg-surface-panel px-3.5 py-2.5 border-b-2 ${col.color} flex items-center justify-between shadow-2xs`}>
                     <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-[11px] uppercase tracking-wider text-gray-800">
+                      <h4 className="font-bold text-[11px] uppercase tracking-wider text-fg">
                         {col.label}
                       </h4>
                     </div>
-                    <span className="text-[10px] font-mono font-bold bg-[#FFFCFB] text-gray-700 px-1.5 py-0.2">
+                    <span className="text-[10px] font-mono font-bold bg-surface-panel text-fg px-1.5 py-0.2">
                       {colTasks.length}
                     </span>
                   </div>
@@ -1345,7 +1345,7 @@ export default function TasksView({
                       <div
                         key={task.id}
                         onClick={() => openTaskDetail(task)}
-                        className="bg-[#FFFCFB] border border-gray-200 hover:border-[#c9ab4c] p-3 shadow-2xs transition-all flex flex-col justify-between group cursor-pointer hover:shadow-xs"
+                        className="bg-surface-panel border border-line hover:border-focus p-3 shadow-2xs transition-all flex flex-col justify-between group cursor-pointer hover:shadow-xs"
                       >
                         <div>
                           {/* Priority & Specific Status Badge */}
@@ -1355,7 +1355,7 @@ export default function TasksView({
                           </div>
 
                           {/* Task Name */}
-                          <h5 className="text-xs font-bold text-gray-900 leading-snug mb-1.5 group-hover:text-[#003366] transition-colors">
+                          <h5 className="text-xs font-bold text-fg leading-snug mb-1.5 group-hover:text-fg transition-colors">
                             {task.name}
                           </h5>
 
@@ -1366,22 +1366,22 @@ export default function TasksView({
                                 e.stopPropagation();
                                 if (onSelectMeeting) onSelectMeeting(task.meetingTitle!);
                               }}
-                              className="flex items-center gap-1 text-[10px] text-[#003366] bg-blue-50/70 border border-blue-100 px-2 py-0.5 mb-2 font-medium hover:bg-blue-100/70"
+                              className="flex items-center gap-1 text-[10px] text-fg bg-info-surface border border-info-border px-2 py-0.5 mb-2 font-medium hover:bg-info-surface"
                             >
-                              <Link2 size={10} className="shrink-0 text-[#c9ab4c]" />
+                              <Link2 size={10} className="shrink-0 text-link" />
                               <span className="truncate">{task.meetingTitle}</span>
                             </div>
                           )}
 
                           {/* Due Date Indicator */}
                           {task.dueDate && (
-                            <div className="flex items-center gap-1 text-[10px] text-gray-500 mb-2 font-mono">
+                            <div className="flex items-center gap-1 text-[10px] text-fg-muted mb-2 font-mono">
                               <Calendar size={10} />
                               <span>{formatEchoDate(task.dueDate)}</span>
                               {new Date(task.dueDate) < new Date() &&
                                 getStatusCategory(task.status) !== "Done" &&
                                 getStatusCategory(task.status) !== "Closed" && (
-                                  <span className="text-[9px] font-bold text-rose-600 bg-rose-50 px-1 py-0.2 ml-1">
+                                  <span className="text-[9px] font-bold text-danger-fg bg-danger-surface px-1 py-0.2 ml-1">
                                     OVERDUE
                                   </span>
                                 )}
@@ -1392,13 +1392,13 @@ export default function TasksView({
                         {/* Card Footer: Assignee & Quick Status Changer */}
                         <div
                           onClick={e => e.stopPropagation()}
-                          className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2 mt-1"
+                          className="pt-2 border-t border-line flex items-center justify-between gap-2 mt-1"
                         >
                           {/* Assignee Avatar / Name */}
-                          <div className="flex items-center gap-1 text-[10px] text-gray-600 truncate">
+                          <div className="flex items-center gap-1 text-[10px] text-fg-secondary truncate">
                             {task.assignees.length > 0 ? (
                               <div className="flex items-center gap-1 truncate">
-                                <div className="w-4 h-4 bg-[#003366] text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                                <div className="w-4 h-4 bg-action text-on-action text-[9px] font-bold flex items-center justify-center shrink-0">
                                   {task.assignees[0].initials}
                                 </div>
                                 <span className="truncate max-w-[80px]">
@@ -1406,7 +1406,7 @@ export default function TasksView({
                                 </span>
                               </div>
                             ) : (
-                              <span className="text-gray-400 italic">Unassigned</span>
+                              <span className="text-fg-muted italic">Unassigned</span>
                             )}
                           </div>
 
@@ -1414,7 +1414,7 @@ export default function TasksView({
                           <select
                             value={task.status.toLowerCase()}
                             onChange={e => handleStatusChange(task.id, e.target.value)}
-                            className="text-[9px] uppercase font-bold tracking-wider bg-[#FFFCFB] border border-gray-200 text-gray-700 py-0.5 px-1 outline-none hover:border-gray-400 cursor-pointer max-w-[120px] truncate"
+                            className="text-[9px] uppercase font-bold tracking-wider bg-surface-panel border border-line text-fg py-0.5 px-1 outline-none hover:border-control-border cursor-pointer max-w-[120px] truncate"
                           >
                             {statusCategories.map(cat => (
                               <optgroup key={cat.category} label={`── ${cat.category} ──`}>
@@ -1438,10 +1438,10 @@ export default function TasksView({
 
         {/* ─── LIST VIEW (TABLE) ─── */}
         {!loading && !error && viewMode === "list" && filteredTasks.length > 0 && (
-          <div className="bg-[#FFFCFB] border border-gray-200 overflow-x-auto shadow-2xs">
+          <div className="bg-surface-panel border border-line overflow-x-auto shadow-2xs">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-[#1b1d1e] text-white border-b border-[#c9ab4c]/40 text-[10px] uppercase font-bold tracking-wider">
+                <tr className="bg-surface-panel text-on-action border-b border-focus text-[10px] uppercase font-bold tracking-wider">
                   <th className="py-2.5 px-4">Status</th>
                   <th className="py-2.5 px-4">Task Name</th>
                   <th className="py-2.5 px-4">Meeting Origin</th>
@@ -1451,19 +1451,19 @@ export default function TasksView({
                   <th className="py-2.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-line">
                 {filteredTasks.map(task => (
                   <tr
                     key={task.id}
                     onClick={() => openTaskDetail(task)}
-                    className="hover:bg-blue-50/40 transition-colors cursor-pointer"
+                    className="hover:bg-info-surface transition-colors cursor-pointer"
                   >
                     {/* Status Column */}
                     <td className="py-2.5 px-4" onClick={e => e.stopPropagation()}>
                       <select
                         value={task.status.toLowerCase()}
                         onChange={e => handleStatusChange(task.id, e.target.value)}
-                        className="text-[10px] uppercase font-bold tracking-wider bg-[#FFFCFB] border border-gray-200 text-gray-800 py-1 px-1.5 outline-none hover:border-[#c9ab4c]"
+                        className="text-[10px] uppercase font-bold tracking-wider bg-surface-panel border border-line text-fg py-1 px-1.5 outline-none hover:border-focus"
                       >
                         {statusCategories.map(cat => (
                           <optgroup key={cat.category} label={`── ${cat.category} ──`}>
@@ -1478,25 +1478,25 @@ export default function TasksView({
                     </td>
 
                     {/* Name Column */}
-                    <td className="py-2.5 px-4 font-bold text-gray-900 max-w-sm">
-                      <div className="line-clamp-2 hover:text-[#003366]">{task.name}</div>
+                    <td className="py-2.5 px-4 font-bold text-fg max-w-sm">
+                      <div className="line-clamp-2 hover:text-fg">{task.name}</div>
                     </td>
 
                     {/* Meeting Origin Column */}
-                    <td className="py-2.5 px-4 text-gray-600" onClick={e => e.stopPropagation()}>
+                    <td className="py-2.5 px-4 text-fg-secondary" onClick={e => e.stopPropagation()}>
                       {task.meetingTitle ? (
                         <button
                           type="button"
                           onClick={() => {
                             if (onSelectMeeting) onSelectMeeting(task.meetingTitle!);
                           }}
-                          className="flex items-center gap-1.5 text-[11px] text-[#003366] hover:underline font-medium"
+                          className="flex items-center gap-1.5 text-[11px] text-fg hover:underline font-medium"
                         >
-                          <Link2 size={11} className="text-[#c9ab4c] shrink-0" />
+                          <Link2 size={11} className="text-link shrink-0" />
                           <span className="truncate max-w-[180px]">{task.meetingTitle}</span>
                         </button>
                       ) : (
-                        <span className="text-gray-400 italic">Direct Task</span>
+                        <span className="text-fg-muted italic">Direct Task</span>
                       )}
                     </td>
 
@@ -1505,7 +1505,7 @@ export default function TasksView({
                       <select
                         value={task.priority.toLowerCase()}
                         onChange={e => handlePriorityChange(task.id, e.target.value)}
-                        className="text-[10px] uppercase font-bold bg-transparent border-0 text-gray-700 outline-none cursor-pointer"
+                        className="text-[10px] uppercase font-bold bg-transparent border-0 text-fg outline-none cursor-pointer"
                       >
                         <option value="urgent">🔴 Urgent</option>
                         <option value="high">🟠 High</option>
@@ -1515,35 +1515,35 @@ export default function TasksView({
                     </td>
 
                     {/* Assignee Column */}
-                    <td className="py-2.5 px-4 text-gray-600">
+                    <td className="py-2.5 px-4 text-fg-secondary">
                       {task.assignees.length > 0 ? (
                         <div className="flex items-center gap-1.5">
-                          <div className="w-5 h-5 bg-[#003366] text-white text-[10px] font-bold flex items-center justify-center">
+                          <div className="w-5 h-5 bg-action text-on-action text-[10px] font-bold flex items-center justify-center">
                             {task.assignees[0].initials}
                           </div>
                           <span className="truncate max-w-[120px]">{task.assignees[0].username}</span>
                         </div>
                       ) : (
-                        <span className="text-gray-400 italic">Unassigned</span>
+                        <span className="text-fg-muted italic">Unassigned</span>
                       )}
                     </td>
 
                     {/* Due Date Column */}
-                    <td className="py-2.5 px-4 font-mono text-[11px] text-gray-600">
+                    <td className="py-2.5 px-4 font-mono text-[11px] text-fg-secondary">
                       {task.dueDate ? (
                         <span
                           className={
                             new Date(task.dueDate) < new Date() &&
                             getStatusCategory(task.status) !== "Done" &&
                             getStatusCategory(task.status) !== "Closed"
-                              ? "text-rose-600 font-bold"
+                              ? "text-danger-fg font-bold"
                               : ""
                           }
                         >
                           {formatEchoDate(task.dueDate)}
                         </span>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-fg-muted">—</span>
                       )}
                     </td>
 
@@ -1553,7 +1553,7 @@ export default function TasksView({
                         <button
                           onClick={() => openTaskDetail(task)}
                           title="View / Edit Details"
-                          className="p-1 text-gray-400 hover:text-[#003366]"
+                          className="p-1 text-fg-muted hover:text-fg"
                         >
                           <Edit3 size={13} />
                         </button>
@@ -1563,7 +1563,7 @@ export default function TasksView({
                             target="_blank"
                             rel="noreferrer"
                             title="Open in ClickUp"
-                            className="p-1 text-gray-400 hover:text-[#003366]"
+                            className="p-1 text-fg-muted hover:text-fg"
                           >
                             <ExternalLink size={13} />
                           </a>
@@ -1571,7 +1571,7 @@ export default function TasksView({
                         <button
                           onClick={() => handleDeleteTask(task.id)}
                           title="Delete from ClickUp"
-                          className="p-1 text-gray-400 hover:text-red-600"
+                          className="p-1 text-fg-muted hover:text-danger-fg"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -1588,25 +1588,25 @@ export default function TasksView({
       {/* ─── TASK DETAIL & EDIT MODAL ─── */}
       {/* ─── TASK DETAIL & EDIT MODAL ─── */}
       {selectedTaskForDetail && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-[#FFFCFB] border-2 border-[#003366] shadow-2xl p-6 w-full max-w-4xl rounded-none animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-scrim/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-surface-panel border border-line shadow-2xl p-6 w-full max-w-4xl rounded-none animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-gray-200 pb-3 mb-4">
+            <div className="flex items-start justify-between border-b border-line pb-3 mb-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-mono uppercase bg-purple-50 text-purple-700 px-1.5 py-0.2 font-bold">
+                  <span className="text-[10px] font-mono uppercase bg-special-surface text-special-fg px-1.5 py-0.2 font-bold">
                     ClickUp Task #{selectedTaskForDetail.id}
                   </span>
                   {selectedTaskForDetail.discussionPointId && (
-                    <span className="text-[10px] font-mono bg-blue-50 text-[#003366] px-1.5 py-0.2 font-bold">
+                    <span className="text-[10px] font-mono bg-info-surface text-fg px-1.5 py-0.2 font-bold">
                       DP ID: {selectedTaskForDetail.discussionPointId}
                     </span>
                   )}
-                  <span className="text-[10px] font-mono bg-emerald-50 text-emerald-700 px-1.5 py-0.2 font-bold">
+                  <span className="text-[10px] font-mono bg-success-surface text-success-fg px-1.5 py-0.2 font-bold">
                     Tag: meeting archive
                   </span>
                 </div>
-                <h3 className="font-serif italic font-bold text-xl text-[#003366]">
+                <h3 className="font-serif italic font-bold text-xl text-fg">
                   Task Details
                 </h3>
               </div>
@@ -1616,7 +1616,7 @@ export default function TasksView({
                   setSelectedTaskForDetail(null);
                   if (onClearFocusedTask) onClearFocusedTask();
                 }}
-                className="text-gray-400 hover:text-gray-700 text-sm font-bold p-1"
+                className="text-fg-muted hover:text-fg text-sm font-bold p-1"
               >
                 ✕
               </button>
@@ -1627,15 +1627,15 @@ export default function TasksView({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Column Left: Task Details */}
                 <div className="space-y-3.5">
-                  <div className="border-b border-gray-100 pb-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#003366]">
+                  <div className="border-b border-line pb-1.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-fg">
                       Task Attributes
                     </span>
                   </div>
 
                   {/* Task Title */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                       Task Title *
                     </label>
                     <input
@@ -1643,15 +1643,15 @@ export default function TasksView({
                       required
                       value={editTitle}
                       onChange={e => setEditTitle(e.target.value)}
-                      className="w-full border border-gray-300 p-2 text-xs font-bold text-gray-900 bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none"
+                      className="w-full border border-line p-2 text-xs font-bold text-fg bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none rounded-none"
                     />
                   </div>
 
                   {/* Originating Meeting Context */}
                   {selectedTaskForDetail.meetingTitle && (
-                    <div className="p-2.5 bg-blue-50/70 border border-blue-100 flex items-center justify-between text-xs text-[#003366]">
+                    <div className="p-2.5 bg-info-surface border border-info-border flex items-center justify-between text-xs text-fg">
                       <div className="flex items-center gap-2 truncate">
-                        <Link2 size={13} className="text-[#c9ab4c] shrink-0" />
+                        <Link2 size={13} className="text-link shrink-0" />
                         <span className="font-semibold truncate">
                           Originating Meeting: {selectedTaskForDetail.meetingTitle}
                         </span>
@@ -1663,7 +1663,7 @@ export default function TasksView({
                             setSelectedTaskForDetail(null);
                             onSelectMeeting(selectedTaskForDetail.meetingTitle!);
                           }}
-                          className="text-[11px] font-bold underline hover:text-[#c9ab4c] shrink-0 ml-2"
+                          className="text-[11px] font-bold underline hover:text-link shrink-0 ml-2"
                         >
                           View Meeting
                         </button>
@@ -1674,13 +1674,13 @@ export default function TasksView({
                   {/* Status & Priority Row */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                         ClickUp Status
                       </label>
                       <select
                         value={editStatus}
                         onChange={e => setEditStatus(e.target.value)}
-                        className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none font-bold uppercase"
+                        className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none rounded-none font-bold uppercase"
                       >
                         {statusCategories.map(cat => (
                           <optgroup key={cat.category} label={`── ${cat.category} ──`}>
@@ -1695,13 +1695,13 @@ export default function TasksView({
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                         Priority
                       </label>
                       <select
                         value={editPriority}
                         onChange={e => setEditPriority(e.target.value)}
-                        className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none font-bold uppercase"
+                        className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none rounded-none font-bold uppercase"
                       >
                         <option value="urgent">🔴 Urgent</option>
                         <option value="high">🟠 High</option>
@@ -1713,20 +1713,20 @@ export default function TasksView({
 
                   {/* Due Date */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
-                      Due Date {editDueDate && <span className="text-gray-400 font-normal">({formatEchoDate(editDueDate)})</span>}
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
+                      Due Date {editDueDate && <span className="text-fg-muted font-normal">({formatEchoDate(editDueDate)})</span>}
                     </label>
                     <input
                       type="date"
                       value={editDueDate}
                       onChange={e => setEditDueDate(e.target.value)}
-                      className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none"
+                      className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none rounded-none"
                     />
                   </div>
 
                   {/* Assignee with SearchableMemberSelect */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                       Assignee (Space Members)
                     </label>
                     <SearchableMemberSelect
@@ -1740,11 +1740,11 @@ export default function TasksView({
 
                 {/* Column Right: Description & Context */}
                 <div className="flex flex-col h-full space-y-2">
-                  <div className="border-b border-gray-100 pb-1.5 flex items-center justify-between">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-[#003366]">
+                  <div className="border-b border-line pb-1.5 flex items-center justify-between">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-fg">
                       Description & Context
                     </label>
-                    <span className="text-[10px] text-gray-400 font-mono">Executive Format</span>
+                    <span className="text-[10px] text-fg-muted font-mono">Executive Format</span>
                   </div>
                   <div className="flex-1 flex flex-col">
                     <textarea
@@ -1752,9 +1752,9 @@ export default function TasksView({
                       value={editDescription}
                       onChange={e => setEditDescription(e.target.value)}
                       placeholder="Executive context, action plan, and meeting evidence..."
-                      className="w-full flex-1 min-h-[260px] border border-gray-300 p-3 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none resize-none font-mono leading-relaxed rounded-none"
+                      className="w-full flex-1 min-h-[260px] border border-line p-3 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none resize-none font-mono leading-relaxed rounded-none"
                     />
-                    <div className="mt-1 flex items-center justify-between text-[10px] text-gray-400">
+                    <div className="mt-1 flex items-center justify-between text-[10px] text-fg-muted">
                       <span>Synchronized with ClickUp task description</span>
                       <span>Tag: meeting archive</span>
                     </div>
@@ -1763,12 +1763,12 @@ export default function TasksView({
               </div>
 
               {/* Footer Actions */}
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-between pt-4 border-t border-line">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleDeleteTask(selectedTaskForDetail.id)}
-                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 text-xs flex items-center gap-1 rounded-none"
+                    className="p-2 text-fg-muted hover:text-danger-fg hover:bg-danger-surface text-xs flex items-center gap-1 rounded-none"
                   >
                     <Trash2 size={13} />
                     <span>Delete Task</span>
@@ -1779,7 +1779,7 @@ export default function TasksView({
                       href={selectedTaskForDetail.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="p-2 text-gray-600 hover:text-[#003366] text-xs flex items-center gap-1"
+                      className="p-2 text-fg-secondary hover:text-fg text-xs flex items-center gap-1"
                     >
                       <ExternalLink size={13} />
                       <span>Open in ClickUp</span>
@@ -1789,7 +1789,7 @@ export default function TasksView({
 
                 <div className="flex items-center gap-2">
                   {editSavedSuccess && (
-                    <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                    <span className="text-xs text-success-fg font-bold flex items-center gap-1">
                       <Check size={14} /> Saved in ClickUp!
                     </span>
                   )}
@@ -1826,18 +1826,18 @@ export default function TasksView({
 
       {/* ─── CREATE TASK MODAL ─── */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-          <div className="bg-[#FFFCFB] border-2 border-[#003366] shadow-2xl p-6 w-full max-w-lg rounded-none">
-            <div className="flex items-center justify-between border-b border-gray-200 pb-3 mb-4">
+        <div className="fixed inset-0 bg-scrim/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-surface-panel border border-line shadow-2xl p-6 w-full max-w-lg rounded-none">
+            <div className="flex items-center justify-between border-b border-line pb-3 mb-4">
               <div className="flex items-center gap-2">
-                <CheckSquare className="text-[#c9ab4c]" size={20} />
-                <h3 className="font-serif italic font-bold text-xl text-[#003366]">
+                <CheckSquare className="text-link" size={20} />
+                <h3 className="font-serif italic font-bold text-xl text-fg">
                   Create ClickUp Task
                 </h3>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-gray-400 hover:text-gray-700 text-sm font-bold"
+                className="text-fg-muted hover:text-fg text-sm font-bold"
               >
                 ✕
               </button>
@@ -1845,7 +1845,7 @@ export default function TasksView({
 
             <form onSubmit={handleCreateTask} className="space-y-3.5">
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                   Task Title *
                 </label>
                 <input
@@ -1854,12 +1854,12 @@ export default function TasksView({
                   placeholder="e.g. Follow up on Q4 financial projections"
                   value={newTaskName}
                   onChange={e => setNewTaskName(e.target.value)}
-                  className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none"
+                  className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                   Originating Meeting Reference (Optional)
                 </label>
                 <input
@@ -1867,19 +1867,19 @@ export default function TasksView({
                   placeholder="e.g. Executive Board Meeting - Sept 9"
                   value={newTaskMeetingTitle}
                   onChange={e => setNewTaskMeetingTitle(e.target.value)}
-                  className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none"
+                  className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                     Priority
                   </label>
                   <select
                     value={newTaskPriority}
                     onChange={e => setNewTaskPriority(e.target.value)}
-                    className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none"
+                    className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none"
                   >
                     <option value="urgent">🔴 Urgent</option>
                     <option value="high">🟠 High</option>
@@ -1889,13 +1889,13 @@ export default function TasksView({
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                     Initial Status
                   </label>
                   <select
                     value={newTaskStatus}
                     onChange={e => setNewTaskStatus(e.target.value)}
-                    className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none uppercase font-bold"
+                    className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none uppercase font-bold"
                   >
                     {statusCategories.map(cat => (
                       <optgroup key={cat.category} label={`── ${cat.category} ──`}>
@@ -1912,19 +1912,19 @@ export default function TasksView({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                     Due Date
                   </label>
                   <input
                     type="date"
                     value={newTaskDueDate}
                     onChange={e => setNewTaskDueDate(e.target.value)}
-                    className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none"
+                    className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                     Assignee (Space Members)
                   </label>
                   <SearchableMemberSelect
@@ -1937,7 +1937,7 @@ export default function TasksView({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                   Description / Action Plan
                 </label>
                 <textarea
@@ -1945,11 +1945,11 @@ export default function TasksView({
                   placeholder="Specific deliverables, discussion point context, and expected outcomes..."
                   value={newTaskDesc}
                   onChange={e => setNewTaskDesc(e.target.value)}
-                  className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none resize-none"
+                  className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none resize-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}

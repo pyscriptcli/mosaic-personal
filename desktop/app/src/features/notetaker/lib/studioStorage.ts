@@ -191,7 +191,7 @@ export async function exportSessionAsFile(sessionId: string): Promise<File> {
   const blob = await assembleRecording(sessionId);
   const session = await getSessionMeta(sessionId);
   const isVideo = session?.mediaType === "video" || blob.type.startsWith("video/");
-  const ext = blob.type.includes("webm") ? "webm" : isVideo ? "webm" : "wav";
+  const ext = "webm";
   const prefix = isVideo ? "echo-video" : "echo-recording";
   return new File([blob], `${prefix}-${sessionId}.${ext}`, { type: blob.type || (isVideo ? "video/webm" : "audio/webm") });
 }
@@ -229,7 +229,11 @@ export async function clearSession(sessionId: string): Promise<void> {
  * Used for auto-download on interruption and manual recovery.
  */
 export async function downloadSession(sessionId: string): Promise<void> {
-  const file = await exportSessionAsFile(sessionId);
+  const rawFile = await exportSessionAsFile(sessionId);
+  const session = await getSessionMeta(sessionId);
+  const saved = await saveToLocalDocuments(sessionId, rawFile, "completed", session?.mediaType || (rawFile.type.startsWith("video/") ? "video" : "audio"), rawFile.name, session?.notes, true);
+  if (!saved.success || !saved.file) throw new Error("Recording conversion did not finish; the recoverable source remains available in Archives.");
+  const file = saved.file;
   const url = URL.createObjectURL(file);
   const a = document.createElement("a");
   a.href = url;
@@ -246,8 +250,7 @@ export async function downloadSession(sessionId: string): Promise<void> {
 }
 
 /**
- * Saves a recording blob directly to the user's local "Documents/Mosaic Meetings"
- * folder via the Next.js local save API route.
+ * Saves a recording blob in Mosaic's local recording storage via its local API.
  * Supports "completed", "checkpoint", and "interrupted" saves.
  */
 export async function saveToLocalDocuments(
@@ -255,17 +258,20 @@ export async function saveToLocalDocuments(
   blob: Blob,
   status: "completed" | "interrupted" | "checkpoint" = "completed",
   mediaType: "audio" | "video" = "audio",
-  customFileName?: string
-): Promise<{ success: boolean; filePath?: string; fileName?: string }> {
+  customFileName?: string,
+  notes?: StudioNote[],
+  includeConvertedFile = true
+): Promise<{ success: boolean; filePath?: string; fileName?: string; file?: File }> {
   try {
     const formData = new FormData();
-    const ext = mediaType === "video" || blob.type.startsWith("video/") ? "webm" : "webm";
+    const ext = "webm";
     const file = new File([blob], customFileName || `${sessionId}.${ext}`, { type: blob.type || "audio/webm" });
     formData.append("file", file);
     formData.append("sessionId", sessionId);
     formData.append("status", status);
     formData.append("mediaType", mediaType);
     if (customFileName) formData.append("fileName", customFileName);
+    if (notes) formData.append("notes", JSON.stringify(notes));
 
     const res = await fetch("/api/recordings/save-local", {
       method: "POST",
@@ -273,6 +279,22 @@ export async function saveToLocalDocuments(
     });
     if (res.ok) {
       const data = await res.json();
+      if (data.conversionJobId) {
+        while (true) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+          const statusRes = await fetch(`/api/recordings/conversion?jobId=${encodeURIComponent(data.conversionJobId)}`);
+          if (!statusRes.ok) return { success: false };
+          const { job } = await statusRes.json() as { job: { state: string; error?: string; outputPath: string } };
+          if (job.state === "failed") throw new Error(job.error || "Recording conversion failed.");
+          if (job.state !== "ready") continue;
+          if (!includeConvertedFile) return { success: true, filePath: job.outputPath, fileName: job.outputPath.split(/[\\/]/).pop() };
+          const convertedRes = await fetch(`/api/recordings/download?fileName=${encodeURIComponent(job.outputPath.split(/[\\/]/).pop() || "")}`);
+          if (!convertedRes.ok) return { success: false };
+          const convertedBlob = await convertedRes.blob();
+          const fileName = job.outputPath.split(/[\\/]/).pop() || "recording";
+          return { success: true, filePath: job.outputPath, fileName, file: new File([convertedBlob], fileName, { type: convertedBlob.type }) };
+        }
+      }
       return { success: true, filePath: data.filePath, fileName: data.fileName };
     }
     return { success: false };

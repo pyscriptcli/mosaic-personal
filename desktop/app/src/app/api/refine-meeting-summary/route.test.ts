@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 describe("POST /api/refine-meeting-summary", () => {
   beforeEach(() => {
-    vi.stubEnv("DEEPSEEK_API_KEY", "test-deepseek-key");
+    vi.stubEnv("GROQ_API_KEY", "test-groq-key");
   });
 
   it("refines summary fields from meeting notes and transcript without returning unsupported facts", async () => {

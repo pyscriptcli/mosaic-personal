@@ -235,17 +235,17 @@ export function MoveMeetingModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-      <div className="w-full max-w-lg bg-[#FFFCFB] border border-[#003366]/20 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/50 p-4 backdrop-blur-xs">
+      <div className="w-full max-w-lg bg-surface-panel border border-link shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 bg-[#003366] text-white">
+        <div className="flex items-center justify-between border-b border-line px-6 py-4 bg-action text-on-action">
           <div className="flex items-center gap-2.5">
-            <FolderInput size={20} className="text-[#C9AB4C]" />
+            <FolderInput size={20} className="text-link" />
             <div>
-              <h2 className="text-base font-serif font-bold text-white">
+              <h2 className="text-base font-serif font-bold text-on-action">
                 Move Meeting Archive
               </h2>
-              <p className="text-[11px] text-gray-300">
+              <p className="text-[11px] text-fg-muted">
                 Relocate #{meeting.meeting_id || meeting.id} to another ClickUp list
               </p>
             </div>
@@ -253,7 +253,7 @@ export function MoveMeetingModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-300 hover:text-white transition-colors p-1 cursor-pointer"
+            className="text-fg-muted hover:text-fg transition-colors p-1 cursor-pointer"
             title="Close modal"
           >
             <X size={18} />
@@ -263,19 +263,19 @@ export function MoveMeetingModal({
         {/* Body */}
         <div className="p-6 space-y-5">
           {/* Current Location Badge */}
-          <div className="p-3 bg-gray-50 border border-gray-200 text-xs text-gray-600 flex items-center justify-between">
+          <div className="p-3 bg-surface-raised border border-line text-xs text-fg-secondary flex items-center justify-between">
             <div>
-              <span className="font-semibold text-gray-500 uppercase text-[10px] tracking-wider block">Current Location</span>
-              <span className="font-medium text-[#003366]">
+              <span className="font-semibold text-fg-muted uppercase text-[10px] tracking-wider block">Current Location</span>
+              <span className="font-medium text-fg">
                 {meeting.is_confidential ? "Personal List" : `${meeting.clickup_space_name || "Space"} → ${meeting.clickup_list_name || "List"}`}
               </span>
             </div>
-            <ArrowRight size={16} className="text-gray-400" />
+            <ArrowRight size={16} className="text-fg-muted" />
           </div>
 
           {/* Destination Type Toggle */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+            <label className="block text-xs font-bold uppercase tracking-wider text-fg">
               Destination Location
             </label>
             <div className="grid grid-cols-2 gap-3">
@@ -284,14 +284,14 @@ export function MoveMeetingModal({
                 onClick={() => setDestinationType("team")}
                 className={`flex items-center gap-2 p-3 border text-left transition-all cursor-pointer ${
                   destinationType === "team"
-                    ? "border-[#003366] bg-[#003366]/5 font-semibold text-[#003366]"
-                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    ? "border-link bg-info-surface font-semibold text-fg"
+                    : "border-line bg-surface-panel text-fg-secondary hover:bg-surface-hover"
                 }`}
               >
-                <Building2 size={16} className={destinationType === "team" ? "text-[#003366]" : "text-gray-400"} />
+                <Building2 size={16} className={destinationType === "team" ? "text-fg" : "text-fg-muted"} />
                 <div>
                   <div className="text-xs">Team Space</div>
-                  <div className="text-[10px] text-gray-400 font-normal">Department or Project List</div>
+                  <div className="text-[10px] text-fg-muted font-normal">Department or Project List</div>
                 </div>
               </button>
 
@@ -300,14 +300,14 @@ export function MoveMeetingModal({
                 onClick={() => setDestinationType("personal")}
                 className={`flex items-center gap-2 p-3 border text-left transition-all cursor-pointer ${
                   destinationType === "personal"
-                    ? "border-[#C9AB4C] bg-[#C9AB4C]/10 font-semibold text-[#003366]"
-                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    ? "border-warning-border bg-warning-surface font-semibold text-fg"
+                    : "border-line bg-surface-panel text-fg-secondary hover:bg-surface-hover"
                 }`}
               >
-                <Lock size={16} className={destinationType === "personal" ? "text-[#C9AB4C]" : "text-gray-400"} />
+                <Lock size={16} className={destinationType === "personal" ? "text-link" : "text-fg-muted"} />
                 <div>
                   <div className="text-xs">Personal List</div>
-                  <div className="text-[10px] text-gray-400 font-normal">Confidential & Private</div>
+                  <div className="text-[10px] text-fg-muted font-normal">Confidential & Private</div>
                 </div>
               </button>
             </div>
@@ -315,16 +315,16 @@ export function MoveMeetingModal({
 
           {/* TEAM DESTINATION OPTIONS */}
           {destinationType === "team" && (
-            <div className="space-y-3 bg-white p-4 border border-gray-200">
+            <div className="space-y-3 bg-surface-panel p-4 border border-line">
               {/* Space Selection */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                <label className="block text-xs font-semibold text-fg mb-1">
                   Target ClickUp Space
                 </label>
                 <select
                   value={selectedSpaceId}
                   onChange={(e) => setSelectedSpaceId(e.target.value)}
-                  className="w-full bg-[#FFFCFB] border border-gray-300 px-3 py-2 text-xs text-[#003366] focus:outline-none focus:border-[#C9AB4C]"
+                  className="w-full bg-surface-panel border border-line px-3 py-2 text-xs text-fg focus:outline-none focus:border-focus"
                 >
                   {spaces.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -336,10 +336,10 @@ export function MoveMeetingModal({
 
               {/* List Selection */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center justify-between">
+                <label className="block text-xs font-semibold text-fg mb-1 flex items-center justify-between">
                   <span>Target List</span>
                   {loadingLists && (
-                    <span className="flex items-center gap-1 text-[10px] text-[#003366]">
+                    <span className="flex items-center gap-1 text-[10px] text-fg">
                       <Loader2 size={10} className="animate-spin" />
                       Loading lists...
                     </span>
@@ -350,7 +350,7 @@ export function MoveMeetingModal({
                   value={selectedListId}
                   onChange={(e) => handleListSelect(e.target.value)}
                   disabled={loadingLists || spaceLists.length === 0}
-                  className="w-full bg-[#FFFCFB] border border-gray-300 px-3 py-2 text-xs text-[#003366] focus:outline-none focus:border-[#C9AB4C] disabled:bg-gray-100 disabled:text-gray-400"
+                  className="w-full bg-surface-panel border border-line px-3 py-2 text-xs text-fg focus:outline-none focus:border-focus disabled:bg-surface-raised disabled:text-disabled-fg"
                 >
                   {spaceLists.length === 0 && !loadingLists && (
                     <option value="">No lists found in this space</option>
@@ -361,7 +361,7 @@ export function MoveMeetingModal({
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-gray-400 mt-1">
+                <p className="text-[10px] text-fg-muted mt-1">
                   Your selection will be remembered as the default destination for this space.
                 </p>
               </div>
@@ -370,12 +370,12 @@ export function MoveMeetingModal({
 
           {/* PERSONAL DESTINATION OPTIONS */}
           {destinationType === "personal" && (
-            <div className="space-y-3 bg-[#C9AB4C]/5 p-4 border border-[#C9AB4C]/30">
+            <div className="space-y-3 bg-warning-surface p-4 border border-warning-border">
               {personalListId ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#003366] flex items-center gap-1.5">
-                      <CheckCircle size={14} className="text-green-600" />
+                    <span className="text-xs font-bold text-fg flex items-center gap-1.5">
+                      <CheckCircle size={14} className="text-success-fg" />
                       Current Personal List:
                     </span>
                     <button
@@ -384,21 +384,21 @@ export function MoveMeetingModal({
                         setPersonalListId("");
                         setPersonalListName("");
                       }}
-                      className="text-[10px] text-gray-400 hover:text-red-600 underline cursor-pointer"
+                      className="text-[10px] text-fg-muted hover:text-danger-fg underline cursor-pointer"
                     >
                       Change List
                     </button>
                   </div>
-                  <div className="p-2.5 bg-white border border-gray-200 text-xs font-medium text-[#003366]">
-                    {personalListName} <span className="text-gray-400 font-mono text-[10px]">({personalListId})</span>
+                  <div className="p-2.5 bg-surface-panel border border-line text-xs font-medium text-fg">
+                    {personalListName} <span className="text-fg-muted font-mono text-[10px]">({personalListId})</span>
                   </div>
-                  <p className="text-[10px] text-gray-500 italic">
-                    Moving this meeting will mark it with the <span className="font-semibold text-[#003366]">&quot;private&quot;</span> tag and place it directly into your personal list.
+                  <p className="text-[10px] text-fg-muted italic">
+                    Moving this meeting will mark it with the <span className="font-semibold text-fg">&quot;private&quot;</span> tag and place it directly into your personal list.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <label className="block text-xs font-semibold text-gray-700">
+                  <label className="block text-xs font-semibold text-fg">
                     Connect Personal List (List URL or ID)
                   </label>
                   <div className="flex gap-2">
@@ -407,7 +407,7 @@ export function MoveMeetingModal({
                       value={personalInput}
                       onChange={(e) => setPersonalInput(e.target.value)}
                       placeholder="e.g. https://app.clickup.com/9015.../v/li/901515..."
-                      className="flex-1 bg-white border border-gray-300 px-3 py-1.5 text-xs text-[#003366] focus:outline-none focus:border-[#C9AB4C]"
+                      className="flex-1 bg-surface-panel border border-line px-3 py-1.5 text-xs text-fg focus:outline-none focus:border-focus"
                     />
                     <button
                       type="button"
@@ -419,7 +419,7 @@ export function MoveMeetingModal({
                     </button>
                   </div>
                   {personalError && (
-                    <p className="text-[10px] text-red-600 flex items-center gap-1">
+                    <p className="text-[10px] text-danger-fg flex items-center gap-1">
                       <AlertCircle size={11} /> {personalError}
                     </p>
                   )}
@@ -430,7 +430,7 @@ export function MoveMeetingModal({
 
           {/* Error Message */}
           {errorMsg && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+            <div className="p-3 bg-danger-surface border border-danger-border text-danger-fg text-xs flex items-center gap-2">
               <AlertCircle size={14} className="shrink-0" />
               <span>{errorMsg}</span>
             </div>
@@ -438,12 +438,12 @@ export function MoveMeetingModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-line bg-surface-raised">
           <button
             type="button"
             onClick={onClose}
             disabled={isMoving}
-            className="px-4 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+            className="px-4 py-2 text-xs font-medium text-fg-secondary hover:text-fg transition-colors cursor-pointer"
           >
             Cancel
           </button>

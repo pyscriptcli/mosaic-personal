@@ -25,7 +25,7 @@ for (const file of ["package.json", "package-lock.json", "next.config.ts"]) {
 const runtimeBuild = path.join(localAppDirectory, ".next");
 fs.mkdirSync(runtimeBuild, { recursive: true });
 // Keep only files Next needs to serve requests; leave build caches and trace data out of the installer.
-const buildOnlyDirectories = new Set(["cache", "diagnostics", "node_modules", "trace", "trace-build", "turbopack", "types"]);
+const buildOnlyDirectories = new Set(["cache", "dev", "diagnostics", "node_modules", "trace", "trace-build", "turbopack", "types"]);
 for (const entry of fs.readdirSync(appBuild, { withFileTypes: true })) {
   if (entry.isDirectory() && buildOnlyDirectories.has(entry.name)) continue;
   fs.cpSync(path.join(appBuild, entry.name), path.join(runtimeBuild, entry.name), { recursive: true });

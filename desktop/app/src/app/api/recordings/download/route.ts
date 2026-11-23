@@ -3,14 +3,12 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
+export const runtime = "nodejs";
+
 function getMosaicMeetingsDir(): string {
-  if (process.env.MOSAIC_DESKTOP === "1" && process.env.MOSAIC_DATA_DIR) {
-    const directory = path.join(process.env.MOSAIC_DATA_DIR, "recordings");
-    if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
-    return directory;
-  }
   const userHome = process.env.USERPROFILE || process.env.HOME || os.homedir();
-  const directory = path.join(userHome, "Documents", "Mosaic Meetings");
+  const directory = process.env.MOSAIC_RECORDINGS_DIR
+    || (process.env.MOSAIC_DESKTOP === "1" && process.env.MOSAIC_DATA_DIR ? path.join(process.env.MOSAIC_DATA_DIR, "Notetaker", "Recordings") : path.join(userHome, "Documents", "Mosaic Meetings"));
   if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
   return directory;
 }
@@ -18,6 +16,11 @@ function getMosaicMeetingsDir(): string {
 function getLegacyEchoMeetingsDir() {
   const userHome = process.env.USERPROFILE || process.env.HOME || os.homedir();
   return path.join(userHome, "Documents", "Echo Meetings");
+}
+
+function getLegacyMosaicMeetingsDir() {
+  const userHome = process.env.USERPROFILE || process.env.HOME || os.homedir();
+  return path.join(userHome, "Documents", "Mosaic Meetings");
 }
 
 export async function GET(req: NextRequest) {
@@ -29,9 +32,11 @@ export async function GET(req: NextRequest) {
 
     // Prevent directory traversal
     const safeBaseName = path.basename(fileName);
+    const directories = [getMosaicMeetingsDir()];
+    if (process.env.MOSAIC_DESKTOP === "1" && process.env.MOSAIC_DATA_DIR) directories.push(path.join(process.env.MOSAIC_DATA_DIR, "recordings"));
+    directories.push(getLegacyMosaicMeetingsDir(), getLegacyEchoMeetingsDir());
     const filePath = [
-      path.join(getMosaicMeetingsDir(), safeBaseName),
-      ...(process.env.MOSAIC_DESKTOP === "1" ? [] : [path.join(getLegacyEchoMeetingsDir(), safeBaseName)]),
+      ...directories.map((directory) => path.join(directory, safeBaseName)),
     ].find((candidate) => fs.existsSync(candidate));
 
     if (!filePath) {
@@ -43,7 +48,7 @@ export async function GET(req: NextRequest) {
 
     let contentType = "application/octet-stream";
     if (ext === ".mp4") contentType = "video/mp4";
-    else if (ext === ".webm") contentType = "video/webm";
+    else if (ext === ".webm") contentType = safeBaseName.toLowerCase().includes("video") ? "video/webm" : "audio/webm";
     else if (ext === ".mp3") contentType = "audio/mpeg";
     else if (ext === ".wav") contentType = "audio/wav";
     else if (ext === ".m4a") contentType = "audio/mp4";

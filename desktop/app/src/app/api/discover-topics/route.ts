@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callGroqChatPool, getGroqMeetingApiKeys } from "@/lib/groqPool";
 
 export interface DiscoveredTopicItem {
   topic_title: string;
@@ -19,8 +20,8 @@ function separateMeetingNotes(source: string, notes?: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = req.headers.get("x-api-key") || process.env.DEEPSEEK_API_KEY || "";
-  if (!apiKey) return NextResponse.json({ error: "AI configuration is required." }, { status: 401 });
+  const apiKeys = getGroqMeetingApiKeys();
+  if (!apiKeys.length) return NextResponse.json({ error: "Groq API keys are required. Import Groq keys in desktop Settings." }, { status: 401 });
 
   try {
     const { transcript: transcriptInput, existingTopics, query, notes } = await req.json();
@@ -68,26 +69,15 @@ Output strictly valid JSON matching this schema:
 
     const userPrompt = `${isSearchQuery ? `Search Query / Focus Area: ${query.trim()}\n` : "Goal: Uncover important, uncaptured discussion points and supported decisions.\n"}Already Captured Topics: ${(existingTopics || []).join(", ") || "None yet"}\n\n<meeting_notes>\n${meetingNotes || "No meeting notes provided."}\n</meeting_notes>\n\n<transcript>\n${transcript}\n</transcript>`;
 
-    const response = await fetch("https://api.deepseek.com/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ]
-      }),
+    const result = await callGroqChatPool([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ], {
+      model: process.env.GROQ_NOTETAKER_MODEL || "openai/gpt-oss-120b",
+      responseFormat: { type: "json_object" },
+      apiKeys,
     });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || "Topic discovery failed");
-
-    const parsed = JSON.parse(String(data.choices?.[0]?.message?.content || "{}"));
+    const parsed = JSON.parse(String(result.data.choices?.[0]?.message?.content || "{}"));
     const rawList = Array.isArray(parsed.topics) ? parsed.topics : [];
 
     // Normalize keys for 100% robustness (handling legacy topic/quote keys or missing fields)

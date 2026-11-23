@@ -28,13 +28,13 @@ export function StudioPill({ elapsedSeconds, isPaused = false, onRestore }: Stud
     <button
       type="button"
       onClick={onRestore}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer ${isPaused ? "bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100" : "bg-red-50 border border-red-200 text-red-700 hover:bg-red-100"}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer ${isPaused ? "bg-warning-surface border border-warning-border text-warning-fg hover:bg-warning-surface" : "bg-danger-surface border border-danger-border text-danger-fg hover:bg-danger-surface"}`}
       title="Restore Recording Studio"
       aria-label={`Recording in progress: ${formatTime(elapsedSeconds)}. Click to restore studio.`}
     >
       <span className="relative flex h-2 w-2">
-        {!isPaused && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />}
-        <span className={`relative inline-flex rounded-full h-2 w-2 ${isPaused ? "bg-amber-500" : "bg-red-500"}`} />
+        {!isPaused && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger-fg opacity-75" />}
+        <span className={`relative inline-flex rounded-full h-2 w-2 ${isPaused ? "bg-warning-fg" : "bg-danger-fg"}`} />
       </span>
       <Mic size={12} />
       <span>{isPaused ? "Paused" : "Recording"} · {formatTime(elapsedSeconds)}</span>

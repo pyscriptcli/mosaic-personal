@@ -150,12 +150,17 @@ if (!app.requestSingleInstanceLock()) {
     const appPath = app.isPackaged
       ? path.join(process.resourcesPath, "local-app")
       : path.join(__dirname, "..", developmentRun ? "app" : "build/local-app");
+    const mediaToolsDirectory = app.isPackaged
+      ? path.join(process.resourcesPath, "media-tools")
+      : path.join(__dirname, "..", "node_modules");
     localAppOptions = {
       appPath,
       runtimePath: process.execPath,
       dataDirectory: workspaceDirectory,
       internalDataDirectory: path.join(app.getPath("userData"), "data"),
       recordingsDirectory: path.join(workspaceDirectory, "Notetaker", "Recordings"),
+      ffmpegPath: app.isPackaged ? path.join(mediaToolsDirectory, "ffmpeg.exe") : path.join(mediaToolsDirectory, "ffmpeg-static", "ffmpeg.exe"),
+      ffprobePath: app.isPackaged ? path.join(mediaToolsDirectory, "ffprobe.exe") : path.join(mediaToolsDirectory, "ffprobe-static", "bin", "win32", "x64", "ffprobe.exe"),
       apiKeys: decryptApiKeys(settings.encryptedApiKeys),
       transcriptionKeys: decryptGroqTranscriptionKeys(),
       development: developmentRun,

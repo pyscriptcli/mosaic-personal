@@ -282,19 +282,19 @@ export function QuickAddTaskModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-      <div className="bg-[#FFFCFB] border-2 border-[#003366] shadow-2xl p-6 w-full max-w-lg rounded-none animate-in fade-in zoom-in-95">
+    <div className="fixed inset-0 bg-scrim/50 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+      <div className="bg-surface-panel border border-line shadow-2xl p-6 w-full max-w-lg rounded-none animate-in fade-in zoom-in-95">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 pb-3 mb-4">
+        <div className="flex items-center justify-between border-b border-line pb-3 mb-4">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-[#1b1d1e] flex items-center justify-center text-[#c9ab4c]">
+            <div className="w-7 h-7 bg-surface-panel flex items-center justify-center text-link">
               <CheckSquare size={16} />
             </div>
             <div>
-              <h3 className="font-serif italic font-bold text-lg text-[#003366] leading-none">
+              <h3 className="font-serif italic font-bold text-lg text-fg leading-none">
                 Add to ClickUp Tasks
               </h3>
-              <p className="text-[10px] text-gray-500 mt-0.5">
+              <p className="text-[10px] text-fg-muted mt-0.5">
                 Convert meeting discussion point into a tracked ClickUp task
               </p>
             </div>
@@ -302,7 +302,7 @@ export function QuickAddTaskModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-700"
+            className="text-fg-muted hover:text-fg"
           >
             <X size={18} />
           </button>
@@ -310,13 +310,13 @@ export function QuickAddTaskModal({
 
         {createdUrl ? (
           <div className="py-6 text-center space-y-4">
-            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto rounded-none">
+            <div className="w-12 h-12 bg-success-surface text-success-fg flex items-center justify-center mx-auto rounded-none">
               <CheckCircle2 size={24} />
             </div>
-            <h4 className="font-serif italic font-bold text-base text-[#003366]">
+            <h4 className="font-serif italic font-bold text-base text-fg">
               {isAlreadyCreated ? "Task Already Tracked in ClickUp!" : "Task Created in ClickUp!"}
             </h4>
-            <p className="text-xs text-gray-600 max-w-xs mx-auto">
+            <p className="text-xs text-fg-secondary max-w-xs mx-auto">
               This discussion point is linked to ClickUp with the meeting workflow tag.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2.5 pt-3">
@@ -340,7 +340,7 @@ export function QuickAddTaskModal({
                 href={createdUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="btn-outline !py-2 !px-4 !text-xs flex items-center gap-1.5 text-[#003366]"
+                className="btn-outline !py-2 !px-4 !text-xs flex items-center gap-1.5 text-fg"
               >
                 <ExternalLink size={13} />
                 <span>Open in ClickUp</span>
@@ -350,7 +350,7 @@ export function QuickAddTaskModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-[#FFFCFB]"
+                className="px-4 py-2 border border-line text-xs font-semibold text-fg hover:bg-surface-hover"
               >
                 Done
               </button>
@@ -359,10 +359,10 @@ export function QuickAddTaskModal({
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3.5">
             {/* Configurable ClickUp Space & Target List */}
-            <div className="bg-[#FAF9F7] border border-gray-200 p-3 rounded-none space-y-2">
+            <div className="bg-surface-selected border border-line p-3 rounded-none space-y-2">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[#003366]">
-                  <FolderKanban size={13} className="text-[#c9ab4c]" />
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-fg">
+                  <FolderKanban size={13} className="text-link" />
                   <span>ClickUp Destination</span>
                 </div>
                 <button
@@ -370,9 +370,9 @@ export function QuickAddTaskModal({
                   onClick={loadLists}
                   disabled={loadingLists}
                   title="Rescan ClickUp spaces and lists"
-                  className="text-[10px] text-gray-500 hover:text-[#003366] font-semibold flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                  className="text-[10px] text-fg-muted hover:text-fg font-semibold flex items-center gap-1  cursor-pointer"
                 >
-                  <FolderSync size={11} className={loadingLists ? "animate-spin text-[#c9ab4c]" : ""} />
+                  <FolderSync size={11} className={loadingLists ? "animate-spin text-link" : ""} />
                   <span>{loadingLists ? "Scanning..." : "Rescan"}</span>
                 </button>
               </div>
@@ -380,7 +380,7 @@ export function QuickAddTaskModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {/* Space Dropdown */}
                 <div>
-                  <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                     Space
                   </label>
                   {availableSpaces.length > 0 ? (
@@ -388,7 +388,7 @@ export function QuickAddTaskModal({
                       <select
                         value={selectedSpace}
                         onChange={(e) => handleSpaceChange(e.target.value)}
-                        className="w-full border border-gray-300 p-2 pr-7 text-xs font-semibold text-gray-800 bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none appearance-none cursor-pointer"
+                        className="w-full border border-line p-2 pr-7 text-xs font-semibold text-fg bg-surface-panel focus:border-focus outline-none rounded-none appearance-none cursor-pointer"
                       >
                         {availableSpaces.map((sp) => (
                           <option key={sp} value={sp}>
@@ -396,10 +396,10 @@ export function QuickAddTaskModal({
                           </option>
                         ))}
                       </select>
-                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none" />
                     </div>
                   ) : (
-                    <div className="p-2 border border-gray-200 bg-[#FFFCFB] text-xs text-gray-500">
+                    <div className="p-2 border border-line bg-surface-panel text-xs text-fg-muted">
                       {loadingLists ? "Discovering spaces..." : (selectedSpace || "Default Space")}
                     </div>
                   )}
@@ -407,7 +407,7 @@ export function QuickAddTaskModal({
 
                 {/* List Dropdown */}
                 <div>
-                  <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                     Target List
                   </label>
                   {listsInSelectedSpace.length > 0 ? (
@@ -415,7 +415,7 @@ export function QuickAddTaskModal({
                       <select
                         value={selectedListId}
                         onChange={(e) => handleListChange(e.target.value)}
-                        className="w-full border border-gray-300 p-2 pr-7 text-xs font-semibold text-gray-800 bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none appearance-none cursor-pointer"
+                        className="w-full border border-line p-2 pr-7 text-xs font-semibold text-fg bg-surface-panel focus:border-focus outline-none rounded-none appearance-none cursor-pointer"
                       >
                         {listsInSelectedSpace.map((l) => (
                           <option key={l.id} value={l.id}>
@@ -423,14 +423,14 @@ export function QuickAddTaskModal({
                           </option>
                         ))}
                       </select>
-                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none" />
                     </div>
                   ) : availableLists.length > 0 ? (
                     <div className="relative">
                       <select
                         value={selectedListId}
                         onChange={(e) => handleListChange(e.target.value)}
-                        className="w-full border border-gray-300 p-2 pr-7 text-xs font-semibold text-gray-800 bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none appearance-none cursor-pointer"
+                        className="w-full border border-line p-2 pr-7 text-xs font-semibold text-fg bg-surface-panel focus:border-focus outline-none rounded-none appearance-none cursor-pointer"
                       >
                         {availableLists.map((l) => (
                           <option key={l.id} value={l.id}>
@@ -438,10 +438,10 @@ export function QuickAddTaskModal({
                           </option>
                         ))}
                       </select>
-                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none" />
                     </div>
                   ) : (
-                    <div className="p-2 border border-gray-200 bg-[#FFFCFB] text-xs text-gray-500 truncate">
+                    <div className="p-2 border border-line bg-surface-panel text-xs text-fg-muted truncate">
                       {loadingLists ? "Loading lists..." : (getStoredClickUpListName() || "Default List")}
                     </div>
                   )}
@@ -450,7 +450,7 @@ export function QuickAddTaskModal({
             </div>
 
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2 rounded-none">
+              <div className="p-3 bg-danger-surface border border-danger-border text-danger-fg text-xs flex items-start gap-2 rounded-none">
                 <AlertCircle size={15} className="shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
@@ -458,7 +458,7 @@ export function QuickAddTaskModal({
 
             {/* Task Title */}
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                 Task Name *
               </label>
               <input
@@ -467,30 +467,30 @@ export function QuickAddTaskModal({
                 value={taskName}
                 onChange={e => setTaskName(e.target.value)}
                 placeholder="Action item summary..."
-                className="w-full border border-gray-300 p-2 text-xs font-semibold text-gray-900 bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none"
+                className="w-full border border-line p-2 text-xs font-semibold text-fg bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none rounded-none"
               />
             </div>
 
             {/* Meeting Context */}
             {meetingTitle && (
-              <div className="p-2 bg-blue-50/70 border border-blue-100 text-[11px] text-[#003366] flex items-center justify-between">
+              <div className="p-2 bg-info-surface border border-info-border text-[11px] text-fg flex items-center justify-between">
                 <span className="font-semibold truncate max-w-[320px]">
                   🔗 Meeting: {meetingTitle}
                 </span>
-                {meetingDate && <span className="font-mono text-[10px] text-gray-500">{formatEchoDate(meetingDate)}</span>}
+                {meetingDate && <span className="font-mono text-[10px] text-fg-muted">{formatEchoDate(meetingDate)}</span>}
               </div>
             )}
 
             {/* Priority & Status */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                   Priority
                 </label>
                 <select
                   value={priority}
                   onChange={e => setPriority(e.target.value)}
-                  className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none"
+                  className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none rounded-none"
                 >
                   <option value="urgent">🔴 Urgent</option>
                   <option value="high">🟠 High</option>
@@ -501,13 +501,13 @@ export function QuickAddTaskModal({
 
               {/* Status with Exact ClickUp Categories */}
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                   ClickUp Status
                 </label>
                 <select
                   value={status}
                   onChange={e => setStatus(e.target.value)}
-                  className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none font-bold uppercase"
+                  className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none rounded-none font-bold uppercase"
                 >
                   {statusCategories.map(cat => (
                     <optgroup key={cat.category} label={`── ${cat.category} ──`}>
@@ -525,25 +525,25 @@ export function QuickAddTaskModal({
             {/* Target Due Date & Assignee */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                   Due Date
                 </label>
                 <input
                   type="date"
                   value={dueDate}
                   onChange={e => setDueDate(e.target.value)}
-                  className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none rounded-none"
+                  className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none rounded-none"
                 />
               </div>
 
               {/* Assignee Selection from ClickUp Space Members API */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-700">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-fg">
                     Assignee (Space Members)
                   </label>
                   {loadingMembers && (
-                    <span className="text-[9px] text-[#c9ab4c] font-bold flex items-center gap-1">
+                    <span className="text-[9px] text-link font-bold flex items-center gap-1">
                       <RefreshCw size={9} className="animate-spin" /> Fetching...
                     </span>
                   )}
@@ -560,7 +560,7 @@ export function QuickAddTaskModal({
 
             {/* Description Details */}
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-700 mb-1">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                 Context & Notes
               </label>
               <textarea
@@ -568,13 +568,13 @@ export function QuickAddTaskModal({
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 placeholder="Key arguments, requirements, or deliverables discussed..."
-                className="w-full border border-gray-300 p-2 text-xs bg-[#FFFCFB] focus:bg-[#FFFCFB] focus:border-[#c9ab4c] outline-none resize-none rounded-none"
+                className="w-full border border-line p-2 text-xs bg-surface-panel focus:bg-surface-panel focus:border-focus outline-none resize-none rounded-none"
               />
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-              <span className="text-[10px] text-gray-400 italic">
+            <div className="flex items-center justify-between pt-3 border-t border-line">
+              <span className="text-[10px] text-fg-muted italic">
                 Direct push to ClickUp API
               </span>
               <div className="flex gap-2">

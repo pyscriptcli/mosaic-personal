@@ -7,7 +7,7 @@ const path = require("node:path");
 const HOST = "127.0.0.1";
 const START_TIMEOUT_MS = 90_000;
 
-async function startLocalAppServer({ appPath, runtimePath, dataDirectory, recordingsDirectory, internalDataDirectory, apiKeys, transcriptionKeys = [], development = false }) {
+async function startLocalAppServer({ appPath, runtimePath, dataDirectory, recordingsDirectory, internalDataDirectory, ffmpegPath, ffprobePath, apiKeys, transcriptionKeys = [], development = false }) {
   const nextCli = path.join(appPath, "node_modules", "next", "dist", "bin", "next");
   const port = await getAvailablePort();
   const url = `http://${HOST}:${port}/`;
@@ -31,6 +31,8 @@ async function startLocalAppServer({ appPath, runtimePath, dataDirectory, record
     PORT: String(port),
     GROQ_TRANSCRIPTION_API_KEYS_JSON: JSON.stringify(Array.isArray(transcriptionKeys) ? transcriptionKeys : []),
   };
+  if (ffmpegPath) env.MOSAIC_FFMPEG_PATH = path.resolve(ffmpegPath);
+  if (ffprobePath) env.MOSAIC_FFPROBE_PATH = path.resolve(ffprobePath);
   if (developmentDistDir) env.MOSAIC_NEXT_DIST_DIR = developmentDistDir;
   if (developmentTsconfig) env.MOSAIC_NEXT_TSCONFIG_PATH = developmentTsconfig;
 
@@ -70,6 +72,12 @@ async function startLocalAppServer({ appPath, runtimePath, dataDirectory, record
 
   try {
     await waitUntilReady(child, url, output);
+    try {
+      const conversionResponse = await fetch(new URL("api/recordings/conversion", url), { signal: AbortSignal.timeout(5_000) });
+      if (!conversionResponse.ok) console.warn(`[Mosaic] Recording migration scan could not start (HTTP ${conversionResponse.status}).`);
+    } catch (error) {
+      console.warn("[Mosaic] Recording migration scan could not start:", error instanceof Error ? error.message : String(error));
+    }
   } catch (error) {
     await stopChild(child);
     removeDevelopmentArtifacts(appPath, developmentDistDir, developmentTsconfig);

@@ -36,7 +36,7 @@ export function Stepper({
   ];
   
   return (
-    <nav className="sticky top-0 z-20 flex w-full min-h-10 flex-wrap items-center justify-between gap-y-1 shrink-0 border-b border-slate-200 bg-white px-2 select-none" aria-label="Notetaker views">
+    <nav className="sticky top-0 z-20 flex w-full min-h-10 flex-wrap items-center justify-between gap-y-1 shrink-0 border-b border-line bg-surface-panel px-2 select-none" aria-label="Notetaker views">
       <div className="flex items-stretch">
       {stages.map((stageItem) => {
         const isActive = currentStage === stageItem.name;
@@ -53,15 +53,15 @@ export function Stepper({
               }
             }}
             aria-current={isActive ? "page" : undefined}
-          className={`group relative flex min-h-10 items-center gap-2 px-3 text-left transition-colors ${isActive ? "bg-[#003366]/[0.04] text-[#003366]" : isClickable ? "text-slate-500 hover:bg-slate-50 hover:text-[#003366]" : "cursor-not-allowed text-slate-300"}`}
+          className={`group relative flex min-h-10 items-center gap-2 px-3 text-left transition-colors ${isActive ? "bg-info-surface text-fg" : isClickable ? "text-fg-muted hover:bg-surface-hover hover:text-fg" : "cursor-not-allowed text-fg-muted"}`}
           >
-            <div className={`flex h-5 w-5 shrink-0 items-center justify-center ${isActive ? "text-[#003366]" : "text-slate-500"}`}>
+            <div className={`flex h-5 w-5 shrink-0 items-center justify-center ${isActive ? "text-fg" : "text-fg-muted"}`}>
               {stageItem.name === "Input" ? <Mic2 size={14} /> : <FileCheck2 size={14} />}
             </div>
             <span className="min-w-0">
               <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium">{stageItem.label}{!isClickable && <Lock size={11} />}</span>
             </span>
-            {isActive && <span className="absolute inset-x-0 top-0 h-0.5 bg-[#0078D4]" />}
+            {isActive && <span className="absolute inset-x-0 top-0 h-0.5 bg-action" />}
           </button>
         );
       })}
@@ -71,7 +71,7 @@ export function Stepper({
           <button
             type="button"
             onClick={onUpload}
-            className="inline-flex h-7 items-center gap-1.5 border border-slate-200 bg-white px-2 text-xs font-medium text-[#003366] hover:border-[#0078D4] transition-colors"
+            className="inline-flex h-7 items-center gap-1.5 border border-line bg-surface-panel px-2 text-xs font-medium text-fg hover:border-link transition-colors"
             title="Upload recording or transcript"
           >
             <Upload size={13} />
@@ -82,13 +82,13 @@ export function Stepper({
           <button
             type="button"
             onClick={onDiscoverTopics}
-            className="inline-flex h-7 items-center gap-1.5 border border-slate-200 bg-white px-2 text-xs font-medium text-[#003366] hover:border-[#0078D4] transition-colors"
+            className="inline-flex h-7 items-center gap-1.5 border border-line bg-surface-panel px-2 text-xs font-medium text-fg hover:border-link transition-colors"
             title="Discover and search topics in transcript"
           >
-            <Sparkles size={13} className="text-[#0078D4]" />
+            <Sparkles size={13} className="text-link" />
             <span className="hidden sm:inline">Discover Topics</span>
             {discoveredTopicsCount !== undefined && discoveredTopicsCount > 0 && (
-              <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-medium bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/40">
+              <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-medium bg-info-surface text-link border border-link">
                 {discoveredTopicsCount}
               </span>
             )}
@@ -98,7 +98,7 @@ export function Stepper({
           <button
             type="button"
             onClick={onToggleFullscreen}
-            className="inline-flex h-7 w-7 items-center justify-center border border-slate-200 bg-white text-[#003366] hover:border-[#0078D4] transition-colors"
+            className="inline-flex h-7 w-7 items-center justify-center border border-line bg-surface-panel text-fg hover:border-link transition-colors"
             title={isFullscreen ? "Exit fullscreen" : "Focus workspace"}
             aria-label={isFullscreen ? "Exit fullscreen" : "Focus workspace"}
           >
@@ -110,7 +110,7 @@ export function Stepper({
             type="button"
             disabled={!isReviewAllowed}
             onClick={onSaveExport}
-            className={`inline-flex h-7 items-center gap-1.5 px-3 text-xs font-medium border transition-colors disabled:cursor-not-allowed ${isReviewAllowed ? "bg-[#003366] text-white hover:bg-[#002244] border-[#003366]" : "bg-slate-100 text-slate-400 border-slate-200"}`}
+            className={`inline-flex h-7 items-center gap-1.5 px-3 text-xs font-medium border transition-colors disabled:cursor-not-allowed ${isReviewAllowed ? "bg-action text-on-action hover:bg-action-hover border-link" : "bg-surface-raised text-fg-muted border-line"}`}
             title={isReviewAllowed ? "Save to ClickUp or Export Word/PDF" : "Complete recording or synthesize minutes first"}
           >
             <Download size={13} />

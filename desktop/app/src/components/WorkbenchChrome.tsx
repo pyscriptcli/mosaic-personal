@@ -80,9 +80,9 @@ export function WorkbenchMenuBar({ viewTitle, onOpenSearch, onOpenUpdates, onNav
   }, [openMenu]);
 
   return (
-    <header className="flex h-8 shrink-0 items-center gap-2 border-b border-vscode-border bg-vscode-activity px-2 text-vscode-text" aria-label="Application menu">
+    <header className="flex h-8 shrink-0 items-center gap-2 bg-surface-panel px-2 text-fg" aria-label="Application menu">
       <div className="flex shrink-0 items-center gap-2 pr-1">
-        <Blocks aria-hidden="true" size={17} className="text-vscode-accent" />
+        <Blocks aria-hidden="true" size={17} className="text-link" />
         <span className="text-xs font-semibold">Mosaic</span>
       </div>
       <nav className="flex h-full min-w-0 items-center gap-0.5" aria-label="Menu bar">
@@ -93,24 +93,24 @@ export function WorkbenchMenuBar({ viewTitle, onOpenSearch, onOpenUpdates, onNav
               aria-expanded={openMenu === menu.label}
               onClick={() => setOpenMenu((current) => current === menu.label ? null : menu.label)}
               onMouseEnter={() => { if (openMenu) setOpenMenu(menu.label); }}
-              className={`h-full px-2 text-xs transition-colors hover:bg-vscode-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-vscode-accent ${openMenu === menu.label ? "bg-vscode-hover" : ""}`}
+              className={`h-full px-2 text-xs transition-colors hover:bg-surface-hover focus-visible:outline focus-visible:outline-1 focus-visible:outline-focus ${openMenu === menu.label ? "bg-surface-hover" : ""}`}
             >
               {menu.label}
             </button>
             {openMenu === menu.label && (
-              <div className="absolute left-0 top-full z-[80] min-w-56 border border-vscode-border bg-vscode-panel py-1 shadow-xl">
+              <div className="absolute left-0 top-full z-[80] min-w-56 border border-line bg-surface-panel py-1 shadow-xl">
                 {menu.actions.map((item, index) => item.separator ? (
-                  <div key={`${menu.label}-separator-${index}`} className="my-1 border-t border-vscode-border" />
+                  <div key={`${menu.label}-separator-${index}`} className="my-1 border-t border-line" />
                 ) : (
                   <button
                     key={`${menu.label}-${item.label}`}
                     type="button"
                     disabled={item.disabled}
                     onClick={() => { item.action?.(); setOpenMenu(null); }}
-                    className="flex min-h-7 w-full items-center justify-between gap-8 px-3 text-left text-xs text-vscode-text hover:bg-vscode-selection disabled:text-vscode-icon disabled:hover:bg-transparent"
+                    className="flex min-h-7 w-full items-center justify-between gap-8 px-3 text-left text-xs text-fg hover:bg-surface-selected disabled:text-disabled-fg disabled:hover:bg-transparent"
                   >
                     <span>{item.label}</span>
-                    {item.shortcut && <span className="text-vscode-muted">{item.shortcut}</span>}
+                    {item.shortcut && <span className="text-fg-muted">{item.shortcut}</span>}
                   </button>
                 ))}
               </div>
@@ -123,14 +123,14 @@ export function WorkbenchMenuBar({ viewTitle, onOpenSearch, onOpenUpdates, onNav
         type="button"
         onClick={onOpenSearch}
         title="Open command center"
-        className="mx-auto flex h-[22px] min-w-0 w-[min(390px,34vw)] items-center justify-center gap-2 border border-vscode-border bg-vscode-command px-3 text-xs text-vscode-muted hover:text-vscode-text focus-visible:outline focus-visible:outline-1 focus-visible:outline-vscode-accent"
+        className="mx-auto flex h-[22px] min-w-0 w-[min(390px,34vw)] items-center justify-center gap-2 border border-line bg-surface-raised px-3 text-xs text-fg-muted hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-focus"
       >
         <Command aria-hidden="true" size={12} />
         <span className="truncate">{viewTitle}</span>
-        <kbd className="ml-2 border border-vscode-border px-1 py-0.5 text-[10px]">Ctrl+P</kbd>
+        <kbd className="ml-2 border border-line px-1 py-0.5 text-[10px]">Ctrl+P</kbd>
       </button>
 
-      <button type="button" onClick={onOpenUpdates} aria-label="Check for updates" title="Check for updates" className="grid h-7 w-7 shrink-0 place-items-center text-vscode-icon hover:bg-vscode-hover hover:text-vscode-text">
+      <button type="button" onClick={onOpenUpdates} aria-label="Check for updates" title="Check for updates" className="grid h-7 w-7 shrink-0 place-items-center text-fg-muted hover:bg-surface-hover hover:text-fg">
         <CloudDownload aria-hidden="true" size={15} />
       </button>
     </header>
@@ -155,9 +155,9 @@ function updateLabel(state: DesktopUpdateState) {
 export function WorkbenchStatusBar({ updateState, onOpenUpdates }: WorkbenchStatusBarProps) {
   const busy = updateState.status === "checking" || updateState.status === "downloading" || updateState.status === "available";
   return (
-    <footer className="flex h-6 shrink-0 items-center justify-between border-t border-vscode-border bg-vscode-status px-2 text-[11px] text-vscode-text" aria-label="Status bar">
+    <footer className="flex h-6 shrink-0 items-center justify-between border-t border-line bg-surface-panel px-2 text-[11px] text-fg" aria-label="Status bar">
       <div className="flex min-w-0 items-center gap-3">
-        <button type="button" onClick={onOpenUpdates} aria-label={updateLabel(updateState)} title={updateState.error || updateLabel(updateState)} className="flex h-6 shrink-0 items-center gap-1.5 px-1.5 hover:bg-black/15 focus-visible:outline focus-visible:outline-1 focus-visible:outline-white">
+        <button type="button" onClick={onOpenUpdates} aria-label={updateLabel(updateState)} title={updateState.error || updateLabel(updateState)} className="flex h-6 shrink-0 items-center gap-1.5 px-1.5 hover:bg-scrim/15 focus-visible:outline focus-visible:outline-1 focus-visible:outline-focus">
           {updateState.status === "up-to-date" ? <Check size={13} /> : busy ? <Activity size={13} className="animate-pulse" /> : <CloudDownload size={13} />}
           <span>{updateLabel(updateState)}</span>
         </button>
@@ -199,31 +199,31 @@ export function DesktopUpdateDialog({ open, state, onClose, onCheck, onInstall }
   const canCheck = ["idle", "up-to-date", "error", "unsupported"].includes(state.status);
   const isBusy = state.status === "checking" || state.status === "downloading" || state.status === "available";
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="desktop-update-title" className="w-full max-w-md border border-vscode-border bg-vscode-panel text-vscode-text shadow-2xl">
-        <header className="flex h-9 items-center justify-between border-b border-vscode-border px-3">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-scrim/55 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="desktop-update-title" className="w-full max-w-md border border-line bg-surface-panel text-fg shadow-2xl">
+        <header className="flex h-9 items-center justify-between border-b border-line px-3">
           <h2 id="desktop-update-title" className="text-sm font-medium">Mosaic updates</h2>
-          <button type="button" onClick={onClose} aria-label="Close updates" className="grid h-7 w-7 place-items-center text-vscode-muted hover:bg-vscode-hover hover:text-vscode-text"><X size={15} /></button>
+          <button type="button" onClick={onClose} aria-label="Close updates" className="grid h-7 w-7 place-items-center text-fg-muted hover:bg-surface-hover hover:text-fg"><X size={15} /></button>
         </header>
         <div className="space-y-4 p-4">
           <div className="flex items-start gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center bg-vscode-selection text-vscode-text"><CloudDownload size={17} /></div>
+            <div className="grid h-9 w-9 shrink-0 place-items-center bg-surface-selected text-fg"><CloudDownload size={17} /></div>
             <div className="min-w-0">
               <p className="text-sm font-medium">Version {state.currentVersion || "—"}</p>
-              <p className="mt-1 text-xs leading-5 text-vscode-muted">{updateMessage(state)}</p>
-              {state.releaseNotes && <section className="mt-3 border-t border-vscode-border pt-3">
-                <h3 className="mb-1 text-xs font-medium text-vscode-text">What’s new</h3>
-                <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-vscode-muted">{state.releaseNotes}</p>
+              <p className="mt-1 text-xs leading-5 text-fg-muted">{updateMessage(state)}</p>
+              {state.releaseNotes && <section className="mt-3 border-t border-line pt-3">
+                <h3 className="mb-1 text-xs font-medium text-fg">What’s new</h3>
+                <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-fg-muted">{state.releaseNotes}</p>
               </section>}
-              {state.status === "error" && state.error && <p className="mt-2 break-words text-[11px] text-vscode-muted">{state.error}</p>}
+              {state.status === "error" && state.error && <p className="mt-2 break-words text-[11px] text-fg-muted">{state.error}</p>}
             </div>
           </div>
-          {isBusy && <div className="h-1 overflow-hidden bg-vscode-raised"><div className={`h-full bg-vscode-accent transition-[width] ${state.status === "downloading" ? "" : "animate-pulse"}`} style={{ width: state.status === "downloading" ? `${state.percent}%` : "42%" }} /></div>}
-          {state.status === "downloading" && <div className="text-right font-mono text-[11px] text-vscode-muted">{state.percent}%</div>}
-          <div className="flex justify-end gap-2 border-t border-vscode-border pt-3">
-            {canCheck && <button type="button" onClick={onCheck} className="min-h-7 border border-vscode-border bg-vscode-raised px-3 text-xs text-vscode-text hover:bg-vscode-hover">Check for updates</button>}
-            {state.status === "downloaded" && <button type="button" onClick={onInstall} className="min-h-7 bg-vscode-accent px-3 text-xs text-white hover:brightness-110">Restart to update</button>}
-            <button type="button" onClick={onClose} className="min-h-7 border border-vscode-border px-3 text-xs text-vscode-text hover:bg-vscode-hover">{state.status === "downloaded" ? "Later" : "Close"}</button>
+          {isBusy && <div className="h-1 overflow-hidden bg-surface-raised"><div className={`h-full bg-action transition-[width] ${state.status === "downloading" ? "" : "animate-pulse"}`} style={{ width: state.status === "downloading" ? `${state.percent}%` : "42%" }} /></div>}
+          {state.status === "downloading" && <div className="text-right font-mono text-[11px] text-fg-muted">{state.percent}%</div>}
+          <div className="flex justify-end gap-2 border-t border-line pt-3">
+            {canCheck && <button type="button" onClick={onCheck} className="min-h-7 border border-line bg-surface-raised px-3 text-xs text-fg hover:bg-surface-hover">Check for updates</button>}
+            {state.status === "downloaded" && <button type="button" onClick={onInstall} className="min-h-7 bg-action px-3 text-xs text-on-action hover:bg-action-hover">Restart to update</button>}
+            <button type="button" onClick={onClose} className="min-h-7 border border-line px-3 text-xs text-fg hover:bg-surface-hover">{state.status === "downloaded" ? "Later" : "Close"}</button>
           </div>
         </div>
       </section>

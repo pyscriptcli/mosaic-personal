@@ -16,7 +16,7 @@ import {
 import { ArrowUp, Bold, Check, Code, FileCode2, FolderOpen, Heading1, Italic, Link2, List, ListOrdered, LoaderCircle, Plus, Quote, ShieldAlert, Sparkles, Square, X } from "lucide-react";
 import { processSource, transcribeRecordingBatch } from "@/lib/api";
 import { MarkdownMessage } from "./MarkdownMessage";
-import { findLunaMediumModel, normalizeCodexModels, type CodexModelOption } from "../lib/models";
+import { findLunaModel, normalizeCodexModels, type CodexModelOption } from "../lib/models";
 
 type CodexStatus = {
   available: boolean;
@@ -72,6 +72,7 @@ type EchoAIContextValue = {
   chooseWorkspace: () => Promise<void>;
   sendPrompt: (prompt: string, context?: string, recordInConversation?: boolean) => Promise<string>;
   runStructured: <T>(instruction: string, context?: string) => Promise<T>;
+  runStructuredWithModel: <T>(model: string, instruction: string, context?: string) => Promise<T>;
   processSource: typeof processSource;
   transcribeRecordingBatch: typeof transcribeRecordingBatch;
   stopTurn: () => Promise<void>;
@@ -196,9 +197,9 @@ export function EchoAIProvider({ children }: { children: ReactNode }) {
         setModels(availableModels);
         setSelectedModel((current) => current && availableModels.some((model) => model.value === current)
           ? current
-          : findLunaMediumModel(availableModels) || "");
+          : findLunaModel(availableModels) || "");
         if (!availableModels.length) setModelError("Codex did not return any available models.");
-        else if (!findLunaMediumModel(availableModels)) setModelError("Luna Medium is not available in this Codex account. Select another model.");
+        else if (!findLunaModel(availableModels)) setModelError("No Luna model is available in this Codex account.");
       } catch (modelLoadError) {
         setModels([]);
         setSelectedModel("");
@@ -346,13 +347,14 @@ export function EchoAIProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshStatus, startThread]);
 
-  const sendPrompt = useCallback(async (prompt: string, context = "", recordInConversation = true) => {
+  const sendPrompt = useCallback(async (prompt: string, context = "", recordInConversation = true, modelOverride?: string) => {
     const cleanPrompt = prompt.trim();
     if (!cleanPrompt) throw new Error("Enter a message for Echo AI.");
     if (busy.current) throw new Error("Echo AI is already working on a request.");
     if (!status?.connected) throw new Error("Connect Codex CLI before using Echo AI.");
     if (!status.workspaceDirectory) throw new Error("Choose a workspace before using Echo AI.");
-    if (!selectedModel) throw new Error(modelError || "Choose an available Codex model before sending a request.");
+    const modelToUse = modelOverride || selectedModel;
+    if (!modelToUse) throw new Error(modelError || "Choose an available Codex model before sending a request.");
     const bridge = desktopBridge();
     if (!bridge) throw new Error("Echo AI is available in the Mosaic desktop app.");
 
@@ -376,7 +378,7 @@ export function EchoAIProvider({ children }: { children: ReactNode }) {
 
     return new Promise<string>((resolve, reject) => {
       pendingTurn.current = { text: "", recordInConversation, resolve, reject };
-      void bridge.sendCodexMessage(fullPrompt, selectedModel).catch((nextError) => {
+      void bridge.sendCodexMessage(fullPrompt, modelToUse).catch((nextError) => {
         const turnStartedAt = workingStartedAtRef.current;
         if (turnStartedAt !== null) setLastWorkedDurationMs(Date.now() - turnStartedAt);
         workingStartedAtRef.current = null;
@@ -395,6 +397,16 @@ export function EchoAIProvider({ children }: { children: ReactNode }) {
       `${instruction.trim()}\n\nReturn only the requested result. Do not make file changes or run commands.`,
       context,
       false,
+    );
+    return extractJson<T>(response);
+  }, [sendPrompt]);
+
+  const runStructuredWithModel = useCallback(async <T,>(model: string, instruction: string, context = "") => {
+    const response = await sendPrompt(
+      `${instruction.trim()}\n\nReturn only the requested result. Do not make file changes or run commands.`,
+      context,
+      false,
+      model,
     );
     return extractJson<T>(response);
   }, [sendPrompt]);
@@ -434,8 +446,8 @@ export function EchoAIProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<EchoAIContextValue>(() => ({
     status, messages, activity, createdAction, undoingCreation, input, setInput, isWorking, workingStartedAt, lastWorkedDurationMs, models, selectedModel, setSelectedModel, chooseModel, modelsLoading, modelError, isStarting, error, approval,
-    refreshStatus, startThread, chooseWorkspace, sendPrompt, runStructured, processSource, transcribeRecordingBatch, stopTurn, respondToApproval, undoCreatedAction,
-  }), [status, messages, activity, createdAction, undoingCreation, input, isWorking, workingStartedAt, lastWorkedDurationMs, models, selectedModel, chooseModel, modelsLoading, modelError, isStarting, error, approval, refreshStatus, startThread, chooseWorkspace, sendPrompt, runStructured, stopTurn, respondToApproval, undoCreatedAction]);
+    refreshStatus, startThread, chooseWorkspace, sendPrompt, runStructured, runStructuredWithModel, processSource, transcribeRecordingBatch, stopTurn, respondToApproval, undoCreatedAction,
+  }), [status, messages, activity, createdAction, undoingCreation, input, isWorking, workingStartedAt, lastWorkedDurationMs, models, selectedModel, chooseModel, modelsLoading, modelError, isStarting, error, approval, refreshStatus, startThread, chooseWorkspace, sendPrompt, runStructured, runStructuredWithModel, stopTurn, respondToApproval, undoCreatedAction]);
 
   return <EchoAIContext.Provider value={value}>{children}</EchoAIContext.Provider>;
 }
@@ -548,57 +560,57 @@ export function EchoAI({
   };
 
   return (
-    <div className={`${visible ? "flex" : "hidden"} min-h-0 flex-1 flex-col bg-[#1e1e1e] text-[#cccccc]`}>
-      <header className={`echo-chat-header flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-[#3c3c3c] bg-[#181818] ${compact ? "px-2" : "px-3 sm:px-4"}`}>
+    <div className={`${visible ? "flex" : "hidden"} min-h-0 flex-1 flex-col bg-surface-canvas text-fg`}>
+      <header className={`echo-chat-header flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-line bg-surface-panel ${compact ? "px-2" : "px-3 sm:px-4"}`}>
         <div className="echo-chat-brand flex min-w-0 items-center gap-2 text-sm">
-          <Sparkles size={16} className="shrink-0 text-[#0078d4]" />
-          {!compact && <span className="echo-chat-title shrink-0 font-medium text-[#e7e7e7]">Ask Echo</span>}
-          <span aria-label={status?.connected ? "Codex connected" : status?.available === false ? "Codex unavailable" : "Checking Codex connection"} title={status?.connected ? "Codex connected" : status?.available === false ? "Codex unavailable" : "Checking Codex connection"} className={`h-2 w-2 shrink-0 rounded-full ${status?.connected ? "bg-emerald-400" : status?.available === false ? "bg-[#f14c4c]" : "bg-[#cca700]"}`} />
-          <span className="echo-chat-title-subtitle truncate text-xs text-[#9d9d9d]">· Codex CLI</span>
+          <Sparkles size={16} className="shrink-0 text-link" />
+          {!compact && <span className="echo-chat-title shrink-0 font-medium text-fg">Ask Echo</span>}
+          <span aria-label={status?.connected ? "Codex connected" : status?.available === false ? "Codex unavailable" : "Checking Codex connection"} title={status?.connected ? "Codex connected" : status?.available === false ? "Codex unavailable" : "Checking Codex connection"} className={`h-2 w-2 shrink-0 rounded-full ${status?.connected ? "bg-success-fg" : status?.available === false ? "bg-danger-surface" : "bg-warning-fg"}`} />
+          <span className="echo-chat-title-subtitle truncate text-xs text-fg-muted">· Codex CLI</span>
         </div>
         <div className="echo-chat-header-actions flex shrink-0 items-center gap-1">
-          <button type="button" onClick={() => void refreshStatus()} title="Refresh Codex status" aria-label="Refresh Codex status" className="echo-chat-action rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><LoaderCircle size={14} /></button>
-          <button type="button" onClick={() => void chooseWorkspace()} title="Choose workspace folder" aria-label="Choose workspace folder" className="echo-chat-action flex items-center gap-1 rounded border border-[#454545] px-2 py-1.5 text-[11px] text-[#cccccc] hover:border-[#0078d4] hover:bg-[#2d2d30]"><FolderOpen size={13} /><span className="echo-chat-action-label">Workspace</span></button>
-          <button type="button" onClick={() => void startThread()} disabled={!status?.connected || !status.workspaceDirectory || isStarting || isWorking} title="New chat" aria-label="New chat" className="echo-chat-action flex items-center gap-1 rounded border border-[#454545] px-2 py-1.5 text-[11px] text-[#cccccc] hover:bg-[#3c3c3c] disabled:opacity-50"><Plus size={13} /><span className="echo-chat-action-label">New chat</span></button>
-          {onClose && !compact && <button type="button" onClick={onClose} aria-label="Close Ask Echo" className="echo-chat-action rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><X size={16} /></button>}
+          <button type="button" onClick={() => void refreshStatus()} title="Refresh Codex status" aria-label="Refresh Codex status" className="echo-chat-action rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><LoaderCircle size={14} /></button>
+          <button type="button" onClick={() => void chooseWorkspace()} title="Choose workspace folder" aria-label="Choose workspace folder" className="echo-chat-action flex items-center gap-1 rounded border border-line px-2 py-1.5 text-[11px] text-fg hover:border-link hover:bg-surface-hover"><FolderOpen size={13} /><span className="echo-chat-action-label">Workspace</span></button>
+          <button type="button" onClick={() => void startThread()} disabled={!status?.connected || !status.workspaceDirectory || isStarting || isWorking} title="New chat" aria-label="New chat" className="echo-chat-action flex items-center gap-1 rounded border border-line px-2 py-1.5 text-[11px] text-fg hover:bg-surface-hover "><Plus size={13} /><span className="echo-chat-action-label">New chat</span></button>
+          {onClose && !compact && <button type="button" onClick={onClose} aria-label="Close Ask Echo" className="echo-chat-action rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><X size={16} /></button>}
         </div>
       </header>
-      {context.trim() && <div className="truncate border-b border-[#333333] px-3 py-1.5 text-[10px] text-[#9d9d9d]">Meeting context is available to Echo AI</div>}
+      {context.trim() && <div className="truncate border-b border-line px-3 py-1.5 text-[10px] text-fg-muted">Meeting context is available to Echo AI</div>}
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto ${compact ? "px-3 py-3" : "px-4 py-5 sm:px-5"}`}>
-        {!status && <div className="flex items-center gap-2 text-sm text-[#b0b0b0]"><LoaderCircle size={15} className="animate-spin" />Connecting to Codex CLI…</div>}
-        {status?.available === false && <div className="border border-[#5a3d1f] bg-[#2d251b] p-4 text-sm"><h3 className="font-semibold text-[#e6c889]">Codex CLI is not available</h3><p className="mt-2 leading-6 text-[#c9c9c9]">{status.error || "Install Codex CLI, then restart Mosaic."}</p><a href="https://developers.openai.com/codex/cli" target="_blank" rel="noreferrer" className="mt-3 inline-block text-[#75beff] underline underline-offset-2">Codex CLI installation guide</a></div>}
-        {status?.available && !status.connected && <div className="border border-[#3c3c3c] bg-[#252526] p-4"><h3 className="font-semibold text-[#e7e7e7]">Codex CLI is not connected</h3><p className="mt-2 text-sm leading-6 text-[#b0b0b0]">Connect Codex CLI on this device to use Echo AI.</p></div>}
-        {status?.connected && !status.workspaceDirectory && <div className="border border-[#3c3c3c] bg-[#252526] p-4"><h3 className="font-semibold text-[#e7e7e7]">Choose a workspace</h3><p className="mt-2 text-sm leading-6 text-[#b0b0b0]">Codex uses the folder you choose as its working directory.</p><button type="button" onClick={() => void chooseWorkspace()} className="mt-4 flex items-center gap-2 rounded bg-[#0078d4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1683d8]"><FolderOpen size={14} />Choose folder</button></div>}
-        {messages.length === 0 && status?.connected && status.workspaceDirectory && <div className="mx-auto mt-8 max-w-sm text-center"><div className="mx-auto grid h-9 w-9 place-items-center bg-[#252526] text-[#75beff]"><Check size={18} /></div><h3 className="mt-3 text-sm font-semibold text-[#e7e7e7]">Echo AI is ready</h3><p className="mt-1 text-xs leading-5 text-[#b0b0b0]">Ask about your work or send a task to Codex.</p>{prompts.length > 0 && <div className="mt-3 flex flex-wrap justify-center gap-1.5">{prompts.map((prompt) => <button key={prompt} type="button" disabled={isWorking} onClick={() => void send(undefined, prompt)} className="border border-[#454545] px-2 py-1 text-[11px] text-[#cccccc] hover:border-[#0078d4]">{prompt}</button>)}</div>}</div>}
-        {messages.map((message) => <div key={message.id} className={`flex min-w-0 gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}><div className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center ${message.role === "assistant" ? "bg-[#2d2d30] text-[#75beff]" : "bg-[#37373d] text-[#e7e7e7]"}`}>{message.role === "assistant" ? "E" : "You"}</div><div className={`min-w-0 max-w-[90%] [overflow-wrap:anywhere] ${message.role === "assistant" ? "flex-1 py-1 text-[#d4d4d4]" : "w-fit bg-[#2d2d30] px-3 py-2 text-[#e7e7e7]"}`}>{message.content ? <MarkdownMessage content={message.role === "assistant" ? visibleAssistantText(message.content) : message.content} /> : <span className="text-sm text-[#b0b0b0]">Working…</span>}<div className={`mt-2 text-[10px] ${message.role === "user" ? "text-[#b0b0b0]" : "text-[#a6a6a6]"}`}>{message.timestamp}</div></div></div>)}
-        {approval && <div className="border border-[#8a6d2d] bg-[#302a1d] p-3" role="alertdialog" aria-label="Codex permission request"><div className="flex items-start gap-2"><ShieldAlert size={16} className="mt-0.5 shrink-0 text-[#e6c889]" /><div className="min-w-0 flex-1"><p className="text-xs font-semibold text-[#f2d596]">Codex requests approval</p><p className="mt-1 text-[11px] leading-5 text-[#d4d4d4]">{typeof approval.params.reason === "string" ? approval.params.reason : "Review this action before Codex continues."}</p><pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all bg-[#1e1e1e] p-2 font-mono text-[11px] leading-4 text-[#d4d4d4]">{describeApproval(approval)}</pre><p className="mt-2 text-[10px] text-[#b0b0b0]">This decision applies to this request only.</p><div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => void respondToApproval(false)} className="flex items-center gap-1 border border-[#555555] px-2.5 py-1.5 text-[11px] text-[#d4d4d4] hover:bg-[#3c3c3c]"><X size={12} />Decline</button><button type="button" onClick={() => void respondToApproval(true)} className="flex items-center gap-1 bg-[#0078d4] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-[#1683d8]"><Check size={12} />Allow once</button></div></div></div></div>}
-        {createdAction && <div className="flex items-center gap-3 border border-[#315a40] bg-[#1d2d23] px-3 py-2"><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold text-[#a5d6a7]">Created {createdAction.kind}</p><p className="truncate text-[10px] text-[#c5d7c5]" title={createdAction.kind === "report" ? createdAction.path : createdAction.title}>{createdAction.kind === "report" ? createdAction.path : createdAction.title}</p></div><button type="button" onClick={() => void undoCreatedAction()} disabled={undoingCreation} className="shrink-0 border border-[#58725b] px-2.5 py-1.5 text-[10px] text-[#d4e8d4] hover:bg-[#2d4634] disabled:opacity-50">{undoingCreation ? "Undoing…" : "Undo"}</button></div>}
-        {error && <p role="status" className="border border-[#6b3333] bg-[#321f1f] px-3 py-2 text-xs leading-5 text-[#f0b7b7]">{error}</p>}
-        {activity.length > 0 && <details open={isWorking} className="border border-[#3c3c3c] bg-[#202020]"><summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-[#cccccc]"><span className="mr-2 text-[#75beff]">{isWorking ? "WORK" : "DONE"}</span>{isWorking ? `Working | ${elapsedTime} | ${activity.length} steps` : `Worked ${formatWorkedDuration(lastWorkedDurationMs || 0)} | ${activity.length} steps`}</summary><ol className="max-h-44 space-y-1 overflow-y-auto border-t border-[#333333] px-3 py-2">{activity.map((entry) => <li key={entry.id} className="flex gap-2 text-[10px] leading-4"><span className={entry.state === "running" ? "text-[#cca700]" : "text-[#89d185]"}>{entry.state === "running" ? "..." : "OK"}</span><span className="min-w-0"><span className="font-medium text-[#cccccc]">{entry.label}</span>{entry.detail && <span className="ml-1 break-all text-[#9d9d9d]">{entry.detail}</span>}</span></li>)}</ol></details>}
+        {!status && <div className="flex items-center gap-2 text-sm text-fg-secondary"><LoaderCircle size={15} className="animate-spin" />Connecting to Codex CLI…</div>}
+        {status?.available === false && <div className="border border-warning-border bg-warning-surface p-4 text-sm"><h3 className="font-semibold text-warning-fg">Codex CLI is not available</h3><p className="mt-2 leading-6 text-fg">{status.error || "Install Codex CLI, then restart Mosaic."}</p><a href="https://developers.openai.com/codex/cli" target="_blank" rel="noreferrer" className="mt-3 inline-block text-link underline underline-offset-2">Codex CLI installation guide</a></div>}
+        {status?.available && !status.connected && <div className="border border-line bg-surface-raised p-4"><h3 className="font-semibold text-fg">Codex CLI is not connected</h3><p className="mt-2 text-sm leading-6 text-fg-secondary">Connect Codex CLI on this device to use Echo AI.</p></div>}
+        {status?.connected && !status.workspaceDirectory && <div className="border border-line bg-surface-raised p-4"><h3 className="font-semibold text-fg">Choose a workspace</h3><p className="mt-2 text-sm leading-6 text-fg-secondary">Codex uses the folder you choose as its working directory.</p><button type="button" onClick={() => void chooseWorkspace()} className="mt-4 flex items-center gap-2 rounded bg-action px-3 py-2 text-xs font-semibold text-on-action hover:bg-action-hover"><FolderOpen size={14} />Choose folder</button></div>}
+        {messages.length === 0 && status?.connected && status.workspaceDirectory && <div className="mx-auto mt-8 max-w-sm text-center"><div className="mx-auto grid h-9 w-9 place-items-center bg-surface-raised text-link"><Check size={18} /></div><h3 className="mt-3 text-sm font-semibold text-fg">Echo AI is ready</h3><p className="mt-1 text-xs leading-5 text-fg-secondary">Ask about your work or send a task to Codex.</p>{prompts.length > 0 && <div className="mt-3 flex flex-wrap justify-center gap-1.5">{prompts.map((prompt) => <button key={prompt} type="button" disabled={isWorking} onClick={() => void send(undefined, prompt)} className="border border-line px-2 py-1 text-[11px] text-fg hover:border-link">{prompt}</button>)}</div>}</div>}
+        {messages.map((message) => <div key={message.id} className={`flex min-w-0 gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}><div className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center ${message.role === "assistant" ? "bg-surface-raised text-link" : "bg-surface-hover text-fg"}`}>{message.role === "assistant" ? "E" : "You"}</div><div className={`min-w-0 max-w-[90%] [overflow-wrap:anywhere] ${message.role === "assistant" ? "flex-1 py-1 text-fg" : "w-fit bg-surface-raised px-3 py-2 text-fg"}`}>{message.content ? <MarkdownMessage content={message.role === "assistant" ? visibleAssistantText(message.content) : message.content} /> : <span className="text-sm text-fg-secondary">Working…</span>}<div className={`mt-2 text-[10px] ${message.role === "user" ? "text-fg-secondary" : "text-fg-muted"}`}>{message.timestamp}</div></div></div>)}
+        {approval && <div className="border border-warning-border bg-warning-surface p-3" role="alertdialog" aria-label="Codex permission request"><div className="flex items-start gap-2"><ShieldAlert size={16} className="mt-0.5 shrink-0 text-warning-fg" /><div className="min-w-0 flex-1"><p className="text-xs font-semibold text-warning-fg">Codex requests approval</p><p className="mt-1 text-[11px] leading-5 text-fg">{typeof approval.params.reason === "string" ? approval.params.reason : "Review this action before Codex continues."}</p><pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all bg-surface-canvas p-2 font-mono text-[11px] leading-4 text-fg">{describeApproval(approval)}</pre><p className="mt-2 text-[10px] text-fg-secondary">This decision applies to this request only.</p><div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => void respondToApproval(false)} className="flex items-center gap-1 border border-control-border px-2.5 py-1.5 text-[11px] text-fg hover:bg-surface-hover"><X size={12} />Decline</button><button type="button" onClick={() => void respondToApproval(true)} className="flex items-center gap-1 bg-action px-2.5 py-1.5 text-[11px] font-semibold text-on-action hover:bg-action-hover"><Check size={12} />Allow once</button></div></div></div></div>}
+        {createdAction && <div className="flex items-center gap-3 border border-success-border bg-success-surface px-3 py-2"><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold text-success-fg">Created {createdAction.kind}</p><p className="truncate text-[10px] text-success-fg" title={createdAction.kind === "report" ? createdAction.path : createdAction.title}>{createdAction.kind === "report" ? createdAction.path : createdAction.title}</p></div><button type="button" onClick={() => void undoCreatedAction()} disabled={undoingCreation} className="shrink-0 border border-success-border px-2.5 py-1.5 text-[10px] text-success-fg hover:bg-success-surface ">{undoingCreation ? "Undoing…" : "Undo"}</button></div>}
+        {error && <p role="status" className="border border-danger-border bg-danger-surface px-3 py-2 text-xs leading-5 text-danger-fg">{error}</p>}
+        {activity.length > 0 && <details open={isWorking} className="border border-line bg-surface-canvas"><summary className="cursor-pointer list-none px-3 py-2 text-[11px] font-medium text-fg"><span className="mr-2 text-link">{isWorking ? "WORK" : "DONE"}</span>{isWorking ? `Working | ${elapsedTime} | ${activity.length} steps` : `Worked ${formatWorkedDuration(lastWorkedDurationMs || 0)} | ${activity.length} steps`}</summary><ol className="max-h-44 space-y-1 overflow-y-auto border-t border-line px-3 py-2">{activity.map((entry) => <li key={entry.id} className="flex gap-2 text-[10px] leading-4"><span className={entry.state === "running" ? "text-warning-fg" : "text-success-fg"}>{entry.state === "running" ? "..." : "OK"}</span><span className="min-w-0"><span className="font-medium text-fg">{entry.label}</span>{entry.detail && <span className="ml-1 break-all text-fg-muted">{entry.detail}</span>}</span></li>)}</ol></details>}
         <div ref={messagesEndRef} />
       </div>
 
-      <footer className={`shrink-0 bg-[#1e1e1e] ${compact ? "px-2 pb-2 pt-1.5" : "px-3 pb-3 pt-2 sm:px-4"}`}>
-        <form onSubmit={(event) => void send(event)} className="rounded-2xl border border-[#454545] bg-[#252526] p-2.5 shadow-sm transition-colors focus-within:border-[#0078d4]">
-          {formatMenuOpen && <div role="toolbar" aria-label="Message formatting" className="mb-2 flex flex-wrap items-center gap-0.5 border-b border-[#3c3c3c] pb-2">
-            <button type="button" onClick={(event) => formatSelection(event, "**")} aria-label="Bold" title="Bold" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><Bold size={14} /></button>
-            <button type="button" onClick={(event) => formatSelection(event, "*")} aria-label="Italic" title="Italic" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><Italic size={14} /></button>
-            <button type="button" onClick={(event) => formatSelection(event, "# ", "")} aria-label="Heading" title="Heading" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><Heading1 size={14} /></button>
-            <button type="button" onClick={(event) => formatSelection(event, "- ", "")} aria-label="Bulleted list" title="Bulleted list" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><List size={14} /></button>
-            <button type="button" onClick={(event) => formatSelection(event, "1. ", "")} aria-label="Numbered list" title="Numbered list" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><ListOrdered size={14} /></button>
-            <button type="button" onClick={(event) => formatSelection(event, "> ", "")} aria-label="Quote" title="Quote" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><Quote size={14} /></button>
-            <button type="button" onClick={(event) => formatSelection(event, "`")} aria-label="Inline code" title="Inline code" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><Code size={14} /></button>
-            <button type="button" onClick={(event) => formatSelection(event, "\n```\n", "\n```\n")} aria-label="Code block" title="Code block" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><FileCode2 size={14} /></button>
-            <button type="button" onClick={insertLink} aria-label="Insert link" title="Insert link" className="rounded p-1.5 text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white"><Link2 size={14} /></button>
+      <footer className={`shrink-0 bg-surface-canvas ${compact ? "px-2 pb-2 pt-1.5" : "px-3 pb-3 pt-2 sm:px-4"}`}>
+        <form onSubmit={(event) => void send(event)} className="rounded-2xl border border-line bg-surface-raised p-2.5 shadow-sm transition-colors focus-within:border-line">
+          {formatMenuOpen && <div role="toolbar" aria-label="Message formatting" className="mb-2 flex flex-wrap items-center gap-0.5 border-b border-line pb-2">
+            <button type="button" onClick={(event) => formatSelection(event, "**")} aria-label="Bold" title="Bold" className="rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><Bold size={14} /></button>
+            <button type="button" onClick={(event) => formatSelection(event, "*")} aria-label="Italic" title="Italic" className="rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><Italic size={14} /></button>
+            <button type="button" onClick={(event) => formatSelection(event, "# ", "")} aria-label="Heading" title="Heading" className="rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><Heading1 size={14} /></button>
+            <button type="button" onClick={(event) => formatSelection(event, "- ", "")} aria-label="Bulleted list" title="Bulleted list" className="rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><List size={14} /></button>
+            <button type="button" onClick={(event) => formatSelection(event, "1. ", "")} aria-label="Numbered list" title="Numbered list" className="rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><ListOrdered size={14} /></button>
+            <button type="button" onClick={(event) => formatSelection(event, "> ", "")} aria-label="Quote" title="Quote" className="rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><Quote size={14} /></button>
+            <button type="button" onClick={(event) => formatSelection(event, "`")} aria-label="Inline code" title="Inline code" className="rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><Code size={14} /></button>
+            <button type="button" onClick={(event) => formatSelection(event, "\n```\n", "\n```\n")} aria-label="Code block" title="Code block" className="rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><FileCode2 size={14} /></button>
+            <button type="button" onClick={insertLink} aria-label="Insert link" title="Insert link" className="rounded p-1.5 text-fg-secondary hover:bg-surface-hover hover:text-fg"><Link2 size={14} /></button>
           </div>}
-          <textarea ref={inputRef} aria-label="Message Echo AI" rows={2} value={input} onChange={(event) => setInput(event.target.value)} onSelect={(event) => { selectionRef.current = [event.currentTarget.selectionStart, event.currentTarget.selectionEnd]; }} onKeyDown={sendOnEnter} placeholder={status?.connected && status.workspaceDirectory ? "Ask Echo AI…" : "Choose a workspace to start"} disabled={!status?.connected || !status.workspaceDirectory || isWorking} className="max-h-40 min-h-12 w-full resize-y bg-transparent px-1.5 py-1 text-sm leading-5 text-[#e3e3e3] outline-none placeholder:text-[#858585] disabled:cursor-not-allowed" />
+          <textarea ref={inputRef} aria-label="Message Echo AI" rows={2} value={input} onChange={(event) => setInput(event.target.value)} onSelect={(event) => { selectionRef.current = [event.currentTarget.selectionStart, event.currentTarget.selectionEnd]; }} onKeyDown={sendOnEnter} placeholder={status?.connected && status.workspaceDirectory ? "Ask Echo AI…" : "Choose a workspace to start"} disabled={!status?.connected || !status.workspaceDirectory || isWorking} className="max-h-40 min-h-12 w-full resize-y bg-transparent px-1.5 py-1 text-sm leading-5 text-fg outline-none placeholder:text-fg-muted disabled:cursor-not-allowed" />
           <div className="flex items-center gap-1.5 pt-1">
-            <button type="button" onClick={() => setFormatMenuOpen((open) => !open)} aria-label="Toggle formatting tools" aria-expanded={formatMenuOpen} title="Formatting tools" className={`grid h-8 w-8 place-items-center rounded-full text-[#bdbdbd] hover:bg-[#3c3c3c] hover:text-white ${formatMenuOpen ? "bg-[#3c3c3c] text-white" : ""}`}><Plus size={17} /></button>
-            <span title="Codex may ask before taking actions" aria-label="Codex approval controls are enabled" className="grid h-8 w-8 place-items-center rounded-full text-[#bdbdbd]"><ShieldAlert size={15} /></span>
-            <span className="text-[10px] text-[#858585]">Shift+Enter for newline</span>
-            <label htmlFor="echo-codex-model" className="ml-auto flex items-center gap-1.5 text-[10px] text-[#9d9d9d]">Model<select id="echo-codex-model" aria-label="Codex model" value={selectedModel} onChange={(event) => chooseModel(event.target.value)} disabled={modelsLoading || isWorking || models.length === 0} className="max-w-36 truncate rounded border border-[#454545] bg-[#252526] px-1.5 py-1 text-[10px] text-[#cccccc] outline-none focus:border-[#0078d4] disabled:opacity-60"><option value="">{modelsLoading ? "Loading..." : "Unavailable"}</option>{models.map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}</select></label>
-            {isWorking ? <button type="button" onClick={() => void stopTurn()} aria-label="Stop Echo AI" className="grid h-9 w-9 place-items-center rounded-full bg-[#3c3c3c] text-white hover:bg-[#4a4a4a]"><Square size={14} /></button> : <button type="submit" disabled={!input.trim() || !status?.connected || !status.workspaceDirectory || !selectedModel || modelsLoading} title={modelError || undefined} aria-label="Send to Echo AI" className="grid h-9 w-9 place-items-center rounded-full bg-[#0078d4] text-white hover:bg-[#1683d8] disabled:bg-[#3c3c3c] disabled:text-[#777777]"><ArrowUp size={18} /></button>}
+            <button type="button" onClick={() => setFormatMenuOpen((open) => !open)} aria-label="Toggle formatting tools" aria-expanded={formatMenuOpen} title="Formatting tools" className={`grid h-8 w-8 place-items-center rounded-full text-fg-secondary hover:bg-surface-hover hover:text-fg ${formatMenuOpen ? "bg-line text-on-action" : ""}`}><Plus size={17} /></button>
+            <span title="Codex may ask before taking actions" aria-label="Codex approval controls are enabled" className="grid h-8 w-8 place-items-center rounded-full text-fg-secondary"><ShieldAlert size={15} /></span>
+            <span className="text-[10px] text-fg-muted">Shift+Enter for newline</span>
+            <label htmlFor="echo-codex-model" className="ml-auto flex items-center gap-1.5 text-[10px] text-fg-muted">Model<select id="echo-codex-model" aria-label="Codex model" value={selectedModel} onChange={(event) => chooseModel(event.target.value)} disabled={modelsLoading || isWorking || models.length === 0} className="max-w-36 truncate rounded border border-line bg-surface-raised px-1.5 py-1 text-[10px] text-fg outline-none focus:border-focus "><option value="">{modelsLoading ? "Loading..." : "Unavailable"}</option>{models.map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}</select></label>
+            {isWorking ? <button type="button" onClick={() => void stopTurn()} aria-label="Stop Echo AI" className="grid h-9 w-9 place-items-center rounded-full bg-line text-on-action hover:bg-surface-hover"><Square size={14} /></button> : <button type="submit" disabled={!input.trim() || !status?.connected || !status.workspaceDirectory || !selectedModel || modelsLoading} title={modelError || undefined} aria-label="Send to Echo AI" className="grid h-9 w-9 place-items-center rounded-full bg-action text-on-action hover:bg-action-hover disabled:bg-disabled-surface disabled:text-disabled-fg"><ArrowUp size={18} /></button>}
           </div>
         </form>
       </footer>

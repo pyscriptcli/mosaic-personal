@@ -16,19 +16,6 @@ function formatTimestamp(seconds: number): string {
   return `[${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}]`;
 }
 
-function getAudioFormat(mimeType: string, fileName?: string): string {
-  const m = (mimeType || "").toLowerCase();
-  const f = (fileName || "").toLowerCase();
-  if (m.includes("mp3") || f.endsWith(".mp3")) return "mp3";
-  if (m.includes("m4a") || f.endsWith(".m4a")) return "m4a";
-  if (m.includes("mp4") || f.endsWith(".mp4")) return "mp4";
-  if (m.includes("webm") || f.endsWith(".webm")) return "webm";
-  if (m.includes("ogg") || f.endsWith(".ogg") || f.endsWith(".oga")) return "ogg";
-  if (m.includes("flac") || f.endsWith(".flac")) return "flac";
-  if (m.includes("aac") || f.endsWith(".aac")) return "aac";
-  return "wav";
-}
-
 import {
   GroqRateLimitError,
   getGroqTranscriptionApiKeys,
@@ -162,56 +149,11 @@ async function transcribeWithGroqPool(
   throw new Error(`All available Groq keys in pool failed: ${poolErrors.join(" | ")}`);
 }
 
-async function transcribeWithOpenRouter(
-  buffer: Buffer,
-  fileName: string,
-  mimeType: string,
-  apiKey: string
-): Promise<string> {
-  const base64Audio = buffer.toString("base64");
-  const format = getAudioFormat(mimeType, fileName);
-  let lastError = "";
-
-  // OpenRouter is the only paid fallback for audio transcription.
-  try {
-    const sttRes = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://project-echo.app",
-        "X-Title": "Mosaic Audio Transcriber",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_STT_MODEL || "openai/whisper-large-v3",
-        input_audio: {
-          data: base64Audio,
-          format: format,
-        },
-      }),
-    });
-
-    if (sttRes.ok) {
-      const data = await sttRes.json();
-      if (data.text && data.text.trim().length > 0) {
-        return data.text.trim();
-      }
-    } else {
-      const errJson = await sttRes.json().catch(() => ({}));
-      lastError = errJson?.error?.message || `Failed with status ${sttRes.status}`;
-    }
-  } catch (sttErr: any) {
-    lastError = sttErr.message;
-  }
-
-  throw new Error(lastError || "OpenRouter audio transcription failed across all endpoints.");
-}
-
 export interface TranscribeBufferResult {
   text: string;
   tempPath?: string;
   errors: string[];
-  provider?: "groq" | "openrouter";
+  provider?: "groq";
   groqPoolMeta?: GroqPoolResult;
 }
 
@@ -219,11 +161,11 @@ async function transcribeAudioBuffer(
   buffer: Buffer,
   fileName: string,
   mimeType: string,
-  keys: { groqKeys: string[]; openrouterKey: string }
+  keys: { groqKeys: string[] }
 ): Promise<TranscribeBufferResult> {
   let audioTranscript = "";
   let tempFilePath: string | undefined;
-  let provider: "groq" | "openrouter" | undefined;
+  let provider: "groq" | undefined;
   let groqPoolMeta: GroqPoolResult | undefined;
   const errors: string[] = [];
 
@@ -235,19 +177,8 @@ async function transcribeAudioBuffer(
       groqPoolMeta = result;
       if (audioTranscript) provider = "groq";
     } catch (e: any) {
-      console.warn("Groq multi-key pool unavailable, using OpenRouter fallback:", e.message);
+      console.warn("Groq multi-key pool unavailable:", e.message);
       errors.push(`Groq Whisper: ${e.message}`);
-    }
-  }
-
-  // 2. Paid low-cost fallback: OpenRouter
-  if (!audioTranscript && keys.openrouterKey) {
-    try {
-      audioTranscript = await transcribeWithOpenRouter(buffer, fileName, mimeType, keys.openrouterKey);
-      if (audioTranscript) provider = "openrouter";
-    } catch (e: any) {
-      console.warn("OpenRouter transcription failed:", e.message);
-      errors.push(`OpenRouter: ${e.message}`);
     }
   }
 
@@ -258,7 +189,6 @@ export async function POST(req: NextRequest) {
   let tempFilePath: string | null = null;
   const requestStarted = Date.now();
   try {
-    const openrouterKey = req.headers.get("x-openrouter-api-key") || process.env.OPENROUTER_API_KEY || "";
     const geminiKey = req.headers.get("x-gemini-api-key") || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
     const groqKeys = getGroqTranscriptionApiKeys();
     const requestUser = getUserFromRequest(req);
@@ -292,7 +222,6 @@ export async function POST(req: NextRequest) {
 
       const { text, tempPath, errors, provider, groqPoolMeta } = await transcribeAudioBuffer(buffer, fileName, mimeType, {
         groqKeys,
-        openrouterKey,
       });
       if (tempPath) tempFilePath = tempPath;
 
@@ -309,11 +238,11 @@ export async function POST(req: NextRequest) {
         operation: "audio_chunk",
         captureMode: "botless",
         provider,
-        model: provider === "groq" ? (process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo") : (process.env.OPENROUTER_STT_MODEL || "openai/whisper-large-v3"),
+        model: process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo",
         audioSeconds,
         fileSizeBytes: buffer.length,
         processingMs: Date.now() - requestStarted,
-        fallbackUsed: provider === "openrouter",
+        fallbackUsed: false,
         success: true,
         chunkIndex,
         totalChunks,
@@ -329,11 +258,6 @@ export async function POST(req: NextRequest) {
             groqAttempts: groqPoolMeta.attempts,
             groqFailoverOccurred: groqPoolMeta.failoverOccurred,
             ...(groqPoolMeta.failoverHistory ? { groqFailoverHistory: groqPoolMeta.failoverHistory } : {}),
-          } : {}),
-          ...(provider === "openrouter" ? {
-            groqPoolExhausted: true,
-            openrouterFallback: true,
-            groqPoolErrors: errors.filter((e) => e.includes("Groq")),
           } : {}),
         },
       });
@@ -408,10 +332,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ transcript });
     }
 
-    // CASE 5: Audio / Video recording (Groq Whisper -> OpenRouter Whisper)
+    // CASE 5: Audio / Video recording (Groq Whisper)
     const { text, tempPath, errors, provider, groqPoolMeta } = await transcribeAudioBuffer(buffer, file.name, mimeType, {
       groqKeys,
-      openrouterKey,
     });
     if (tempPath) tempFilePath = tempPath;
 
@@ -434,10 +357,10 @@ export async function POST(req: NextRequest) {
       operation: "audio_upload",
       captureMode: "unknown",
       provider: provider || "whisper",
-      model: provider === "groq" ? (process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo") : (process.env.OPENROUTER_STT_MODEL || "openai/whisper-large-v3"),
+      model: process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo",
       fileSizeBytes: buffer.length,
       processingMs: Date.now() - requestStarted,
-      fallbackUsed: provider === "openrouter",
+      fallbackUsed: false,
       success: true,
       transcriptCharacters: transcript.length,
       metadata: {
@@ -451,11 +374,6 @@ export async function POST(req: NextRequest) {
           groqAttempts: groqPoolMeta.attempts,
           groqFailoverOccurred: groqPoolMeta.failoverOccurred,
           ...(groqPoolMeta.failoverHistory ? { groqFailoverHistory: groqPoolMeta.failoverHistory } : {}),
-        } : {}),
-        ...(provider === "openrouter" ? {
-          groqPoolExhausted: true,
-          openrouterFallback: true,
-          groqPoolErrors: errors.filter((e) => e.includes("Groq")),
         } : {}),
       },
     });

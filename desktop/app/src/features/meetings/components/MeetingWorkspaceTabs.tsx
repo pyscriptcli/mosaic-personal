@@ -20,7 +20,7 @@ const tabs: { id: MeetingWorkspaceTab; label: string }[] = [
 export function MeetingWorkspaceTabs({ value, onChange, children, compact = false }: MeetingWorkspaceTabsProps) {
   return (
     <div>
-      <div className="flex border-b border-[#003366]/20 bg-[#FFFCFB]" role="tablist" aria-label="Meeting workspace">
+      <div className="flex border-b border-link bg-surface-panel" role="tablist" aria-label="Meeting workspace">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -30,8 +30,8 @@ export function MeetingWorkspaceTabs({ value, onChange, children, compact = fals
             onClick={() => onChange(tab.id)}
             className={`${compact ? "px-5 py-2.5" : "px-5 py-3"} text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer border-b-2 ${
               value === tab.id
-                ? "border-[#003366] text-[#003366] bg-white"
-                : "border-transparent text-gray-400 hover:text-gray-700 hover:bg-gray-50"
+                ? "border-link text-fg bg-surface-panel"
+                : "border-transparent text-fg-muted hover:text-fg hover:bg-surface-hover"
             }`}
           >
             {tab.label}

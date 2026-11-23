@@ -1,0 +1,130 @@
+/* Desktop theme contract. Components choose roles, never infer colors from class names.
+   Text/surface and control/boundary pairs are checked by npm run check:theme. */
+:root {
+  --mosaic-surface-canvas: #1f1f1f;
+  --mosaic-surface-panel: #181818;
+  --mosaic-surface-raised: #252526;
+  --mosaic-surface-hover: #2a2d2e;
+  --mosaic-surface-selected: #04395e;
+  --mosaic-fg: #e7e7e7;
+  --mosaic-fg-secondary: #bdbdbd;
+  --mosaic-fg-muted: #a6a6a6;
+  --mosaic-line: #454545;
+  --mosaic-control-border: #757575;
+  --mosaic-focus: #a6a6a6;
+  --mosaic-link: #75beff;
+  --mosaic-action: #0069b9;
+  --mosaic-action-hover: #005a9e;
+  --mosaic-on-action: #ffffff;
+  --mosaic-disabled-surface: #2b2b2b;
+  --mosaic-disabled-fg: #a6a6a6;
+  --mosaic-warning-surface: #3b2f10;
+  --mosaic-warning-fg: #ffe08a;
+  --mosaic-warning-border: #b89537;
+  --mosaic-success-surface: #193521;
+  --mosaic-success-fg: #a5d6a7;
+  --mosaic-success-border: #648b68;
+  --mosaic-success-action: #246639;
+  --mosaic-success-action-hover: #1b502c;
+  --mosaic-danger-surface: #3d2024;
+  --mosaic-danger-fg: #ffb3ba;
+  --mosaic-danger-border: #c8707a;
+  --mosaic-danger-action: #a12632;
+  --mosaic-danger-action-hover: #861e29;
+  --mosaic-info-surface: #16364c;
+  --mosaic-info-fg: #9cdcfe;
+  --mosaic-info-border: #6291ac;
+  --mosaic-special-surface: #30233f;
+  --mosaic-special-fg: #d9bbff;
+  --mosaic-special-border: #9c7ebd;
+  --mosaic-scrim: #000000;
+}
+
+@theme {
+  --color-surface-canvas: var(--mosaic-surface-canvas);
+  --color-surface-panel: var(--mosaic-surface-panel);
+  --color-surface-raised: var(--mosaic-surface-raised);
+  --color-surface-hover: var(--mosaic-surface-hover);
+  --color-surface-selected: var(--mosaic-surface-selected);
+  --color-fg: var(--mosaic-fg);
+  --color-fg-secondary: var(--mosaic-fg-secondary);
+  --color-fg-muted: var(--mosaic-fg-muted);
+  --color-line: var(--mosaic-line);
+  --color-control-border: var(--mosaic-control-border);
+  --color-focus: var(--mosaic-focus);
+  --color-link: var(--mosaic-link);
+  --color-action: var(--mosaic-action);
+  --color-action-hover: var(--mosaic-action-hover);
+  --color-on-action: var(--mosaic-on-action);
+  --color-disabled-surface: var(--mosaic-disabled-surface);
+  --color-disabled-fg: var(--mosaic-disabled-fg);
+  --color-warning-surface: var(--mosaic-warning-surface);
+  --color-warning-fg: var(--mosaic-warning-fg);
+  --color-warning-border: var(--mosaic-warning-border);
+  --color-success-surface: var(--mosaic-success-surface);
+  --color-success-fg: var(--mosaic-success-fg);
+  --color-success-border: var(--mosaic-success-border);
+  --color-success-action: var(--mosaic-success-action);
+  --color-success-action-hover: var(--mosaic-success-action-hover);
+  --color-danger-surface: var(--mosaic-danger-surface);
+  --color-danger-fg: var(--mosaic-danger-fg);
+  --color-danger-border: var(--mosaic-danger-border);
+  --color-danger-action: var(--mosaic-danger-action);
+  --color-danger-action-hover: var(--mosaic-danger-action-hover);
+  --color-info-surface: var(--mosaic-info-surface);
+  --color-info-fg: var(--mosaic-info-fg);
+  --color-info-border: var(--mosaic-info-border);
+  --color-special-surface: var(--mosaic-special-surface);
+  --color-special-fg: var(--mosaic-special-fg);
+  --color-special-border: var(--mosaic-special-border);
+  --color-scrim: var(--mosaic-scrim);
+}
+
+:root {
+  color-scheme: dark;
+  background: var(--mosaic-surface-canvas);
+  color: var(--mosaic-fg);
+  accent-color: var(--mosaic-action);
+  scrollbar-color: var(--mosaic-control-border) var(--mosaic-surface-panel);
+}
+
+@media (forced-colors: active) {
+  :root {
+    --mosaic-surface-canvas: Canvas;
+    --mosaic-surface-panel: Canvas;
+    --mosaic-surface-raised: Canvas;
+    --mosaic-surface-hover: Canvas;
+    --mosaic-surface-selected: Highlight;
+    --mosaic-fg: CanvasText;
+    --mosaic-fg-secondary: CanvasText;
+    --mosaic-fg-muted: CanvasText;
+    --mosaic-line: CanvasText;
+    --mosaic-control-border: ButtonText;
+    --mosaic-focus: Highlight;
+    --mosaic-link: LinkText;
+    --mosaic-action: Highlight;
+    --mosaic-action-hover: Highlight;
+    --mosaic-on-action: HighlightText;
+    --mosaic-disabled-surface: Canvas;
+    --mosaic-disabled-fg: GrayText;
+    --mosaic-warning-surface: Canvas;
+    --mosaic-warning-fg: CanvasText;
+    --mosaic-warning-border: CanvasText;
+    --mosaic-success-surface: Canvas;
+    --mosaic-success-fg: CanvasText;
+    --mosaic-success-border: CanvasText;
+    --mosaic-success-action: Highlight;
+    --mosaic-success-action-hover: Highlight;
+    --mosaic-danger-surface: Canvas;
+    --mosaic-danger-fg: CanvasText;
+    --mosaic-danger-border: CanvasText;
+    --mosaic-danger-action: Highlight;
+    --mosaic-danger-action-hover: Highlight;
+    --mosaic-info-surface: Canvas;
+    --mosaic-info-fg: CanvasText;
+    --mosaic-info-border: CanvasText;
+    --mosaic-special-surface: Canvas;
+    --mosaic-special-fg: CanvasText;
+    --mosaic-special-border: CanvasText;
+  }
+}

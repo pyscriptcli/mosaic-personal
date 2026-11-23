@@ -53,6 +53,13 @@ export function getGroqTranscriptionApiKeys(): string[] {
   }
 }
 
+/** Groq keys in the desktop profile are shared by transcription and meeting notes. */
+export function getGroqMeetingApiKeys(): string[] {
+  return process.env.MOSAIC_DESKTOP_TRANSCRIPTION_ONLY === "1"
+    ? getGroqTranscriptionApiKeys()
+    : getGroqApiKeys();
+}
+
 // Map of apiKey -> timestamp (ms) until which the key is cooling down
 export const groqKeyCooldowns = new Map<string, number>();
 let groqRoundRobinPointer = 0;
@@ -103,9 +110,10 @@ export async function callGroqChatPool(
     temperature?: number;
     responseFormat?: { type: "json_object" | "text" };
     signal?: AbortSignal;
+    apiKeys?: string[];
   }
 ): Promise<GroqChatResult> {
-  const groqKeys = getGroqApiKeys();
+  const groqKeys = options?.apiKeys || getGroqApiKeys();
   if (!groqKeys.length) {
     throw new Error("No Groq API keys configured");
   }

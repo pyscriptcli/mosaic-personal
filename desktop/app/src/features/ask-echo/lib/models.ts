@@ -28,3 +28,7 @@ export function normalizeCodexModels(value: unknown): CodexModelOption[] {
 export function findLunaMediumModel(models: CodexModelOption[]): string | null {
   return models.find((model) => /luna\s*medium/i.test(`${model.label} ${model.value}`))?.value || null;
 }
+
+export function findLunaModel(models: CodexModelOption[]): string | null {
+  return models.find((model) => /luna/i.test(`${model.label} ${model.value}`))?.value || null;
+}

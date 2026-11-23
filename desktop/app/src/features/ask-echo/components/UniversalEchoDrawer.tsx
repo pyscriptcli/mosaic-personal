@@ -37,7 +37,7 @@ export function UniversalEchoDrawer({ isOpen, onClose }: UniversalEchoDrawerProp
 
   return (
     <div className={`${isOpen ? "fixed" : "hidden"} pointer-events-none inset-0 z-50 flex justify-end overflow-hidden`}>
-      <section aria-label="Ask Echo · Codex CLI" aria-hidden={!isOpen} style={{ width: `${panelWidth}px` }} className="echo-chat-panel pointer-events-auto relative flex h-full min-w-0 max-w-[90vw] flex-col border-l border-[#2b2b2b] bg-[#1f1f1f] text-[#cccccc] shadow-2xl max-md:max-w-[85vw]">
+      <section aria-label="Ask Echo · Codex CLI" aria-hidden={!isOpen} style={{ width: `${panelWidth}px` }} className="echo-chat-panel pointer-events-auto relative flex h-full min-w-0 max-w-[90vw] flex-col border-l border-line bg-surface-canvas text-fg shadow-2xl max-md:max-w-[85vw]">
         <div
           role="separator"
           aria-label="Resize Ask Echo panel"
@@ -65,9 +65,9 @@ export function UniversalEchoDrawer({ isOpen, onClose }: UniversalEchoDrawerProp
             resizeTo(event.clientX);
             if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
           }}
-          className="group absolute inset-y-0 left-0 z-20 flex w-1.5 -translate-x-1/2 touch-none cursor-col-resize items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+          className="group absolute inset-y-0 left-0 z-20 flex w-1.5 -translate-x-1/2 touch-none cursor-col-resize items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
-          <span className="h-full w-px bg-transparent group-hover:bg-[#0078d4] group-focus-visible:bg-[#0078d4]" />
+          <span className="h-full w-px bg-transparent group-hover:bg-action-hover group-focus-visible:bg-action" />
         </div>
         <EchoAI visible={isOpen} onClose={onClose} />
       </section>

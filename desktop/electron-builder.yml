@@ -7,10 +7,25 @@ directories:
   output: dist
 files:
   - src/**
+  - app/src/app/theme.css
   - build/mosaic.png
   - build/mosaic.ico
   - package.json
 extraResources:
+  - from: node_modules/ffmpeg-static/ffmpeg.exe
+    to: media-tools/ffmpeg.exe
+  - from: node_modules/ffmpeg-static/ffmpeg.exe.LICENSE
+    to: media-tools/ffmpeg.exe.LICENSE
+  - from: node_modules/ffmpeg-static/ffmpeg.exe.README
+    to: media-tools/ffmpeg.exe.README
+  - from: node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe
+    to: media-tools/ffprobe.exe
+  - from: node_modules/ffprobe-static/LICENSE
+    to: media-tools/ffprobe-static.LICENSE
+  - from: node_modules/ffprobe-static/README.md
+    to: media-tools/ffprobe-static.README
+  - from: node_modules/ffmpeg-static/ffmpeg.exe.LICENSE
+    to: media-tools/ffprobe.exe.LICENSE
   - from: build/local-app
     to: local-app
   - from: build/local-app/node_modules

@@ -30,32 +30,32 @@ export function FloatingRecordingPill({ recorder, onExpand }: FloatingRecordingP
   return (
     <aside
       aria-label="Active recording control dock"
-      className="fixed bottom-5 right-6 z-50 flex items-center gap-3 bg-[#001E3C]/95 backdrop-blur-md text-white border-2 border-[#C9A84C] px-3.5 py-2 shadow-2xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-3"
+      className="fixed bottom-5 right-6 z-50 flex items-center gap-3 bg-scrim backdrop-blur-md text-on-action border-2 border-warning-border px-3.5 py-2 shadow-2xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-3"
     >
       {/* Live / Paused Status Indicator */}
       <div className="flex items-center gap-2">
         <span className="relative flex h-2.5 w-2.5">
           {isRecording && (
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger-fg opacity-75" />
           )}
-          <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isPaused ? "bg-amber-400" : "bg-red-500"}`} />
+          <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isPaused ? "bg-warning-fg" : "bg-danger-fg"}`} />
         </span>
         <span className="font-mono text-xs font-bold tracking-tight tabular-nums">
           {formatClock(recorder.elapsedSeconds)}
         </span>
       </div>
 
-      <div className="h-4 w-px bg-white/20" />
+      <div className="h-4 w-px bg-surface-panel" />
 
       {/* Screen & Audio Status info */}
       <div className="flex flex-col min-w-0 max-w-[200px] sm:max-w-[260px]">
         <div className="flex items-center gap-1.5 truncate">
-          <Monitor size={11} className="text-[#C9A84C] shrink-0" />
-          <span className="text-[11px] font-semibold truncate text-slate-100" title={screenName}>
+          <Monitor size={11} className="text-link shrink-0" />
+          <span className="text-[11px] font-semibold truncate text-fg-muted" title={screenName}>
             {screenName}
           </span>
         </div>
-        <span className="text-[9px] text-[#C9A84C] truncate font-medium">
+        <span className="text-[9px] text-link truncate font-medium">
           {audioStatus}
         </span>
       </div>
@@ -69,7 +69,7 @@ export function FloatingRecordingPill({ recorder, onExpand }: FloatingRecordingP
             return (
               <span
                 key={idx}
-                className={`w-0.5 transition-all duration-75 ${active ? (visualizer.isClipping ? "bg-red-400" : "bg-[#C9A84C]") : "bg-white/20"}`}
+                className={`w-0.5 transition-all duration-75 ${active ? (visualizer.isClipping ? "bg-danger-fg" : "bg-warning-fg") : "bg-surface-panel"}`}
                 style={{ height: `${h}px` }}
               />
             );
@@ -78,12 +78,12 @@ export function FloatingRecordingPill({ recorder, onExpand }: FloatingRecordingP
       )}
 
       {/* Controls */}
-      <div className="flex items-center gap-1 ml-1 border-l border-white/20 pl-2">
+      <div className="flex items-center gap-1 ml-1 border-l border-control-border pl-2">
         {isRecording ? (
           <button
             type="button"
             onClick={recorder.pause}
-            className="p-1.5 text-amber-300 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1.5 text-warning-fg hover:text-fg hover:bg-surface-hover transition-colors"
             title="Pause recording"
             aria-label="Pause recording"
           >
@@ -93,7 +93,7 @@ export function FloatingRecordingPill({ recorder, onExpand }: FloatingRecordingP
           <button
             type="button"
             onClick={recorder.resume}
-            className="p-1.5 text-emerald-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1.5 text-success-fg hover:text-fg hover:bg-surface-hover transition-colors"
             title="Resume recording"
             aria-label="Resume recording"
           >
@@ -104,7 +104,7 @@ export function FloatingRecordingPill({ recorder, onExpand }: FloatingRecordingP
         <button
           type="button"
           onClick={recorder.stop}
-          className="p-1.5 text-red-400 hover:text-white hover:bg-red-600/30 transition-colors"
+          className="p-1.5 text-danger-fg hover:text-fg hover:bg-danger-action-hover transition-colors"
           title="Stop recording"
           aria-label="Stop recording"
         >
@@ -114,7 +114,7 @@ export function FloatingRecordingPill({ recorder, onExpand }: FloatingRecordingP
         <button
           type="button"
           onClick={onExpand}
-          className="p-1.5 text-slate-300 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ml-1 pl-1.5 border-l border-white/10"
+          className="p-1.5 text-fg-muted hover:text-fg hover:bg-surface-hover transition-colors flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ml-1 pl-1.5 border-l border-control-border"
           title="Return to Notetaker Studio"
           aria-label="Expand Notetaker Studio"
         >

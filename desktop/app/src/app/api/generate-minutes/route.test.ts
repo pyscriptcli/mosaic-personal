@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 describe("POST /api/generate-minutes", () => {
   beforeEach(() => {
-    vi.stubEnv("DEEPSEEK_API_KEY", "test-deepseek-key");
+    vi.stubEnv("GROQ_API_KEY", "test-groq-key");
   });
 
   afterEach(() => {

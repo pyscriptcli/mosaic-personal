@@ -40,7 +40,7 @@ import { MeetingWorkspaceTabs, type MeetingWorkspaceTab } from "@/features/meeti
 import { MeetingActionItemsTable, MeetingDiscussionCard, MeetingSummaryEditor, useMeetingAssignees } from "@/features/meetings/components/MeetingWorkspaceContent";
 import { createActionFromDiscussion } from "@/features/meetings/lib/meetingArchive";
 import type { StudioSession } from "@/features/notetaker/types/studio";
-import { getInterruptedSessions, downloadSession, clearSession, exportSessionAsFile } from "@/features/notetaker/lib/studioStorage";
+import { getInterruptedSessions, downloadSession, clearSession, exportSessionAsFile, saveToLocalDocuments } from "@/features/notetaker/lib/studioStorage";
 import { exportWord, exportPdf, discoverClickUpLists } from "@/lib/api";
 import { useEchoAI } from "@/features/ask-echo/components/EchoAI";
 import { QuickAddTaskModal } from "@/components/QuickAddTaskModal";
@@ -135,7 +135,7 @@ function DatePickerInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full text-xs bg-[#FFFCFB] border border-gray-200 rounded-none px-2 py-1 pr-7 focus:outline-none focus:border-[#C9AB4C]"
+        className="w-full text-xs bg-surface-panel border border-line rounded-none px-2 py-1 pr-7 focus:outline-none focus:border-focus"
       />
       <input
         type="date"
@@ -152,7 +152,7 @@ function DatePickerInput({
         type="button"
         onClick={handleIconClick}
         title="Choose date from calendar"
-        className="absolute right-1 text-gray-400 hover:text-[#003366] p-1 cursor-pointer"
+        className="absolute right-1 text-fg-muted hover:text-fg p-1 cursor-pointer"
       >
         <Calendar size={13} />
       </button>
@@ -291,19 +291,37 @@ export function MeetingsView({
   const [isDiscoveringTopics, setIsDiscoveringTopics] = useState(false);
   const [autoDiscoverEnabled, setAutoDiscoverEnabled] = useState(false);
   const [copiedTranscript, setCopiedTranscript] = useState(false);
-  const [localRecordingFiles, setLocalRecordingFiles] = useState<Array<{ name: string; size: number; path: string }>>([]);
+  const [localRecordingFiles, setLocalRecordingFiles] = useState<Array<{ name: string; size: number; path: string; modifiedAt?: string; isCheckpoint?: boolean; conversionState?: "queued" | "converting" | "ready" | "failed"; conversionProgress?: number; conversionError?: string; conversionJobId?: string }>>([]);
+  const [conversionPaused, setConversionPaused] = useState(false);
 
-  // Fetch local recordings from Mosaic Meetings folder
+  // Fetch recordings from the active and legacy local storage folders
   const refreshLocalRecordings = React.useCallback(() => {
     fetch("/api/recordings/save-local")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data.files)) {
           setLocalRecordingFiles(data.files);
+          setConversionPaused(data.conversionsPaused === true);
         }
       })
       .catch(() => {});
   }, []);
+
+  const controlConversions = React.useCallback(async (action: "pause" | "resume" | "retry", jobId?: string) => {
+    try {
+      const response = await fetch("/api/recordings/conversion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, jobId }),
+      });
+      if (!response.ok) throw new Error("Conversion control request failed.");
+      const result = await response.json() as { paused?: boolean };
+      setConversionPaused(result.paused === true);
+      refreshLocalRecordings();
+    } catch (error) {
+      console.error("[MeetingsView] Could not update recording conversion:", error);
+    }
+  }, [refreshLocalRecordings]);
 
   const refreshInterruptedSessions = React.useCallback(() => {
     getInterruptedSessions()
@@ -321,6 +339,14 @@ export function MeetingsView({
     refreshLocalRecordings();
     refreshInterruptedSessions();
   }, [refreshLocalRecordings, refreshInterruptedSessions]);
+
+  useEffect(() => {
+    if (typeFilter !== "Archives") return;
+    const interval = window.setInterval(() => {
+      if (localRecordingFiles.some((file) => file.conversionState === "queued" || file.conversionState === "converting")) refreshLocalRecordings();
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, [typeFilter, localRecordingFiles, refreshLocalRecordings]);
 
   // When switching to Archives pill, ensure interrupted records are refreshed
   useEffect(() => {
@@ -426,7 +452,7 @@ export function MeetingsView({
       }
     }
 
-    alert(`No local ${recordingType === "video" ? "video" : "audio"} recording found in Documents/Mosaic Meetings for this meeting.`);
+    alert(`No local ${recordingType === "video" ? "video" : "audio"} recording was found for this meeting.`);
   };
 
   const handleDownloadMatchedRecording = () => {
@@ -437,15 +463,17 @@ export function MeetingsView({
   const handleProcessInterruptedSession = async (session: StudioSession) => {
     setIsProcessingInterrupted(session.sessionId);
     try {
-      const file = await exportSessionAsFile(session.sessionId);
+      const rawFile = await exportSessionAsFile(session.sessionId);
+      const saved = await saveToLocalDocuments(session.sessionId, rawFile, "completed", session.mediaType || "audio", rawFile.name, session.notes, true);
+      if (!saved.success || !saved.file) throw new Error("Recording conversion did not finish.");
       const notesFormatted = session.notes && session.notes.length > 0
         ? session.notes.map((n) => `[${n.timestamp}] ${n.text}`).join("\n")
         : "";
+      if (onProcessInterrupted) {
+        onProcessInterrupted(saved.file, notesFormatted);
+      }
       await clearSession(session.sessionId);
       refreshInterruptedSessions();
-      if (onProcessInterrupted) {
-        onProcessInterrupted(file, notesFormatted);
-      }
     } catch (err) {
       console.error("[MeetingsView] Processing interrupted session failed:", err);
       alert("Failed to assemble and process interrupted recording.");
@@ -485,8 +513,9 @@ export function MeetingsView({
       const res = await fetch(`/api/recordings/download?fileName=${encodeURIComponent(fileName)}`);
       if (!res.ok) throw new Error("Failed to fetch recording file");
       const blob = await res.blob();
-      const ext = fileName.endsWith(".mp4") ? "mp4" : "webm";
-      const file = new File([blob], fileName, { type: blob.type || (ext === "mp4" ? "video/mp4" : "video/webm") });
+      const ext = fileName.split(".").pop()?.toLowerCase();
+      const mime = ext === "mp4" ? "video/mp4" : ext === "mp3" ? "audio/mpeg" : ext === "wav" ? "audio/wav" : ext === "m4a" ? "audio/mp4" : "video/webm";
+      const file = new File([blob], fileName, { type: blob.type || mime });
       if (onProcessInterrupted) {
         onProcessInterrupted(file);
       }
@@ -509,7 +538,7 @@ export function MeetingsView({
   };
 
   const handleDiscardLocalInterruptedFile = async (fileName: string) => {
-    if (!confirm(`Are you sure you want to delete "${fileName}" from Documents/Mosaic Meetings?`)) {
+    if (!confirm(`Are you sure you want to delete "${fileName}" from local recording storage?`)) {
       return;
     }
     try {
@@ -579,9 +608,14 @@ export function MeetingsView({
       date: string;
       durationSeconds: number;
       mediaType: "video" | "audio";
+      recordingState: "saved" | "interrupted" | "checkpoint";
       fileSize?: number;
       session?: StudioSession;
       fileName?: string;
+      conversionState?: "queued" | "converting" | "ready" | "failed";
+      conversionProgress?: number;
+      conversionError?: string;
+      conversionJobId?: string;
       noteCount: number;
     };
 
@@ -602,16 +636,18 @@ export function MeetingsView({
         date: s.startedAt ? s.startedAt.split("T")[0] : "",
         durationSeconds: s.elapsedSeconds || 0,
         mediaType: isVideo ? "video" : "audio",
+        recordingState: "interrupted",
         session: s,
         noteCount: s.notes ? s.notes.length : 0,
       });
     }
 
-    // 2. Local interrupted / checkpoint files in Documents/Mosaic Meetings
-    const knownSessionIds = new Set(interruptedSessions.map((s) => s.sessionId));
+    // 2. Local recordings in the active and legacy folders, including completed recordings.
     for (const f of localRecordingFiles) {
-      const isInterruptedFile = f.name.startsWith("INTERRUPTED_") || f.name.startsWith("CHECKPOINT_");
-      if (!isInterruptedFile) continue;
+      const isInterruptedFile = f.name.startsWith("INTERRUPTED_");
+      const isCheckpointFile = f.name.startsWith("CHECKPOINT_") || f.isCheckpoint === true;
+      const isSavedRecording = /\.(webm|mp4|mp3|wav|m4a|ogg|aac)$/i.test(f.name);
+      if (!isInterruptedFile && !isCheckpointFile && !isSavedRecording) continue;
 
       // Avoid duplicate card if already represented in IndexedDB session
       const matchingIndexedDb = interruptedSessions.find((s) => f.name.includes(s.sessionId));
@@ -621,18 +657,24 @@ export function MeetingsView({
         continue;
       }
 
-      const isVideo = f.name.endsWith(".mp4") || f.name.includes("video");
-      const title = f.name.startsWith("INTERRUPTED_") ? `Interrupted: ${f.name}` : `Checkpoint: ${f.name}`;
+      const isVideo = /\.mp4$/i.test(f.name) || (/\.webm$/i.test(f.name) && f.name.toLowerCase().includes("video"));
+      const recordingState = isInterruptedFile ? "interrupted" : isCheckpointFile ? "checkpoint" : "saved";
+      const title = recordingState === "interrupted" ? `Interrupted: ${f.name}` : recordingState === "checkpoint" ? `Checkpoint: ${f.name}` : f.name;
 
       list.push({
         id: f.name,
         kind: "local_file",
         title,
-        date: (f as any).modifiedAt ? String((f as any).modifiedAt).split("T")[0] : "",
+        date: f.modifiedAt ? f.modifiedAt.split("T")[0] : "",
         durationSeconds: 0,
         mediaType: isVideo ? "video" : "audio",
+        recordingState,
         fileSize: f.size,
         fileName: f.name,
+        conversionState: f.conversionState,
+        conversionProgress: f.conversionProgress,
+        conversionError: f.conversionError,
+        conversionJobId: f.conversionJobId,
         noteCount: 0,
       });
     }
@@ -890,12 +932,12 @@ export function MeetingsView({
   return (
     <div className="space-y-4">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-gray-200/80">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-line">
         <div>
-          <h1 className="text-2xl font-serif font-bold text-[#003366] italic">
+          <h1 className="text-2xl font-serif font-bold text-fg italic">
             Meetings Archives
           </h1>
-          <p className="text-xs font-bold tracking-wider text-gray-400 uppercase mt-0.5">
+          <p className="text-xs font-bold tracking-wider text-fg-muted uppercase mt-0.5">
             Structured records • In-Place Editing • Instant Re-Export
           </p>
         </div>
@@ -904,7 +946,7 @@ export function MeetingsView({
           {!desktopMode && <>
           {/* Space Filter */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Space</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted">Space</span>
             <select
               value={selectedMeetingSpace}
               onChange={(event) => {
@@ -912,7 +954,7 @@ export function MeetingsView({
                 setSelectedMeetingSpace(spaceId);
                 onSelectMeetingSpace?.(spaceId);
               }}
-              className="border border-gray-200 bg-white py-1 px-2.5 min-w-[150px] max-w-[260px] text-xs font-normal normal-case tracking-normal text-left text-[#003366] hover:border-gray-300 focus:outline-none focus:border-[#C9AB4C] transition-colors cursor-pointer"
+              className="border border-line bg-surface-panel py-1 px-2.5 min-w-[150px] max-w-[260px] text-xs font-normal normal-case tracking-normal text-left text-fg hover:border-line focus:outline-none focus:border-focus transition-colors cursor-pointer"
             >
               <option value="__all__">All spaces</option>
               <option value="__personal__">Personal List</option>
@@ -927,22 +969,22 @@ export function MeetingsView({
 
           {/* Date Range Filter */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">From</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted">From</span>
             <input
               type="date"
               value={fromDate}
               onChange={(event) => setFromDate(event.target.value)}
-              className="border border-gray-200 bg-white py-1 px-2 text-xs font-normal normal-case tracking-normal text-[#003366] hover:border-gray-300 focus:outline-none focus:border-[#C9AB4C] transition-colors cursor-pointer"
+              className="border border-line bg-surface-panel py-1 px-2 text-xs font-normal normal-case tracking-normal text-fg hover:border-line focus:outline-none focus:border-focus transition-colors cursor-pointer"
             />
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">To</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted">To</span>
             <input
               type="date"
               value={toDate}
               onChange={(event) => setToDate(event.target.value)}
-              className="border border-gray-200 bg-white py-1 px-2 text-xs font-normal normal-case tracking-normal text-[#003366] hover:border-gray-300 focus:outline-none focus:border-[#C9AB4C] transition-colors cursor-pointer"
+              className="border border-line bg-surface-panel py-1 px-2 text-xs font-normal normal-case tracking-normal text-fg hover:border-line focus:outline-none focus:border-focus transition-colors cursor-pointer"
             />
           </div>
 
@@ -955,7 +997,7 @@ export function MeetingsView({
                 setSelectedMeetingSpace("__all__");
                 onSelectMeetingSpace?.("__all__");
               }}
-              className="px-2 py-1 text-[11px] font-medium text-gray-400 hover:text-[#003366] transition-colors cursor-pointer"
+              className="px-2 py-1 text-[11px] font-medium text-fg-muted hover:text-fg transition-colors cursor-pointer"
               title="Reset all filters"
             >
               Reset
@@ -968,16 +1010,16 @@ export function MeetingsView({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* LEFT MASTER PANE (4 cols) */}
-        <div className="lg:col-span-4 space-y-3 bg-[#FFFCFB] border border-gray-200/90 rounded-none p-4 shadow-2xs">
+        <div className="lg:col-span-4 space-y-3 bg-surface-panel border border-line rounded-none p-4 shadow-2xs">
           {/* Search Box */}
           <div className="relative">
-            <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+            <Search size={14} className="absolute left-3 top-2.5 text-fg-muted" />
             <input
               type="text"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               placeholder="Filter archived meetings..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FFFCFB] border border-gray-200 rounded-none focus:outline-none focus:border-[#C9AB4C]"
+              className="w-full pl-9 pr-3 py-1.5 text-xs bg-surface-panel border border-line rounded-none focus:outline-none focus:border-focus"
             />
           </div>
 
@@ -995,14 +1037,14 @@ export function MeetingsView({
                 }}
                 className={`text-[11px] font-semibold px-2.5 py-1 rounded-none transition-colors flex items-center gap-1 ${
                   typeFilter === t
-                    ? "bg-[#003366] text-white"
-                    : "bg-[#FFFCFB] text-gray-600 hover:bg-gray-200"
+                    ? "bg-action text-on-action"
+                    : "bg-surface-panel text-fg-secondary hover:bg-surface-hover"
                 }`}
               >
-                {t === "Archives" && <Archive size={11} className={typeFilter === t ? "text-[#C9AB4C]" : "text-gray-500"} />}
+                {t === "Archives" && <Archive size={11} className={typeFilter === t ? "text-link" : "text-fg-muted"} />}
                 <span>{t}</span>
                 {t === "Archives" && interruptedItems.length > 0 && (
-                  <span className={`text-[9px] font-bold px-1 py-0.2 rounded-none ${typeFilter === t ? "bg-amber-400 text-slate-900" : "bg-amber-100 text-amber-800"}`}>
+                  <span className={`text-[9px] font-bold px-1 py-0.2 rounded-none ${typeFilter === t ? "bg-warning-surface text-fg" : "bg-warning-surface text-warning-fg"}`}>
                     {interruptedItems.length}
                   </span>
                 )}
@@ -1015,62 +1057,64 @@ export function MeetingsView({
             {typeFilter === "Archives" ? (
               interruptedItems.length > 0 ? (
                 interruptedItems.map((item) => {
-                  const isSelected = selectedInterruptedId === item.id;
+                  const isSelected = activeInterruptedItem?.id === item.id;
                   return (
-                    <div
+                    <button
                       key={item.id}
+                      type="button"
+                      aria-pressed={isSelected}
                       onClick={() => setSelectedInterruptedId(item.id)}
-                      className={`p-3.5 rounded-none border text-left cursor-pointer transition-all ${
+                      className={`block w-full p-3.5 rounded-none border text-left cursor-pointer transition-all ${
                         isSelected
-                          ? "bg-[#FAF9F7] border-[#C9AB4C] shadow-xs"
-                          : "bg-[#FFFCFB] border-amber-200 hover:border-amber-300 hover:bg-[#FFFCFB]/50"
+                          ? "bg-surface-selected border-focus shadow-xs"
+                          : "bg-surface-panel border-line hover:border-control-border hover:bg-surface-hover"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <h4 className={`font-serif text-base lg:text-[17px] font-bold italic line-clamp-1 ${isSelected ? "text-[#003366]" : "text-[#1b1d1e]"}`}>
+                      <span className="flex items-start justify-between gap-2 mb-1.5">
+                        <span className="font-serif text-base lg:text-[17px] font-bold line-clamp-1 text-fg">
                           {item.title}
-                        </h4>
-                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider">
-                            <AlertTriangle size={10} className="text-amber-700" /> Interrupted
+                        </span>
+                        <span className="flex items-center gap-1 shrink-0 mt-0.5">
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 border uppercase tracking-wider ${item.recordingState === "saved" ? "bg-info-surface text-info-fg border-info-border" : "bg-warning-surface text-warning-fg border-warning-border"}`}>
+                            {item.recordingState !== "saved" && <AlertTriangle size={10} className="text-warning-fg" />} {item.recordingState === "saved" ? "Saved" : item.recordingState === "checkpoint" ? "Checkpoint" : "Interrupted"}
                           </span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-none bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-none bg-surface-raised text-fg border border-line uppercase tracking-wider">
                             {item.mediaType}
                           </span>
-                        </div>
-                      </div>
+                        </span>
+                      </span>
 
-                      <div className="flex items-center justify-between text-[11px] text-gray-500">
-                        <div className="flex items-center gap-1">
-                          <Calendar size={11} className="text-[#C9AB4C]" />
+                      <span className="flex items-center justify-between text-[11px] text-fg-muted">
+                        <span className="flex items-center gap-1">
+                          <Calendar size={11} className="text-fg-muted" />
                           <span>{item.date ? formatEchoDate(item.date) : "Recent Recording"}</span>
-                        </div>
+                        </span>
                         {item.durationSeconds > 0 ? (
-                          <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                            <Clock size={10} className="text-[#003366]" />
+                          <span className="flex items-center gap-1 text-[10px] text-fg-muted">
+                            <Clock size={10} className="text-fg" />
                             <span>
                               {Math.floor(item.durationSeconds / 60)}m {item.durationSeconds % 60}s
                             </span>
-                          </div>
+                          </span>
                         ) : item.fileSize ? (
-                          <span className="text-[10px] text-gray-400">
+                          <span className="text-[10px] text-fg-muted">
                             {(item.fileSize / (1024 * 1024)).toFixed(1)} MB
                           </span>
                         ) : null}
-                      </div>
+                      </span>
 
-                      <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
-                        <span>{item.noteCount > 0 ? `${item.noteCount} Notes captured` : "Unprocessed recording"}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[#C9AB4C] font-semibold">{isSelected ? "Selected" : "View"}</span>
-                        </div>
-                      </div>
-                    </div>
+                      <span className="mt-2 pt-2 border-t border-line flex items-center justify-between text-[10px] text-fg-muted">
+                        <span>{item.noteCount > 0 ? `${item.noteCount} Notes captured` : item.recordingState === "saved" ? "Saved recording · not processed" : "Unprocessed recording"}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-link font-semibold">{isSelected ? "Selected" : "View"}</span>
+                        </span>
+                      </span>
+                    </button>
                   );
                 })
               ) : (
-                <div className="p-6 text-center text-xs text-gray-400">
-                  No interrupted recordings found.
+                <div className="p-6 text-center text-xs text-fg-muted">
+                  No saved or interrupted recordings found.
                 </div>
               )
             ) : filteredList.length > 0 ? (
@@ -1082,60 +1126,60 @@ export function MeetingsView({
                     onClick={() => onSelectMeeting(m.id)}
                     className={`p-3.5 rounded-none border text-left cursor-pointer transition-all ${
                       isSelected
-                        ? "bg-[#FAF9F7] border-[#C9AB4C] shadow-xs"
-                        : "bg-[#FFFCFB] border-gray-200 hover:border-gray-300 hover:bg-[#FFFCFB]/50"
+                        ? "bg-surface-selected border-focus shadow-xs"
+                        : "bg-surface-panel border-line hover:border-line hover:bg-surface-hover"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <h4 className={`font-serif text-base lg:text-[17px] font-bold italic line-clamp-1 ${isSelected ? "text-[#003366]" : "text-[#1b1d1e]"}`}>
+                      <h4 className={`font-serif text-base lg:text-[17px] font-bold italic line-clamp-1 ${isSelected ? "text-fg" : "text-fg"}`}>
                         {m.title}
                       </h4>
                       <div className="flex items-center gap-1 shrink-0 mt-0.5">
                         {desktopMode ? (
-                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 uppercase tracking-wider">Local</span>
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-surface-raised text-fg-secondary border border-line uppercase tracking-wider">Local</span>
                         ) : m.is_confidential ? (
-                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider">
-                            <Lock size={10} className="text-amber-800" /> Private
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-warning-surface text-warning-fg border border-warning-border uppercase tracking-wider">
+                            <Lock size={10} className="text-warning-fg" /> Private
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-blue-50 text-[#003366] border border-blue-200 uppercase tracking-wider">
-                            <Users size={10} className="text-[#003366]" /> Shared
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 bg-info-surface text-fg border border-info-border uppercase tracking-wider">
+                            <Users size={10} className="text-fg" /> Shared
                           </span>
                         )}
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-none bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-none bg-success-surface text-success-fg border border-success-border uppercase tracking-wider">
                           {m.meeting_type}
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-[11px] text-gray-500">
+                    <div className="flex items-center justify-between text-[11px] text-fg-muted">
                       <div className="flex items-center gap-1">
-                        <Calendar size={11} className="text-[#C9AB4C]" />
+                        <Calendar size={11} className="text-link" />
                         <span>{formatEchoDate(m.date)}</span>
                       </div>
                       {!desktopMode && m.clickup_space_name && (
-                        <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-[#003366] font-medium border border-slate-200 truncate max-w-[130px]">
+                        <span className="text-[9px] px-1.5 py-0.5 bg-surface-raised text-fg font-medium border border-line truncate max-w-[130px]">
                           {m.clickup_space_name}
                         </span>
                       )}
                     </div>
 
                     {m.location && (
-                      <div className="text-[10px] text-gray-400 truncate mt-1">
+                      <div className="text-[10px] text-fg-muted truncate mt-1">
                         {m.location}
                       </div>
                     )}
 
-                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
+                    <div className="mt-2 pt-2 border-t border-line flex items-center justify-between text-[10px] text-fg-muted">
                       <span>{m.items.length} Topics</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[#C9AB4C] font-semibold">{isSelected ? "Editing" : "View"}</span>
+                        <span className="text-link font-semibold">{isSelected ? "Editing" : "View"}</span>
                         {!desktopMode && <a
                           href={m.clickup_task_url || `https://app.clickup.com/t/${m.meeting_id || m.id}`}
                           target="_blank"
                           rel="noreferrer"
                           onClick={(event) => event.stopPropagation()}
-                          className="inline-flex items-center gap-1 border border-[#003366]/25 px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#003366] hover:border-[#C9AB4C] hover:text-[#8c7329]"
+                          className="inline-flex items-center gap-1 border border-link px-1.5 py-1 text-[9px] font-bold uppercase tracking-wide text-fg hover:border-warning-border hover:text-warning-fg"
                           title="Open this meeting archive in ClickUp"
                         >
                           <ExternalLink size={10} />
@@ -1147,7 +1191,7 @@ export function MeetingsView({
                 );
               })
             ) : (
-              <div className="p-6 text-center text-xs text-gray-400">
+              <div className="p-6 text-center text-xs text-fg-muted">
                 No meetings match your filter.
               </div>
             )}
@@ -1158,19 +1202,19 @@ export function MeetingsView({
         <div className="lg:col-span-8 space-y-6">
           {typeFilter === "Archives" ? (
             activeInterruptedItem ? (
-              <div className="bg-[#FFFCFB] border border-amber-200/90 rounded-none p-6 shadow-2xs space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-100">
+              <div className="bg-surface-panel border border-line rounded-none p-6 shadow-2xs space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-line">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold tracking-widest uppercase text-amber-900 bg-amber-100 px-2 py-0.5 border border-amber-300 flex items-center gap-1.5">
-                      <AlertTriangle size={12} className="text-amber-700" />
-                      Interrupted Meeting Record
+                    <span className={`text-xs font-bold tracking-widest uppercase px-2 py-0.5 border flex items-center gap-1.5 ${activeInterruptedItem.recordingState === "saved" ? "bg-info-surface text-info-fg border-info-border" : "bg-warning-surface text-warning-fg border-warning-border"}`}>
+                      {activeInterruptedItem.recordingState === "saved" ? <Archive size={12} /> : <AlertTriangle size={12} />}
+                      {activeInterruptedItem.recordingState === "saved" ? "Saved Recording" : activeInterruptedItem.recordingState === "checkpoint" ? "Recording Checkpoint" : "Interrupted Meeting Record"}
                     </span>
-                    <span className="text-[10px] text-gray-500 font-mono">
+                    <span className="text-[10px] text-fg-muted font-mono">
                       #{activeInterruptedItem.id.slice(-10)}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {/* Process into Minutes */}
                     <button
                       type="button"
@@ -1181,10 +1225,10 @@ export function MeetingsView({
                           void handleProcessLocalInterruptedFile(activeInterruptedItem.fileName);
                         }
                       }}
-                      disabled={isProcessingInterrupted === activeInterruptedItem.id}
+                      disabled={isProcessingInterrupted === activeInterruptedItem.id || (activeInterruptedItem.kind === "local_file" && activeInterruptedItem.recordingState !== "checkpoint" && activeInterruptedItem.conversionState !== "ready")}
                       className="btn-primary !py-1.5 !px-3.5 !text-xs flex items-center gap-1.5 shadow-xs rounded-none cursor-pointer"
                     >
-                      <Sparkles size={13} className="text-[#C9AB4C]" />
+                      <Sparkles size={13} className="text-link" />
                       <span>
                         {isProcessingInterrupted === activeInterruptedItem.id ? "Processing…" : "Process into Minutes Now"}
                       </span>
@@ -1200,10 +1244,10 @@ export function MeetingsView({
                           handleDownloadLocalInterruptedFile(activeInterruptedItem.fileName);
                         }
                       }}
-                      className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1.5 text-[#003366] rounded-none cursor-pointer"
+                      className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1.5 text-fg rounded-none cursor-pointer"
                       title="Download recorded file to disk"
                     >
-                      <Download size={13} className="text-[#C9AB4C]" />
+                      <Download size={13} className="text-link" />
                       <span>Download</span>
                     </button>
 
@@ -1217,30 +1261,47 @@ export function MeetingsView({
                           void handleDiscardLocalInterruptedFile(activeInterruptedItem.fileName);
                         }
                       }}
-                      className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 transition-colors rounded-none cursor-pointer"
-                      title="Discard interrupted recording"
-                      aria-label="Discard interrupted recording"
+                      className="p-1.5 text-danger-fg hover:text-danger-fg hover:bg-danger-surface border border-danger-border transition-colors rounded-none cursor-pointer"
+                      title="Delete recording"
+                      aria-label="Delete recording"
                     >
                       <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
 
+                {activeInterruptedItem.kind === "local_file" && activeInterruptedItem.recordingState !== "checkpoint" && activeInterruptedItem.conversionState !== "ready" && (
+                  <div className={`space-y-2 border p-3 text-xs ${activeInterruptedItem.conversionState === "failed" ? "border-danger-border bg-danger-surface text-danger-fg" : "border-line bg-surface-raised text-fg-secondary"}`} role={activeInterruptedItem.conversionState === "failed" ? "alert" : "status"}>
+                    {activeInterruptedItem.conversionState === "failed" ? (
+                      <>
+                        <p>Conversion failed. The original recording is still available. {activeInterruptedItem.conversionError}</p>
+                        <button type="button" onClick={() => void controlConversions("retry", activeInterruptedItem.conversionJobId || activeInterruptedItem.fileName)} className="border border-line bg-surface-panel px-2 py-1 text-fg hover:border-link">Retry conversion</button>
+                      </>
+                    ) : (
+                      <>
+                        <p>{activeInterruptedItem.conversionState === "converting" ? `Converting recording: ${activeInterruptedItem.conversionProgress || 0}%` : "Waiting for recording conversion…"}</p>
+                        <progress aria-label="Recording conversion progress" max={100} value={activeInterruptedItem.conversionState === "converting" ? activeInterruptedItem.conversionProgress : undefined} className="block h-2 w-full accent-link" />
+                        <button type="button" onClick={() => void controlConversions(conversionPaused ? "resume" : "pause")} className="border border-line bg-surface-panel px-2 py-1 text-fg hover:border-link">{conversionPaused ? "Resume conversions" : activeInterruptedItem.conversionState === "converting" ? "Pause after this file" : "Pause conversions"}</button>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 {/* Metadata summary grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-amber-50/50 p-4 border border-amber-200 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-surface-raised p-4 border border-line text-xs">
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-amber-900 mb-0.5">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-secondary mb-0.5">
                       Recorded Date
                     </label>
-                    <p className="font-semibold text-gray-800">
+                    <p className="font-semibold text-fg">
                       {activeInterruptedItem.date ? formatEchoDate(activeInterruptedItem.date) : "Recent Session"}
                     </p>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-amber-900 mb-0.5">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-secondary mb-0.5">
                       Recorded Duration
                     </label>
-                    <p className="font-semibold text-gray-800">
+                    <p className="font-semibold text-fg">
                       {activeInterruptedItem.durationSeconds > 0
                         ? `${Math.floor(activeInterruptedItem.durationSeconds / 60)} mins ${activeInterruptedItem.durationSeconds % 60} secs`
                         : activeInterruptedItem.fileSize
@@ -1249,38 +1310,38 @@ export function MeetingsView({
                     </p>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-amber-900 mb-0.5">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-secondary mb-0.5">
                       Media Type
                     </label>
-                    <p className="font-semibold text-gray-800 uppercase tracking-wide">
+                    <p className="font-semibold text-fg uppercase tracking-wide">
                       {activeInterruptedItem.mediaType === "video" ? "Screen / Video + Audio" : "Audio Recording"}
                     </p>
                   </div>
                 </div>
 
                 {/* Storage Origin Info */}
-                <div className="text-[11px] text-gray-600 bg-[#FFFCFB] border border-gray-200 p-3">
-                  <span className="font-bold text-[#003366]">Storage Location: </span>
+                <div className="text-[11px] text-fg-secondary bg-surface-panel border border-line p-3">
+                  <span className="font-bold text-fg">Storage Location: </span>
                   {activeInterruptedItem.kind === "indexeddb" ? (
-                    <span>Browser storage & auto-saved in Documents/Mosaic Meetings</span>
+                    <span>Browser storage & auto-saved locally</span>
                   ) : (
-                    <span>Local disk in Documents/Mosaic Meetings ({activeInterruptedItem.fileName})</span>
+                    <span>Local disk recording ({activeInterruptedItem.fileName})</span>
                   )}
                 </div>
 
                 {/* Notes taken during interrupted session if available */}
                 {activeInterruptedItem.session?.notes && activeInterruptedItem.session.notes.length > 0 && (
-                  <div className="border border-gray-200 bg-[#FFFCFB] p-4 space-y-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#003366]">
+                  <div className="border border-line bg-surface-panel p-4 space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-fg">
                       Notes Captured During Meeting ({activeInterruptedItem.session.notes.length})
                     </h4>
                     <div className="space-y-1.5 max-h-60 overflow-y-auto">
                       {activeInterruptedItem.session.notes.map((n) => (
-                        <div key={n.id} className="text-xs bg-slate-50 border border-slate-200 p-2 flex items-start gap-2">
-                          <span className="font-mono text-[10px] font-bold text-[#003366] bg-slate-200 px-1 py-0.5 shrink-0">
+                        <div key={n.id} className="text-xs bg-surface-raised border border-line p-2 flex items-start gap-2">
+                          <span className="font-mono text-[10px] font-bold text-fg bg-surface-raised px-1 py-0.5 shrink-0">
                             {n.timestamp}
                           </span>
-                          <span className="text-gray-800">{n.text}</span>
+                          <span className="text-fg">{n.text}</span>
                         </div>
                       ))}
                     </div>
@@ -1288,23 +1349,23 @@ export function MeetingsView({
                 )}
               </div>
             ) : (
-              <div className="bg-[#FFFCFB] border border-gray-200 rounded-none p-12 text-center text-gray-400 text-xs">
-                Select an interrupted recording from the archives list on the left to review or process.
+              <div className="bg-surface-panel border border-line rounded-none p-12 text-center text-fg-muted text-xs">
+                Select a saved or interrupted recording from the archives list on the left to review or process.
               </div>
             )
           ) : activeMeeting ? (
             <>
               {/* Meeting Header & Export Action Bar */}
-              <div className="bg-[#FFFCFB] border border-gray-200/90 rounded-none p-5 shadow-2xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+              <div className="bg-surface-panel border border-line rounded-none p-5 shadow-2xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-line">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold tracking-widest uppercase text-[#003366]">
+                    <span className="text-xs font-bold tracking-widest uppercase text-fg">
                       Meeting Record
                     </span>
-                    <span className="text-[10px] text-gray-400 font-mono">
+                    <span className="text-[10px] text-fg-muted font-mono">
                       #{activeMeeting.meeting_id || activeMeeting.id}
                     </span>
-                    <button type="button" onClick={() => setShowArchiveDetails(true)} className="inline-flex h-6 w-6 items-center justify-center text-[#003366] hover:bg-[#003366]/5 rounded-none cursor-pointer" title="Show archive details" aria-label="Show archive details">
+                    <button type="button" onClick={() => setShowArchiveDetails(true)} className="inline-flex h-6 w-6 items-center justify-center text-fg hover:bg-info-surface rounded-none cursor-pointer" title="Show archive details" aria-label="Show archive details">
                       <Info size={14} />
                     </button>
                   </div>
@@ -1318,29 +1379,29 @@ export function MeetingsView({
                         disabled={isExporting}
                         aria-haspopup="menu"
                         aria-expanded={showShareMenu}
-                        className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1.5 text-[#003366] rounded-none"
+                        className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1.5 text-fg rounded-none"
                       >
-                        <Send size={13} className="text-[#C9AB4C]" />
+                        <Send size={13} className="text-link" />
                         <span>{isExporting ? "Working…" : "Share"}</span>
                         <ChevronDown size={13} className="ml-0.5" />
                       </button>
-                      {showShareMenu && !isExporting && <div role="menu" className="absolute right-0 top-full z-20 mt-1 min-w-[180px] border border-[#003366]/20 bg-[#FFFCFB] p-1 shadow-lg">
-                        <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Share</div>
-                        <button type="button" role="menuitem" onClick={() => { setShowShareMenu(false); setShowEmailModal(true); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-[#003366] hover:bg-[#003366]/5 cursor-pointer"><Send size={13} className="text-[#C9AB4C]" /> Email via Outlook</button>
-                        <div className="my-1 border-t border-slate-200" />
-                        <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Export</div>
-                        <button type="button" role="menuitem" onClick={() => { setShowShareMenu(false); void handleExportWord(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-[#003366] hover:bg-[#003366]/5 cursor-pointer"><FileText size={13} className="text-[#C9AB4C]" /> Word (.docx)</button>
-                        <button type="button" role="menuitem" onClick={() => { setShowShareMenu(false); void handleExportPdf(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-[#003366] hover:bg-[#003366]/5 cursor-pointer"><Download size={13} className="text-[#C9AB4C]" /> PDF (.pdf)</button>
+                      {showShareMenu && !isExporting && <div role="menu" className="absolute right-0 top-full z-20 mt-1 min-w-[180px] border border-link bg-surface-panel p-1 shadow-lg">
+                        <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-fg-muted">Share</div>
+                        <button type="button" role="menuitem" onClick={() => { setShowShareMenu(false); setShowEmailModal(true); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-fg hover:bg-info-surface cursor-pointer"><Send size={13} className="text-link" /> Email via Outlook</button>
+                        <div className="my-1 border-t border-line" />
+                        <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-fg-muted">Export</div>
+                        <button type="button" role="menuitem" onClick={() => { setShowShareMenu(false); void handleExportWord(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-fg hover:bg-info-surface cursor-pointer"><FileText size={13} className="text-link" /> Word (.docx)</button>
+                        <button type="button" role="menuitem" onClick={() => { setShowShareMenu(false); void handleExportPdf(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-fg hover:bg-info-surface cursor-pointer"><Download size={13} className="text-link" /> PDF (.pdf)</button>
                         <button
                           type="button"
                           role="menuitem"
                           onClick={() => { setShowShareMenu(false); handleExportRecording(); }}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-[#003366] hover:bg-[#003366]/5 cursor-pointer"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-fg hover:bg-info-surface cursor-pointer"
                         >
                           {recordingType === "video" ? (
-                            <Video size={13} className="text-[#C9AB4C]" />
+                            <Video size={13} className="text-link" />
                           ) : (
-                            <Mic size={13} className="text-[#C9AB4C]" />
+                            <Mic size={13} className="text-link" />
                           )}
                           <span>{recordingType === "video" ? `Export Video (.${recordingFormat})` : `Export Audio (.${recordingFormat})`}</span>
                         </button>
@@ -1351,13 +1412,13 @@ export function MeetingsView({
                       <button
                         type="button"
                         onClick={handleDownloadMatchedRecording}
-                        className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1.5 text-[#003366] bg-amber-50/50 hover:bg-amber-100/60 border-amber-300 rounded-none cursor-pointer"
+                        className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1.5 text-fg bg-warning-surface hover:bg-warning-surface border-warning-border rounded-none cursor-pointer"
                         title={`Download recorded file: ${matchedRecording.name}`}
                       >
                         {matchedRecording.name.endsWith(".mp4") || matchedRecording.name.endsWith(".webm") ? (
-                          <Video size={13} className="text-[#C9AB4C]" />
+                          <Video size={13} className="text-link" />
                         ) : (
-                          <Mic size={13} className="text-[#C9AB4C]" />
+                          <Mic size={13} className="text-link" />
                         )}
                         <span>{matchedRecording.name.endsWith(".mp4") || matchedRecording.name.endsWith(".webm") ? "Save Video" : "Save Audio"}</span>
                       </button>
@@ -1366,10 +1427,10 @@ export function MeetingsView({
                     {!desktopMode && <button
                       type="button"
                       onClick={() => setShowMoveModal(true)}
-                      className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1.5 text-[#003366] rounded-none cursor-pointer"
+                      className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1.5 text-fg rounded-none cursor-pointer"
                       title="Move meeting archive to another ClickUp list"
                     >
-                      <FolderInput size={13} className="text-[#C9AB4C]" />
+                      <FolderInput size={13} className="text-link" />
                       <span>Move</span>
                     </button>}
 
@@ -1385,7 +1446,7 @@ export function MeetingsView({
                     <button
                       type="button"
                       onClick={() => setShowDeleteModal(true)}
-                      className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 transition-colors rounded-none"
+                      className="p-1.5 text-danger-fg hover:text-danger-fg hover:bg-danger-surface border border-danger-border transition-colors rounded-none"
                       title="Delete meeting archive"
                       aria-label="Delete meeting archive"
                     >
@@ -1395,8 +1456,8 @@ export function MeetingsView({
                 </div>
 
                 {saveSuccessMsg && (
-                  <div className="p-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-none text-xs flex items-center gap-2 animate-in fade-in">
-                    <CheckCircle size={14} className="text-emerald-600" />
+                  <div className="p-2.5 bg-success-surface text-success-fg border border-success-border rounded-none text-xs flex items-center gap-2 animate-in fade-in">
+                    <CheckCircle size={14} className="text-success-fg" />
                     <span>Meeting record updated and saved to archives.</span>
                   </div>
                 )}
@@ -1405,20 +1466,20 @@ export function MeetingsView({
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
                   {/* Title */}
                   <div className="lg:col-span-2">
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       Meeting Name
                     </label>
                     <input
                       type="text"
                       value={activeMeeting.title}
                       onChange={(e) => setActiveMeeting({ ...activeMeeting, title: e.target.value })}
-                      className="w-full font-serif font-bold text-base text-[#003366] bg-[#FFFCFB] border border-gray-200 rounded-none px-2.5 py-1.5 focus:outline-none focus:border-[#C9AB4C] focus:bg-[#FFFCFB]"
+                      className="w-full font-serif font-bold text-base text-fg bg-surface-panel border border-line rounded-none px-2.5 py-1.5 focus:outline-none focus:border-focus focus:bg-surface-panel"
                     />
                   </div>
 
                   {/* Date */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       Meeting Date
                     </label>
                     <DatePickerInput
@@ -1429,7 +1490,7 @@ export function MeetingsView({
 
                   {/* Meeting Type */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       Meeting Type
                     </label>
                     <div className="flex gap-2">
@@ -1440,8 +1501,8 @@ export function MeetingsView({
                           onClick={() => setActiveMeeting({ ...activeMeeting, meeting_type: t })}
                           className={`flex-1 py-1.5 rounded-none font-semibold text-xs transition-colors ${
                             activeMeeting.meeting_type === t
-                              ? "bg-[#003366] text-white"
-                              : "bg-[#FFFCFB] text-gray-600 hover:bg-gray-200"
+                              ? "bg-action text-on-action"
+                              : "bg-surface-panel text-fg-secondary hover:bg-surface-hover"
                           }`}
                         >
                           {t}
@@ -1452,29 +1513,29 @@ export function MeetingsView({
 
                   {/* Start Time (Shown, not editable) */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       Start Time
                     </label>
-                    <div className="w-full bg-[#FFFCFB] border border-gray-200 rounded-none px-2.5 py-1.5 text-xs text-gray-700 font-medium flex items-center justify-between">
+                    <div className="w-full bg-surface-panel border border-line rounded-none px-2.5 py-1.5 text-xs text-fg font-medium flex items-center justify-between">
                       <span>{formatDisplayTime(activeMeeting.start_time)}</span>
-                      <Clock size={13} className="text-gray-400" />
+                      <Clock size={13} className="text-fg-muted" />
                     </div>
                   </div>
 
                   {/* End Time (Shown, not editable) */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       End Time
                     </label>
-                    <div className="w-full bg-[#FFFCFB] border border-gray-200 rounded-none px-2.5 py-1.5 text-xs text-gray-700 font-medium flex items-center justify-between">
+                    <div className="w-full bg-surface-panel border border-line rounded-none px-2.5 py-1.5 text-xs text-fg font-medium flex items-center justify-between">
                       <span>{formatDisplayTime(activeMeeting.end_time)}</span>
-                      <Clock size={13} className="text-gray-400" />
+                      <Clock size={13} className="text-fg-muted" />
                     </div>
                   </div>
 
                   {/* Location / Venue */}
                   <div className="lg:col-span-2">
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       Location / Venue
                     </label>
                     <select
@@ -1487,7 +1548,7 @@ export function MeetingsView({
                           setActiveMeeting({ ...activeMeeting, location: e.target.value });
                         }
                       }}
-                      className="w-full bg-[#FFFCFB] border border-gray-200 rounded-none px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-[#C9AB4C]"
+                      className="w-full bg-surface-panel border border-line rounded-none px-2.5 py-1.5 text-xs text-fg focus:outline-none focus:border-focus"
                     >
                       {VENUE_OPTIONS.map((v) => (
                         <option key={v} value={v}>
@@ -1502,35 +1563,35 @@ export function MeetingsView({
                         value={activeMeeting.location}
                         onChange={(e) => setActiveMeeting({ ...activeMeeting, location: e.target.value })}
                         placeholder="Enter custom venue location..."
-                        className="w-full mt-1.5 bg-[#FFFCFB] border border-gray-200 rounded-none px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:border-[#C9AB4C]"
+                        className="w-full mt-1.5 bg-surface-panel border border-line rounded-none px-2.5 py-1.5 text-xs text-fg focus:outline-none focus:border-focus"
                       />
                     )}
                   </div>
 
                   {/* Meeting Duration (Shown, not editable) */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1">
                       Meeting Duration
                     </label>
-                    <div className="w-full bg-[#FFFCFB] border border-gray-200 rounded-none px-2.5 py-1.5 text-xs text-gray-700 font-medium flex items-center justify-between">
+                    <div className="w-full bg-surface-panel border border-line rounded-none px-2.5 py-1.5 text-xs text-fg font-medium flex items-center justify-between">
                       <span>{getMeetingDurationMinutes(activeMeeting)}</span>
-                      <span className="text-xs text-gray-400 font-medium">mins</span>
+                      <span className="text-xs text-fg-muted font-medium">mins</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Attendees Rows */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-line">
                   {/* Team Attendees */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-[#003366] mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-fg mb-1">
                       Team Attendees
                     </label>
                     <div className="flex flex-wrap gap-1 mb-1.5">
                       {(activeMeeting.attendees_prime || []).map((att) => (
-                        <span key={att} className="inline-flex items-center gap-1 text-[11px] bg-[#003366]/10 text-[#003366] px-2 py-0.5 rounded-none font-medium">
+                        <span key={att} className="inline-flex items-center gap-1 text-[11px] bg-info-surface text-fg px-2 py-0.5 rounded-none font-medium">
                           {att}
-                          <button onClick={() => handleRemovePrimeAttendee(att)} className="hover:text-red-500">
+                          <button onClick={() => handleRemovePrimeAttendee(att)} className="hover:text-danger-fg">
                             <X size={11} />
                           </button>
                         </span>
@@ -1548,7 +1609,7 @@ export function MeetingsView({
                           }
                         }}
                         placeholder="Add team attendee..."
-                        className="flex-1 text-xs bg-[#FFFCFB] border border-gray-200 rounded-none px-2 py-1 focus:outline-none focus:border-[#C9AB4C]"
+                        className="flex-1 text-xs bg-surface-panel border border-line rounded-none px-2 py-1 focus:outline-none focus:border-focus"
                       />
                       <button onClick={handleAddPrimeAttendee} className="btn-outline !py-1 !px-2.5 !text-xs rounded-none">
                         Add
@@ -1558,14 +1619,14 @@ export function MeetingsView({
 
                   {/* External Attendees */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-[#C9AB4C] mb-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-link mb-1">
                       External Attendees
                     </label>
                     <div className="flex flex-wrap gap-1 mb-1.5">
                       {(activeMeeting.attendees_external || []).map((att) => (
-                        <span key={att} className="inline-flex items-center gap-1 text-[11px] bg-[#C9AB4C]/15 text-gray-800 px-2 py-0.5 rounded-none font-medium">
+                        <span key={att} className="inline-flex items-center gap-1 text-[11px] bg-warning-surface text-fg px-2 py-0.5 rounded-none font-medium">
                           {att}
-                          <button onClick={() => handleRemoveExternalAttendee(att)} className="hover:text-red-500">
+                          <button onClick={() => handleRemoveExternalAttendee(att)} className="hover:text-danger-fg">
                             <X size={11} />
                           </button>
                         </span>
@@ -1583,7 +1644,7 @@ export function MeetingsView({
                           }
                         }}
                         placeholder="Add external attendee..."
-                        className="flex-1 text-xs bg-[#FFFCFB] border border-gray-200 rounded-none px-2 py-1 focus:outline-none focus:border-[#C9AB4C]"
+                        className="flex-1 text-xs bg-surface-panel border border-line rounded-none px-2 py-1 focus:outline-none focus:border-focus"
                       />
                       <button onClick={handleAddExternalAttendee} className="btn-outline !py-1 !px-2.5 !text-xs rounded-none">
                         Add
@@ -1606,13 +1667,13 @@ export function MeetingsView({
                 />
               ) : detailTab === "transcript" ? (
                 /* Transcript Tab */
-                <div className="bg-[#FFFCFB] border border-gray-200/90 rounded-none p-5 shadow-2xs space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                <div className="bg-surface-panel border border-line rounded-none p-5 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-line">
                     <div>
-                      <h3 className="font-serif font-bold text-lg text-[#003366] italic">
+                      <h3 className="font-serif font-bold text-lg text-fg italic">
                         Full Raw Transcript
                       </h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
+                      <p className="text-[11px] text-fg-muted mt-0.5">
                         Spoken dialogue and speaker turns captured during the recording session.
                       </p>
                     </div>
@@ -1622,7 +1683,7 @@ export function MeetingsView({
                         onClick={() => handleCopyTranscript(activeMeeting.transcript || "")}
                         className="btn-outline !py-1 !px-2.5 !text-[11px] rounded-none flex items-center gap-1.5 cursor-pointer"
                       >
-                        {copiedTranscript ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                        {copiedTranscript ? <Check size={12} className="text-success-fg" /> : <Copy size={12} />}
                         <span>{copiedTranscript ? "Copied" : "Copy Transcript"}</span>
                       </button>
                     )}
@@ -1633,26 +1694,26 @@ export function MeetingsView({
                       value={activeMeeting.transcript || ""}
                       onChange={(e) => setActiveMeeting({ ...activeMeeting, transcript: e.target.value })}
                       placeholder="Full raw transcript text..."
-                      className="w-full text-xs font-mono text-gray-700 bg-[#FFFCFB] border border-gray-200 rounded-none p-3.5 focus:outline-none focus:border-[#C9AB4C] leading-relaxed min-h-[320px]"
+                      className="w-full text-xs font-mono text-fg bg-surface-panel border border-line rounded-none p-3.5 focus:outline-none focus:border-focus leading-relaxed min-h-[320px]"
                       rows={14}
                     />
                   ) : (
-                    <div className="border border-dashed border-slate-300 bg-white/60 p-8 text-center">
-                      <FileText size={22} className="mx-auto text-[#003366]" />
-                      <p className="mt-2 text-sm font-medium text-slate-600">No transcript attached to this meeting</p>
-                      <p className="mt-1 text-xs text-slate-400">Audio recordings or uploaded transcripts appear here.</p>
+                    <div className="border border-dashed border-line bg-surface-panel p-8 text-center">
+                      <FileText size={22} className="mx-auto text-fg" />
+                      <p className="mt-2 text-sm font-medium text-fg-secondary">No transcript attached to this meeting</p>
+                      <p className="mt-1 text-xs text-fg-muted">Audio recordings or uploaded transcripts appear here.</p>
                     </div>
                   )}
                 </div>
               ) : detailTab === "notes" ? (
                 /* Meeting Notes Tab */
-                <div className="bg-[#FFFCFB] border border-gray-200/90 rounded-none p-5 shadow-2xs space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                <div className="bg-surface-panel border border-line rounded-none p-5 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-line">
                     <div>
-                      <h3 className="font-serif font-bold text-lg text-[#003366] italic">
+                      <h3 className="font-serif font-bold text-lg text-fg italic">
                         Meeting Notes
                       </h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
+                      <p className="text-[11px] text-fg-muted mt-0.5">
                         Notes captured in the workspace during the meeting session.
                       </p>
                     </div>
@@ -1664,10 +1725,10 @@ export function MeetingsView({
                     const lines = rawNotes.split("\n").map((l) => l.trim()).filter(Boolean);
                     if (lines.length === 0) {
                       return (
-                        <div className="border border-dashed border-slate-300 bg-white/60 p-8 text-center">
-                          <MessageCircle size={22} className="mx-auto text-[#003366]" />
-                          <p className="mt-2 text-sm font-medium text-slate-600">No meeting notes recorded</p>
-                          <p className="mt-1 text-xs text-slate-400">Notes captured in the workspace stay linked to the meeting time.</p>
+                        <div className="border border-dashed border-line bg-surface-panel p-8 text-center">
+                          <MessageCircle size={22} className="mx-auto text-fg" />
+                          <p className="mt-2 text-sm font-medium text-fg-secondary">No meeting notes recorded</p>
+                          <p className="mt-1 text-xs text-fg-muted">Notes captured in the workspace stay linked to the meeting time.</p>
                         </div>
                       );
                     }
@@ -1677,8 +1738,8 @@ export function MeetingsView({
                           const match = line.match(/^(\[\d{2}:\d{2}(?::\d{2})?\])\s*(.*)$/);
                           const noteText = match ? match[2] : line;
                           return (
-                            <div key={idx} className="flex items-start gap-2.5 border border-slate-200 bg-white p-3 shadow-2xs">
-                              <span className="text-xs text-slate-700 flex-1 leading-relaxed break-words">
+                            <div key={idx} className="flex items-start gap-2.5 border border-line bg-surface-panel p-3 shadow-2xs">
+                              <span className="text-xs text-fg flex-1 leading-relaxed break-words">
                                 {noteText}
                               </span>
                             </div>
@@ -1689,8 +1750,8 @@ export function MeetingsView({
                   })()}
                 </div>
               ) : detailTab === "actions" ? (
-                <div className="bg-[#FFFCFB] border border-gray-200/90 rounded-none p-5 shadow-2xs space-y-3">
-                  <h3 className="font-serif font-bold text-lg text-[#003366] italic">Action Items</h3>
+                <div className="bg-surface-panel border border-line rounded-none p-5 shadow-2xs space-y-3">
+                  <h3 className="font-serif font-bold text-lg text-fg italic">Action Items</h3>
                   <MeetingActionItemsTable
                     items={(activeMeeting.action_items || []).map((action) => {
                       const source = activeMeeting.items.find((item) => String(item.id) === String(action.discussion_point_id));
@@ -1717,8 +1778,8 @@ export function MeetingsView({
                       const source = activeMeeting.items.find((discussion) => String(discussion.id) === String(item.discussion_point_id));
                       if (desktopMode) return null;
                       return item.clickUpTaskId ? (
-                        <button type="button" onClick={() => onNavigateToTasks && onNavigateToTasks(item.clickUpTaskId!)} className="mt-2 flex items-center gap-1.5 border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100" title="Already added to ClickUp. Click to view in Tasks portal">
-                          <CheckCircle size={13} className="text-emerald-600" /><span>Added to Tasks</span>
+                        <button type="button" onClick={() => onNavigateToTasks && onNavigateToTasks(item.clickUpTaskId!)} className="mt-2 flex items-center gap-1.5 border border-success-border bg-success-surface px-2.5 py-1 text-[11px] font-bold text-success-fg hover:bg-success-surface" title="Already added to ClickUp. Click to view in Tasks portal">
+                          <CheckCircle size={13} className="text-success-fg" /><span>Added to Tasks</span>
                         </button>
                       ) : (
                         <button type="button" onClick={() => setQuickAddTaskData({
@@ -1740,8 +1801,8 @@ export function MeetingsView({
                             existingTaskUrl: item.clickUpUrl,
                           },
                           actionIndex: index,
-                        })} className="mt-2 flex items-center gap-1.5 border border-[#003366]/30 bg-[#FFFCFB] px-2.5 py-1 text-[11px] font-bold text-[#003366] transition-colors hover:border-[#003366] hover:bg-blue-50/50">
-                          <CheckSquare size={13} className="text-[#c9ab4c]" /><span>Add to Tasks</span>
+                        })} className="mt-2 flex items-center gap-1.5 border border-link bg-surface-panel px-2.5 py-1 text-[11px] font-bold text-fg transition-colors hover:border-link hover:bg-info-surface">
+                          <CheckSquare size={13} className="text-link" /><span>Add to Tasks</span>
                         </button>
                       );
                     }}
@@ -1751,14 +1812,14 @@ export function MeetingsView({
                 /* Discussion Points Matrix Tab */
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-serif font-bold text-lg text-[#003366] italic">
+                    <h3 className="font-serif font-bold text-lg text-fg italic">
                       Discussion Points Matrix
                     </h3>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={handleAddNewItem}
-                        className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1 text-[#003366] hover:bg-[#003366] hover:text-white transition-all rounded-none cursor-pointer"
+                        className="btn-outline !py-1.5 !px-3 !text-xs flex items-center gap-1 text-fg hover:bg-action-hover hover:text-fg transition-all rounded-none cursor-pointer"
                       >
                         <Plus size={13} /> Add Topic
                       </button>
@@ -1776,15 +1837,15 @@ export function MeetingsView({
                         }}
                         className="btn-primary !py-1.5 !px-3 !text-xs flex items-center gap-1.5 rounded-none cursor-pointer"
                       >
-                        <Sparkles size={13} className="text-[#c9ab4c]" />
+                        <Sparkles size={13} className="text-link" />
                         <span>Discover Topics</span>
                       </button>
                     </div>
                   </div>
 
                 {activeMeeting.items.length === 0 ? (
-                  <div className="border border-dashed border-slate-300 bg-white/60 p-8 text-center">
-                    <p className="text-sm font-medium text-slate-600">No discussion topics recorded yet</p>
+                  <div className="border border-dashed border-line bg-surface-panel p-8 text-center">
+                    <p className="text-sm font-medium text-fg-secondary">No discussion topics recorded yet</p>
                   </div>
                 ) : (
                   activeMeeting.items.map((item, idx) => (
@@ -1798,16 +1859,16 @@ export function MeetingsView({
                       onTitleChange={(value) => handleUpdateItem(idx, "topic", value)}
                       onDiscussionPointChange={(value) => handleUpdateItem(idx, "discussion_point", value)}
                     >
-                      <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-2">
-                        <span className="text-[10px] font-mono text-gray-400">Topic #{idx + 1}</span>
+                      <div className="flex items-center justify-between gap-3 border-t border-line pt-2">
+                        <span className="text-[10px] font-mono text-fg-muted">Topic #{idx + 1}</span>
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
-                          <button type="button" onClick={() => handleMoveItem(idx, "up")} disabled={idx === 0} title="Move Topic Up" className="border border-gray-200 p-1 text-gray-400 hover:text-[#003366] disabled:opacity-20">
+                          <button type="button" onClick={() => handleMoveItem(idx, "up")} disabled={idx === 0} title="Move Topic Up" className="border border-line p-1 text-fg-muted hover:text-fg ">
                             <ChevronUp size={15} />
                           </button>
-                          <button type="button" onClick={() => handleMoveItem(idx, "down")} disabled={idx === activeMeeting.items.length - 1} title="Move Topic Down" className="border border-gray-200 p-1 text-gray-400 hover:text-[#003366] disabled:opacity-20">
+                          <button type="button" onClick={() => handleMoveItem(idx, "down")} disabled={idx === activeMeeting.items.length - 1} title="Move Topic Down" className="border border-line p-1 text-fg-muted hover:text-fg ">
                             <ChevronDown size={15} />
                           </button>
-                          <button type="button" onClick={() => handleRemoveItem(idx)} title="Remove Topic" className="border border-gray-200 p-1 text-gray-400 transition-colors hover:border-red-300 hover:text-red-500">
+                          <button type="button" onClick={() => handleRemoveItem(idx)} title="Remove Topic" className="border border-line p-1 text-fg-muted transition-colors hover:border-danger-border hover:text-danger-fg">
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -1819,7 +1880,7 @@ export function MeetingsView({
               )}
             </>
           ) : (
-            <div className="bg-[#FFFCFB] border border-gray-200 rounded-none p-12 text-center text-gray-400 text-xs">
+            <div className="bg-surface-panel border border-line rounded-none p-12 text-center text-fg-muted text-xs">
               Select a meeting from the archive list on the left to view details and discussion points.
             </div>
           )}
@@ -1828,25 +1889,25 @@ export function MeetingsView({
       </div>
 
       {showArchiveDetails && activeMeeting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#001E3C]/45 p-4" role="dialog" aria-modal="true" aria-labelledby="archive-details-title">
-          <div className="w-full max-w-sm border border-slate-200 bg-[#FFFCFB] p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-3">
-              <div><h2 id="archive-details-title" className="text-sm font-bold uppercase tracking-[0.14em] text-[#003366]">Meeting Archive Details</h2><p className="mt-1 text-[11px] text-slate-500">Reference information only.</p></div>
-              <button type="button" onClick={() => setShowArchiveDetails(false)} aria-label="Close archive details" className="text-slate-400 hover:text-[#003366]"><X size={16} /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4" role="dialog" aria-modal="true" aria-labelledby="archive-details-title">
+          <div className="w-full max-w-sm border border-line bg-surface-panel p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-line pb-3">
+              <div><h2 id="archive-details-title" className="text-sm font-bold uppercase tracking-[0.14em] text-fg">Meeting Archive Details</h2><p className="mt-1 text-[11px] text-fg-muted">Reference information only.</p></div>
+              <button type="button" onClick={() => setShowArchiveDetails(false)} aria-label="Close archive details" className="text-fg-muted hover:text-fg"><X size={16} /></button>
             </div>
             <dl className="mt-4 space-y-3 text-xs">
-              {!desktopMode && <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Space</dt><dd className="mt-1 text-[#003366]">{activeMeeting.clickup_space_name || "Not recorded"}</dd></div>}
-              {!desktopMode && <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">List</dt><dd className="mt-1 text-[#003366]">{activeMeeting.clickup_list_name || "Not recorded"}</dd></div>}
-              <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Status</dt><dd className="mt-1 text-[#003366]">{desktopMode ? "Saved locally" : activeMeeting.archive_status || "Completed On Time"}</dd></div>
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Start Time</dt><dd className="mt-1 text-[#003366] font-medium">{formatDisplayTime(activeMeeting.start_time)}</dd></div>
-                <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">End Time</dt><dd className="mt-1 text-[#003366] font-medium">{formatDisplayTime(activeMeeting.end_time)}</dd></div>
+              {!desktopMode && <div><dt className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">Space</dt><dd className="mt-1 text-fg">{activeMeeting.clickup_space_name || "Not recorded"}</dd></div>}
+              {!desktopMode && <div><dt className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">List</dt><dd className="mt-1 text-fg">{activeMeeting.clickup_list_name || "Not recorded"}</dd></div>}
+              <div><dt className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">Status</dt><dd className="mt-1 text-fg">{desktopMode ? "Saved locally" : activeMeeting.archive_status || "Completed On Time"}</dd></div>
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-line">
+                <div><dt className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">Start Time</dt><dd className="mt-1 text-fg font-medium">{formatDisplayTime(activeMeeting.start_time)}</dd></div>
+                <div><dt className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">End Time</dt><dd className="mt-1 text-fg font-medium">{formatDisplayTime(activeMeeting.end_time)}</dd></div>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Meeting Duration</dt><dd className="mt-1 text-[#003366] font-medium">{getMeetingDurationMinutes(activeMeeting)} mins</dd></div>
+                <div><dt className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">Meeting Duration</dt><dd className="mt-1 text-fg font-medium">{getMeetingDurationMinutes(activeMeeting)} mins</dd></div>
                 <div>
-                  <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Meeting Cost</dt>
-                  <dd className="mt-1 text-base font-serif font-bold text-[#003366]">
+                  <dt className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">Total Meeting Cost</dt>
+                  <dd className="mt-1 text-base font-serif font-bold text-fg">
                     ₱{((getMeetingDurationMinutes(activeMeeting) / 60) * TOTAL_AI_PHP_PER_HOUR).toFixed(2)}
                   </dd>
                 </div>
@@ -1879,10 +1940,10 @@ export function MeetingsView({
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && activeMeeting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#001E3C]/45 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
-          <div className="w-full max-w-md border border-slate-200 bg-[#FFFCFB] p-5 shadow-2xl space-y-4">
-            <div className="flex items-start justify-between border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2 text-red-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+          <div className="w-full max-w-md border border-line bg-surface-panel p-5 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between border-b border-line pb-3">
+              <div className="flex items-center gap-2 text-danger-fg">
                 <Trash2 size={18} />
                 <h2 id="delete-modal-title" className="text-sm font-bold uppercase tracking-wider">
                   Delete Meeting Archive
@@ -1892,27 +1953,27 @@ export function MeetingsView({
                 type="button"
                 onClick={() => setShowDeleteModal(false)}
                 disabled={isDeleting}
-                className="text-slate-400 hover:text-[#003366]"
+                className="text-fg-muted hover:text-fg"
                 aria-label="Close modal"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="text-xs text-slate-600 space-y-2">
+            <div className="text-xs text-fg-secondary space-y-2">
               <p>
                 Are you sure you want to permanently delete this meeting archive?
               </p>
-              <div className="p-3 bg-slate-50 border border-slate-200">
-                <div className="font-serif font-bold text-sm text-[#003366] line-clamp-1">{activeMeeting.title}</div>
-                <div className="text-[11px] text-slate-400 mt-0.5">{formatEchoDate(activeMeeting.date)} • {activeMeeting.items.length} discussion topics</div>
+              <div className="p-3 bg-surface-raised border border-line">
+                <div className="font-serif font-bold text-sm text-fg line-clamp-1">{activeMeeting.title}</div>
+                <div className="text-[11px] text-fg-muted mt-0.5">{formatEchoDate(activeMeeting.date)} • {activeMeeting.items.length} discussion topics</div>
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-fg-muted">
                 {desktopMode ? "This will permanently delete the local meeting record. This action cannot be undone." : "This will remove the meeting record from ClickUp and the archive database. This action cannot be undone."}
               </p>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(false)}
@@ -1925,7 +1986,7 @@ export function MeetingsView({
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-1.5 text-xs rounded-none shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                className="bg-danger-action hover:bg-danger-action-hover text-on-action font-semibold px-4 py-1.5 text-xs rounded-none shadow-xs flex items-center gap-1.5 "
               >
                 {isDeleting && <Loader2 size={12} className="animate-spin" />}
                 <span>{isDeleting ? "Deleting..." : "Delete Archive"}</span>

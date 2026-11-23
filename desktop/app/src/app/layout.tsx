@@ -26,7 +26,8 @@ export default function RootLayout({
       lang="en" 
       className="h-full w-full"
     >
-      <body className="h-full w-full bg-bg-primary font-sans antialiased text-[#181D1E] overflow-hidden">
+      <head><meta name="color-scheme" content="dark" /></head>
+      <body className="h-full w-full bg-surface-canvas font-sans antialiased text-fg overflow-hidden">
         <EchoAIProvider><ClickUpLoadingProvider><StudioRecorderProvider>{children}</StudioRecorderProvider></ClickUpLoadingProvider></EchoAIProvider>
       </body>
     </html>

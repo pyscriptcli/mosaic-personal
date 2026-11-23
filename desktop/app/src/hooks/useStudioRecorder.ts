@@ -9,6 +9,9 @@ import {
   downloadSession,
   saveToLocalDocuments,
   requestPersistentStorage,
+  getInterruptedSessions,
+  exportSessionAsFile,
+  clearSession,
 } from "@/features/notetaker/lib/studioStorage";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +50,7 @@ export interface UseStudioRecorderReturn {
   screenInfo: ScreenCaptureInfo | null;
   /** True if no microphone or system audio detected for extended period (>45s). */
   isSilenceDetected: boolean;
-  /** Path in Documents/Mosaic Meetings where local file was saved. */
+  /** Path in Mosaic's local recording folder where the final file was saved. */
   localSavedPath: string | null;
   localSaveStatus: "idle" | "saving" | "saved" | "failed";
   /** True if another tab is currently recording. */
@@ -78,7 +81,7 @@ export interface UseStudioRecorderReturn {
 
 /** Fallback interval (ms) to flush chunks to IndexedDB if event-driven flush hasn't fired. */
 const FLUSH_INTERVAL_MS = 3_000;
-/** How often (seconds) to create a rolling checkpoint file in Documents/Mosaic Meetings. */
+/** How often (seconds) to create a rolling checkpoint file on local disk. */
 const CHECKPOINT_INTERVAL_SECONDS = 60;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -177,6 +180,55 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
     };
   }, [enumerateDevices]);
 
+  // Convert old crash-recovered IndexedDB sessions after the app shell starts.
+  // Keep their chunks and notes until the disk copy reaches the final format.
+  useEffect(() => {
+    let cancelled = false;
+    let running = false;
+    const migrateRecoveredSessions = async () => {
+      if (running || cancelled) return;
+      running = true;
+      try {
+        const sessions = await getInterruptedSessions(sessionIdRef.current);
+        if (!sessions.length || cancelled) return;
+        const response = await fetch("/api/recordings/save-local");
+        const data = response.ok ? await response.json() as { files?: Array<{ name: string }> } : {};
+        const existingNames = new Set((data.files || []).map((file) => file.name.toLowerCase()));
+        for (const session of sessions) {
+          if (cancelled) return;
+          const isVideo = session.mediaType === "video";
+          const prefix = isVideo ? "echo-video" : "echo-recording";
+          const rawName = `${prefix}-${session.sessionId}.webm`.toLowerCase();
+          const finalName = `${prefix}-${session.sessionId}.${isVideo ? "mp4" : "mp3"}`.toLowerCase();
+          const relatedNames = [...existingNames].filter((name) => name.includes(session.sessionId.toLowerCase()) && !name.startsWith("checkpoint_"));
+          if (existingNames.has(finalName) || relatedNames.some((name) => name.endsWith(isVideo ? ".mp4" : ".mp3"))) {
+            await clearSession(session.sessionId);
+            continue;
+          }
+          if (existingNames.has(rawName) || relatedNames.some((name) => /\.(webm|wav|ogg|m4a|mov|avi)$/i.test(name))) continue;
+          const rawFile = await exportSessionAsFile(session.sessionId);
+          const saved = await saveToLocalDocuments(session.sessionId, rawFile, "completed", isVideo ? "video" : "audio", rawFile.name, session.notes, false);
+          if (saved.success) {
+            await clearSession(session.sessionId);
+            existingNames.add((saved.fileName || "").toLowerCase());
+          }
+        }
+      } catch (migrationError) {
+        console.warn("[Studio] Recovered recording conversion is waiting for retry:", migrationError);
+      } finally {
+        running = false;
+      }
+    };
+    void migrateRecoveredSessions();
+    const interval = window.setInterval(() => void migrateRecoveredSessions(), 10_000);
+    window.addEventListener("focus", migrateRecoveredSessions);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", migrateRecoveredSessions);
+    };
+  }, []);
+
   // ── IndexedDB Flush (Event-driven & Low Latency) ──────────────────────
   const flushChunksToDb = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -208,7 +260,7 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
     }
   }, []);
 
-  // ── Rolling Checkpoint to Documents/Mosaic Meetings ─────────────────────
+  // ── Rolling disk checkpoint ─────────────────────────────────────────────
   const saveRollingCheckpoint = useCallback(async () => {
     const sid = sessionIdRef.current;
     if (!sid || (statusRef.current !== "recording" && statusRef.current !== "paused")) return;
@@ -613,15 +665,14 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
           if (sid) {
             const blob = await assembleRecording(sid);
             const isVideoSession = mediaTypeRef.current === "video" || blob.type.startsWith("video/");
-            const ext = blob.type.includes("webm") ? "webm" : isVideoSession ? "webm" : "wav";
             const prefix = isVideoSession ? "echo-video" : "echo-recording";
             const fileType = blob.type || (isVideoSession ? "video/webm" : "audio/webm");
-            const file = new File([blob], `${prefix}-${sid}.${ext}`, { type: fileType });
-            setRecordedFile(file);
+            const rawFile = new File([blob], `${prefix}-${sid}.webm`, { type: fileType });
 
             setLocalSaveStatus("saving");
-            const saveRes = await saveToLocalDocuments(sid, blob, "completed", mediaTypeRef.current, file.name);
+            const saveRes = await saveToLocalDocuments(sid, blob, "completed", mediaTypeRef.current, rawFile.name);
             if (saveRes.success && saveRes.filePath) {
+              setRecordedFile(saveRes.file || null);
               setLocalSavedPath(saveRes.filePath);
               setLocalSaveStatus("saved");
             } else {
@@ -630,7 +681,7 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
 
             // Mark session as completed in IndexedDB
             if (sessionMetaRef.current) {
-              sessionMetaRef.current.status = "completed";
+              sessionMetaRef.current.status = saveRes.success ? "completed" : "interrupted";
               sessionMetaRef.current.elapsedSeconds = elapsedSecondsRef.current;
               sessionMetaRef.current.localFilePath = saveRes.filePath;
               await saveSessionMeta(sessionMetaRef.current);
@@ -639,7 +690,7 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
         } catch (err) {
           console.error("[Studio] Failed to assemble recording:", err);
           setLocalSaveStatus("failed");
-          setError("Failed to assemble recording. Audio is checkpointed in Documents/Mosaic Meetings.");
+          setError("Failed to assemble recording. The last checkpoint remains in local recording storage.");
         }
       };
 
@@ -725,6 +776,7 @@ export function useStudioRecorder(): UseStudioRecorderReturn {
     const recorder = mediaRecorderRef.current;
     if (recorder && (recorder.state === "recording" || recorder.state === "paused")) {
       recorder.stop();
+      setLocalSaveStatus("saving");
       setStatus("stopped");
 
       if (timerRef.current) {

@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 describe("POST /api/discover-topics", () => {
   beforeEach(() => {
-    vi.stubEnv("DEEPSEEK_API_KEY", "test-deepseek-key");
+    vi.stubEnv("GROQ_API_KEY", "test-groq-key");
     vi.restoreAllMocks();
   });
 
@@ -25,7 +25,7 @@ describe("POST /api/discover-topics", () => {
   });
 
   it("rejects request with 401 when no API key is available", async () => {
-    vi.stubEnv("DEEPSEEK_API_KEY", "");
+    vi.stubEnv("GROQ_API_KEY", "");
     const { POST } = await import("./route");
 
     const req = new NextRequest("http://localhost/api/discover-topics", {
